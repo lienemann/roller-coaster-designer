@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "Achterbahn-Designer",
+    "tagline": "Eine Achterbahn entwerfen, indem du die Kräfte modellierst, die deine Fahrgäste spüren sollen."
+  },
+  "lang": {
+    "switch": "Sprache",
+    "en": "English",
+    "de": "Deutsch"
+  },
+  "status": {
+    "scaffold": "Tier 1 in Arbeit. Physik noch nicht angebunden."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "Roller Coaster Designer",
+    "tagline": "Design a coaster by sculpting the forces you want riders to feel."
+  },
+  "lang": {
+    "switch": "Language",
+    "en": "English",
+    "de": "Deutsch"
+  },
+  "status": {
+    "scaffold": "Tier 1 in progress. No physics wired yet."
+  }
+}
