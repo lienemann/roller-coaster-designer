@@ -303,6 +303,52 @@ describe('integrateTrack — Forced', () => {
   });
 });
 
+describe('integrateTrack — Geometric', () => {
+  it('constant pitch-rate func tilts the path upward', () => {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    const pitchFunc = createEmptyFunc(EFuncType.Pitch);
+    // Linear subfunc over 20 m that integrates to 20 × rate_avg. Absolute
+    // value at each argument = Linear.startValue → endValue. Derivative
+    // (subFuncDerivativeAt) is (end − start) / length. We want a constant
+    // pitch rate of ~0.02 rad/m, so pick Linear 0 → 0.4.
+    pitchFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0.4 }));
+    const yawFunc = createEmptyFunc(EFuncType.Yaw);
+    yawFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0 }));
+    const track: Track = {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [
+        {
+          type: SecType.Anchor,
+          name: 'a',
+          position: [0, 20, 0],
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          speed: 15,
+        },
+        {
+          type: SecType.Geometric,
+          name: 'g',
+          argument: 1, // Distance
+          extent: 20,
+          rollFunc,
+          pitchFunc,
+          yawFunc,
+        },
+      ],
+      smoothers: [],
+    };
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    expect(arrays.posY[last]!).toBeGreaterThan(20);
+    expect(arrays.dirY[last]!).toBeGreaterThan(0);
+  });
+});
+
 describe('integrateTrack — Straight with a Roll Func', () => {
   it('reaches the prescribed roll at the end of the section', () => {
     const rollFunc = createEmptyFunc(EFuncType.Roll);

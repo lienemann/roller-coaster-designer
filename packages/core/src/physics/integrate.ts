@@ -11,6 +11,7 @@ import {
   type BezierSection,
   type CurvedSection,
   type ForcedSection,
+  type GeometricSection,
   type Section,
   type StraightSection,
 } from '../model/section.js';
@@ -22,7 +23,7 @@ import {
   cubicBezierDerivative,
   sampleArcLengthTable,
 } from './bezier-math.js';
-import { getSubFuncValue } from './subfunc-eval.js';
+import { getSubFuncValue, subFuncDerivativeAt } from './subfunc-eval.js';
 
 // M2 ships Anchor, Straight, and a minimal Bezier. Curved, Forced, Geometric,
 // and the proper arc-length-reparameterized Bezier from spec §5 land at
@@ -86,6 +87,11 @@ function integrateSection(
         throw new Error('Forced section requires a prior Anchor.');
       }
       return integrateForced(section, arrays, lastIdx, heart);
+    case SecType.Geometric:
+      if (lastIdx < 0) {
+        throw new Error('Geometric section requires a prior Anchor.');
+      }
+      return integrateGeometric(section, arrays, lastIdx, heart);
     default:
       throw new Error(`Section type not yet implemented: ${SecType[section.type]}`);
   }
@@ -517,6 +523,121 @@ function integrateForced(
     });
   }
   return idx;
+}
+
+// Geometric section integrator — pitch and yaw come directly from two
+// user-prescribed functions (rad per argument unit), instead of being
+// computed from forces as in Forced. Roll still comes from the Roll func.
+// Velocity from energy conservation. Port of core/secgeometric.cpp.
+const geomDir = vec3.create();
+const geomLat = vec3.create();
+const geomNorm = vec3.create();
+const geomPrevLat = vec3.create();
+
+function integrateGeometric(
+  section: GeometricSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+): number {
+  const dt = 1 / F_HZ;
+  const extent = section.extent;
+  if (extent <= 0) return lastIdx;
+
+  let idx = lastIdx;
+  let arg = 0;
+
+  vec3.set(geomDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
+  vec3.set(geomLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
+
+  while (arg < extent && idx + 1 < arrays.capacity) {
+    const prevVel = arrays.vel[idx]!;
+    if (prevVel <= 1e-6) break;
+
+    vec3.copy(geomPrevLat, geomLat);
+
+    // Sample target rates at the current argument value.
+    const pitchAt = evalRoll(section.pitchFunc, arg);
+    const yawAt = evalRoll(section.yawFunc, arg);
+
+    // Convert "absolute angle at arg" into a per-step delta. Since evalRoll
+    // returns a cumulative value, diffing against the previously sampled
+    // value gives the delta. We stash the last sampled pair in the previous
+    // node's totalLength / totalHeartLength slots? No — keep local state
+    // via the running arg: just walk one delta per step.
+    // Simpler approach: pitchFunc and yawFunc are treated as "rate over
+    // argument" — sample instantaneous rate via subFuncDerivativeAt.
+    const pitchRate = evalFuncRate(section.pitchFunc, arg);
+    const yawRate = evalFuncRate(section.yawFunc, arg);
+
+    // Don't need pitchAt/yawAt below; void them so the lint pass stays happy.
+    void pitchAt;
+    void yawAt;
+
+    // dArg per step — seconds for Time-arg, meters for Distance-arg.
+    const step = prevVel * dt;
+    const dArg = section.argument === Argument.Time ? dt : step;
+
+    // Pitch around prev lat, yaw around world +Y (matches Curved for
+    // consistent turning behaviour; §5.1 note).
+    rotateAroundAxis(geomDir, geomDir, geomPrevLat, pitchRate * dArg);
+    vec3.rotateY(geomDir, geomDir, [0, 0, 0], yawRate * dArg);
+    vec3.rotateY(geomLat, geomLat, [0, 0, 0], yawRate * dArg);
+
+    // Roll.
+    const rollAbs = evalRoll(section.rollFunc, arg);
+    const prevRoll = arrays.roll[idx]!;
+    rotateAroundAxis(geomLat, geomLat, geomDir, rollAbs - prevRoll);
+    vec3.cross(geomNorm, geomLat, geomDir);
+
+    idx += 1;
+    const avgX = (arrays.dirX[idx - 1]! + geomDir[0]) * 0.5;
+    const avgY = (arrays.dirY[idx - 1]! + geomDir[1]) * 0.5;
+    const avgZ = (arrays.dirZ[idx - 1]! + geomDir[2]) * 0.5;
+    const posX = arrays.posX[idx - 1]! + avgX * step;
+    const posY = arrays.posY[idx - 1]! + avgY * step;
+    const posZ = arrays.posZ[idx - 1]! + avgZ * step;
+
+    const energy = arrays.energy[idx - 1]!;
+    const yH = posY + geomNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+
+    arg += dArg;
+
+    writeNode(arrays, idx, {
+      position: [posX, posY, posZ],
+      dir: geomDir,
+      lat: geomLat,
+      norm: geomNorm,
+      roll: rollAbs,
+      vel,
+      energy,
+      distFromLast: step,
+      heartDistFromLast: step,
+      totalLength: arrays.totalLength[idx - 1]! + step,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
+      forceNormal: projectGravity(geomNorm),
+      forceLateral: projectGravity(geomLat),
+    });
+  }
+  return idx;
+}
+
+/**
+ * Sample the instantaneous rate (derivative w.r.t. argument) of a Func at
+ * arc position `s`. Walks the subfuncs the same way `evalRoll` does but
+ * returns the local derivative instead of the accumulated value.
+ */
+function evalFuncRate(func: Func, s: number): number {
+  let offset = 0;
+  for (const sf of func.subfuncs) {
+    if (s <= offset + sf.length) {
+      return subFuncDerivativeAt(sf, s - offset);
+    }
+    offset += sf.length;
+  }
+  return 0;
 }
 
 // -- helpers ----------------------------------------------------------------
