@@ -74,12 +74,17 @@ export function MenuBar(): JSX.Element {
   // Primary actions stay visible at all widths; secondary actions collapse
   // into an overflow menu on narrow screens. CSS-only hide/show matches the
   // spec §20b "compact menu" deferral without adding a resize observer.
+  // At <640 px everything but "New" collapses so the bar never overflows.
   return (
     <nav aria-label={t('common:menu.file')} className="flex items-center gap-1 text-sm">
       <MenuButton onClick={handleNew}>{t('common:menu.new')}</MenuButton>
-      <MenuButton onClick={handleLoadDemo}>{t('common:menu.loadDemo')}</MenuButton>
 
-      {/* Primary save stays on desktop; collapses into overflow on mobile. */}
+      {/* "Load Demo" keeps a direct button from small breakpoints up — it's
+          the first thing a new visitor should see. */}
+      <span className="hidden sm:contents">
+        <MenuButton onClick={handleLoadDemo}>{t('common:menu.loadDemo')}</MenuButton>
+      </span>
+
       <span className="hidden md:contents">
         <MenuButton onClick={handleOpen}>{t('common:menu.open')}</MenuButton>
         <MenuButton
@@ -101,6 +106,7 @@ export function MenuBar(): JSX.Element {
       <OverflowMenu
         label={t('common:menu.more')}
         items={[
+          { label: t('common:menu.loadDemo'), onClick: handleLoadDemo },
           { label: t('common:menu.open'), onClick: handleOpen },
           {
             label: t('common:menu.save'),
@@ -163,7 +169,7 @@ function OverflowMenu(props: { label: string; items: OverflowItem[] }): JSX.Elem
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative md:hidden">
+    <div ref={rootRef} className="relative md:hidden" aria-label="overflow">
       <button
         type="button"
         aria-haspopup="menu"

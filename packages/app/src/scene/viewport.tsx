@@ -39,6 +39,15 @@ export interface ViewportProps {
   readonly selectedSectionIndex?: number | null;
   /** Orbit (fly-around) or POV (ride-through). Changes camera + controls. */
   readonly cameraMode?: CameraMode;
+  /**
+   * Incrementing epoch — framing only runs when this number changes. App
+   * bumps it on File → New / Open / Load Demo and on user-clicked Fit; a
+   * parameter edit that only mutates section data leaves it alone, so the
+   * camera doesn't yank on every slider move.
+   */
+  readonly fitEpoch?: number;
+  /** Incrementing epoch — resets camera to the default angle on change. */
+  readonly resetEpoch?: number;
 }
 
 interface SceneRefs {
@@ -221,10 +230,17 @@ export function Viewport({
   sectionColors,
   selectedSectionIndex,
   cameraMode,
+  fitEpoch,
+  resetEpoch,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
   const [webglSupported] = useState(hasWebGL);
+  // Remember what epoch we last framed at so the same epoch doesn't refire
+  // on every re-render. `null` means "haven't fit yet"; the first non-empty
+  // tracks render forces a fit regardless of epoch.
+  const lastFitEpoch = useRef<number | null>(null);
+  const lastResetEpoch = useRef<number | null>(null);
 
   useEffect(() => {
     if (!webglSupported) return undefined;
@@ -322,12 +338,23 @@ export function Viewport({
     state.controls.enabled = next === 'orbit';
     if (next === 'pov') {
       state.povTime = 0;
-    } else {
+    } else if (tracks[0]) {
       // Back to orbit: re-frame the track so the user isn't stuck at the last
       // POV position.
-      if (tracks[0]) frameCamera(state, tracks[0]);
+      frameCamera(state, tracks[0]);
     }
   }, [cameraMode, tracks]);
+
+  // Imperative "reset view" — bumped by the App's Reset button. Re-runs the
+  // full framing math so the user can bail out of a weird orbit.
+  useEffect(() => {
+    const state = refs.current;
+    if (!state || resetEpoch === undefined) return;
+    if (lastResetEpoch.current === resetEpoch) return;
+    lastResetEpoch.current = resetEpoch;
+    const first = tracks[0];
+    if (first) frameCamera(state, first);
+  }, [resetEpoch, tracks]);
 
   // Swap the rendered lines whenever recompute hands us new node streams,
   // or the user selects a different section (highlight).
@@ -344,13 +371,18 @@ export function Viewport({
     const first = tracks[0];
     if (!first || first.nodeCount === 0) return;
 
-    // Auto-fit on first recompute for a new track reference. We intentionally
-    // frame only on reference change (not every recompute) so that editing a
-    // parameter doesn't yank the camera every keystroke.
-    if (state.framedTrack !== first) {
+    // Auto-fit policy: only on the explicit `fitEpoch` bump from the app.
+    // Parameter edits trigger a new recompute (new TrackStream reference) but
+    // the epoch doesn't change, so the camera stays where the user left it.
+    // A fresh project / Load Demo / Fit button press bumps the epoch to
+    // request a reframe.
+    const shouldFitOnFirstRender = state.framedTrack === null;
+    const epochChanged = fitEpoch !== undefined && fitEpoch !== lastFitEpoch.current;
+    if (shouldFitOnFirstRender || epochChanged) {
       frameCamera(state, first);
-      state.framedTrack = first;
+      if (fitEpoch !== undefined) lastFitEpoch.current = fitEpoch;
     }
+    state.framedTrack = first;
 
     const n = first.nodeCount;
 

@@ -57,6 +57,18 @@ export interface AppState {
   /** Smoothly close the first track with a Bezier back to the anchor. */
   readonly closeCurrentTrack: () => void;
 
+  /**
+   * Incrementing epoch that signals the viewport to re-fit the camera to
+   * the current track. Bumped whenever a project is loaded or created anew
+   * (auto-fit once per project) and by the explicit Fit View button.
+   * Slider edits intentionally do NOT bump this — the camera stays where
+   * the user left it while they tune a parameter.
+   */
+  readonly fitViewEpoch: number;
+  readonly requestFitView: () => void;
+  readonly resetViewEpoch: number;
+  readonly requestResetView: () => void;
+
   /** Section editing on the first track. */
   readonly addStraightSection: () => void;
   readonly addCurvedSection: () => void;
@@ -86,32 +98,35 @@ export const useAppStore = create<AppState>((set) => ({
   setTracks: (tracks) => set({ tracks }),
 
   newProject: () =>
-    set({
+    set((state) => ({
       project: withStarterTrack(createEmptyProject()),
       projectName: null,
       projectHandle: null,
       isDirty: false,
       tracks: [],
       selectedSectionIndex: null,
-    }),
+      fitViewEpoch: state.fitViewEpoch + 1,
+    })),
   loadDemoProject: () =>
-    set({
+    set((state) => ({
       project: createDemoProject(),
       projectName: 'demo.webfvd.json',
       projectHandle: null,
       isDirty: true,
       tracks: [],
       selectedSectionIndex: null,
-    }),
+      fitViewEpoch: state.fitViewEpoch + 1,
+    })),
   loadProject: ({ project, name, handle }) =>
-    set({
+    set((state) => ({
       project,
       projectName: name,
       projectHandle: handle,
       isDirty: false,
       tracks: [],
       selectedSectionIndex: null,
-    }),
+      fitViewEpoch: state.fitViewEpoch + 1,
+    })),
   markSaved: ({ name, handle }) =>
     set({
       projectName: name,
@@ -119,6 +134,11 @@ export const useAppStore = create<AppState>((set) => ({
       isDirty: false,
     }),
   markDirty: () => set({ isDirty: true }),
+
+  fitViewEpoch: 0,
+  requestFitView: () => set((state) => ({ fitViewEpoch: state.fitViewEpoch + 1 })),
+  resetViewEpoch: 0,
+  requestResetView: () => set((state) => ({ resetViewEpoch: state.resetViewEpoch + 1 })),
 
   closeCurrentTrack: () =>
     set((state) => {

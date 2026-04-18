@@ -28,9 +28,15 @@ export function App(): JSX.Element {
 
   useRecomputeOnProjectChange();
 
+  const fitViewEpoch = useAppStore((s) => s.fitViewEpoch);
+  const resetViewEpoch = useAppStore((s) => s.resetViewEpoch);
+  const requestFitView = useAppStore((s) => s.requestFitView);
+  const requestResetView = useAppStore((s) => s.requestResetView);
+
   const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [graphCollapsed, setGraphCollapsed] = useState(false);
 
   // When the user picks a section on narrow layouts, flip to the Properties
   // tab so they see the edit fields immediately. Desktop shows both at once.
@@ -90,11 +96,13 @@ export function App(): JSX.Element {
           sectionColors={sectionColors}
           selectedSectionIndex={selectedSectionIndex}
           cameraMode={cameraMode}
+          fitEpoch={fitViewEpoch}
+          resetEpoch={resetViewEpoch}
         />
         <div
           role="toolbar"
           aria-label={t('viewport.cameraMode')}
-          className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1"
+          className="pointer-events-none absolute right-2 top-2 z-10 flex flex-wrap justify-end gap-1"
         >
           <CameraModeButton
             active={cameraMode === 'orbit'}
@@ -106,6 +114,8 @@ export function App(): JSX.Element {
             onClick={() => setCameraMode('pov')}
             label={t('viewport.pov')}
           />
+          <CameraModeButton active={false} onClick={requestFitView} label={t('viewport.fit')} />
+          <CameraModeButton active={false} onClick={requestResetView} label={t('viewport.reset')} />
         </div>
       </>
     );
@@ -130,7 +140,11 @@ export function App(): JSX.Element {
       </header>
 
       {isDesktop ? (
-        <main className="grid min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] grid-rows-[1fr_35%]">
+        <main
+          className={`grid min-h-0 flex-1 grid-cols-[minmax(220px,1fr)_3fr_minmax(320px,1.4fr)] ${
+            graphCollapsed ? 'grid-rows-[1fr_32px]' : 'grid-rows-[1fr_35%]'
+          }`}
+        >
           <aside
             aria-label={t('panels.sections')}
             className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3"
@@ -151,14 +165,25 @@ export function App(): JSX.Element {
           </aside>
           <footer
             aria-label={t('panels.graphs')}
-            className="min-h-0 overflow-hidden bg-surface-2 p-2"
+            className="flex min-h-0 flex-col overflow-hidden bg-surface-2"
           >
-            <ForcesGraph
-              track={firstTrack}
-              sectionStartTimes={sectionStartTimes}
-              sectionColors={sectionColors}
-              label={graphLabel}
+            <GraphHeader
+              collapsed={graphCollapsed}
+              onToggle={() => setGraphCollapsed((v) => !v)}
+              label={t('panels.graphs')}
+              expandLabel={t('panels.expand')}
+              collapseLabel={t('panels.collapse')}
             />
+            {!graphCollapsed && (
+              <div className="min-h-0 flex-1 p-2">
+                <ForcesGraph
+                  track={firstTrack}
+                  sectionStartTimes={sectionStartTimes}
+                  sectionColors={sectionColors}
+                  label={graphLabel}
+                />
+              </div>
+            )}
           </footer>
         </main>
       ) : (
@@ -171,14 +196,27 @@ export function App(): JSX.Element {
           </section>
           <div
             aria-label={t('panels.graphs')}
-            className="min-h-0 flex-[2] overflow-hidden border-b border-white/10 bg-surface-2 p-2"
+            className={`flex flex-col overflow-hidden border-b border-white/10 bg-surface-2 ${
+              graphCollapsed ? 'shrink-0' : 'min-h-0 flex-[2]'
+            }`}
           >
-            <ForcesGraph
-              track={firstTrack}
-              sectionStartTimes={sectionStartTimes}
-              sectionColors={sectionColors}
-              label={graphLabel}
+            <GraphHeader
+              collapsed={graphCollapsed}
+              onToggle={() => setGraphCollapsed((v) => !v)}
+              label={t('panels.graphs')}
+              expandLabel={t('panels.expand')}
+              collapseLabel={t('panels.collapse')}
             />
+            {!graphCollapsed && (
+              <div className="min-h-0 flex-1 p-2">
+                <ForcesGraph
+                  track={firstTrack}
+                  sectionStartTimes={sectionStartTimes}
+                  sectionColors={sectionColors}
+                  label={graphLabel}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex shrink-0 border-t border-white/10 bg-surface-1">
@@ -224,6 +262,27 @@ function MobileTabButton(props: {
       }`}
     >
       {props.label}
+    </button>
+  );
+}
+
+function GraphHeader(props: {
+  collapsed: boolean;
+  onToggle: () => void;
+  label: string;
+  expandLabel: string;
+  collapseLabel: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-expanded={!props.collapsed}
+      onClick={props.onToggle}
+      title={props.collapsed ? props.expandLabel : props.collapseLabel}
+      className="flex h-8 w-full shrink-0 items-center justify-between border-b border-white/10 bg-surface-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 hover:bg-surface-2 hover:text-neutral-200"
+    >
+      <span>{props.label}</span>
+      <span aria-hidden="true">{props.collapsed ? '▲' : '▼'}</span>
     </button>
   );
 }

@@ -29,7 +29,9 @@
   "panels": {
     "sections": "Abschnitte",
     "properties": "Eigenschaften",
-    "graphs": "Kräfte"
+    "graphs": "Kräfte",
+    "expand": "Ausklappen",
+    "collapse": "Einklappen"
   },
   "sections": {
     "empty": "Noch keine Abschnitte. Starte mit „Neu“ oder „Demo laden“.",
@@ -77,7 +79,9 @@
   "viewport": {
     "cameraMode": "Kameramodus",
     "orbit": "Orbit",
-    "pov": "POV"
+    "pov": "POV",
+    "fit": "Einpassen",
+    "reset": "Zurücksetzen"
   },
   "graphs": {
     "forceNormal": "Normal-g",

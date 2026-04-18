@@ -29,7 +29,9 @@
   "panels": {
     "sections": "Sections",
     "properties": "Properties",
-    "graphs": "Forces"
+    "graphs": "Forces",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "sections": {
     "empty": "No sections yet. Start with New or Load Demo.",
@@ -77,7 +79,9 @@
   "viewport": {
     "cameraMode": "Camera mode",
     "orbit": "Orbit",
-    "pov": "POV"
+    "pov": "POV",
+    "fit": "Fit",
+    "reset": "Reset"
   },
   "graphs": {
     "forceNormal": "Normal g",

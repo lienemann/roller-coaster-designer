@@ -24,8 +24,9 @@ export interface ForcesGraphProps {
 // uPlot draws its legend as a DOM row inside the host div, below the canvas.
 // We pass uPlot a smaller height so canvas + legend together fit inside the
 // host's CSS box; otherwise the legend overflows and gets clipped by the
-// parent's overflow:hidden. One row for live values + ~10 px padding.
-const LEGEND_RESERVED_PX = 40;
+// parent's overflow:hidden. Two-row allowance because on narrow widths the
+// four series wrap onto a second line (time + normal + lateral + velocity).
+const LEGEND_RESERVED_PX = 72;
 
 /**
  * uPlot value-over-time chart. Section-start markers (thin vertical lines)
