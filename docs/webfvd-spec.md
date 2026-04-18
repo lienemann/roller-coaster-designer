@@ -1050,17 +1050,17 @@ Each track contains project settings, anchor, sections list. Each section: type 
 
 **Testing:** the `tools/fvd-dump/` CLI reads a `.fvd` and writes the resulting in-memory `Project` as JSON. Round-trip test: `.fvd → Project → .fvd`, compare byte output to original (after sorting any order-sensitive lists).
 
-### 8.3 NoLimits 1 `.nlelem` export **[T1]**
+### 8.3 NoLimits 1 `.nlelem` export **[deferred — see §20b]**
 
-`core/track.cpp` `exportTrack`, `exportTrack2`, `exportTrack3`, `exportTrack4` — four variants for different track layouts. Port `core/exportfuncs.cpp` helpers.
+`core/track.cpp` `exportTrack`, `exportTrack2`, `exportTrack3`, `exportTrack4` — four variants for different track layouts. Port `core/exportfuncs.cpp` helpers. Moved out of the T1 ship scope: `.fvd` (§8.2) is the canonical interop target for T1. NL1/NL2 exporters land once we have real goldens to diff against.
 
-### 8.4 NoLimits 2 export **[T1]**
+### 8.4 NoLimits 2 export **[deferred — see §20b]**
 
-`core/track.cpp` `exportNL2Track` (~line 796). Outputs a specific binary format and/or CSV. Check the actual byte output of FVD++ 0.79 against your output on the golden test coasters. NL2 import files in their editor — you must produce byte-identical files, not "equivalent" ones.
+`core/track.cpp` `exportNL2Track` (~line 796). Outputs a specific binary format and/or CSV. Check the actual byte output of FVD++ 0.79 against your output on the golden test coasters. NL2 import files in their editor — you must produce byte-identical files, not "equivalent" ones. Also deferred; see §20b for rationale.
 
-### 8.5 NL2 CSV import **[T2]**
+### 8.5 NL2 CSV import **[deferred — see §20b]**
 
-`core/nolimitsimporter.cpp` + `core/secnlcsv.cpp`. Creates a section populated from a CSV of pre-computed node data.
+`core/nolimitsimporter.cpp` + `core/secnlcsv.cpp`. Creates a section populated from a CSV of pre-computed node data. Deferred alongside the NL1/NL2 exporters.
 
 ## 9. State, undo/redo
 
@@ -1547,7 +1547,9 @@ Listed to make the "out of scope" list unambiguous — these _are_ planned:
 - **VR / WebXR POV mode → post-T3 (T4 candidate).** Browser WebXR support and the coaster-VR experience both need to improve before this is worth shipping, and it layers cleanly on top of the POV camera built in T1 (§6.3). Revisit once T3 ships.
 - **In-viewport section handles → T2 (M7 split).** Drag a section's end point to change length; drag a tangent gizmo to change entry/exit direction; drag a banking wheel to adjust roll. The numerical properties panel (M4) and the 3D handles share the same Zustand commands, so they stay in sync. Requires raycasting against per-section proxy geometry and a gizmo shader pass — do it alongside the viewport polish already scheduled for M7.
 - **Responsive / portrait layout → M8 (preferences).** The 3-column desktop grid (sections | viewport + graphs | properties) doesn't fold nicely on phones or narrow tablets in portrait. The M8 preferences work ships a breakpoint-driven reshape: below ~900 px wide, collapse the left and right rails into togglable drawers on a hamburger, stack the viewport above the graphs, and swap the header's project-name + language-switcher row to a second line. Media-query driven; no JS resize observer needed for the layout itself.
-- **Compact menu / command palette → M8 (preferences).** The current top-bar menu spells out every File + Track action as its own button and eats half the header width. At M8, collapse rarely-used items (Open, Save As, Load Demo, Close Track) under a single `…` overflow menu on narrow widths, and add a Cmd/Ctrl+K command palette that supersedes the menu for keyboard users.
+- **Compact menu / command palette → M8 (preferences).** The current top-bar menu spells out every File + Track action as its own button and eats half the header width. At M8, collapse rarely-used items (Open, Save As, Load Demo, Close Track) under a single `…` overflow menu on narrow widths, and add a Cmd/Ctrl+K command palette that supersedes the menu for keyboard users. **Partially landed at M4** — the narrow-width overflow is in; Cmd-K palette still deferred.
+- **NL1 `.nlelem` + NL2 exporters / NL2 CSV import → post-T1.** For T1 we commit to the FVD++ `.fvd` binary (§8.2) as the one export target that matters — it's the native format of the upstream tool, and round-trip parity through it validates every integrator. NoLimits 1 / NoLimits 2 exports (§8.3/§8.4) and NL2 CSV import (§8.5) are popular but require access to real NL2 to verify byte-exact output, and the project should stabilise on its own format first. Revisit after the public M10 ship; order of priority when we get there is NL2 binary > NL1 `.nlelem` > NL2 CSV import.
+- **Curved-section alternate input modes → (partially landed).** FVD++ exposes Curved sections in two user-facing forms besides our current "rate per meter": (1) **total angle over section** — user types target pitch and yaw angles and the section length, rates fall out as `angle / length`; and (2) **axis-angle** — a single rotation around a user-chosen axis, projected onto pitch + yaw rates. Both are UI conveniences; the stored section stays `pitchRate` / `yawRate` / `length` so recompute and round-trip don't care how the numbers were typed. **Landed as the Curved properties panel's input-mode dropdown at M4.5.**
 
 ## 21. Pitfalls to avoid
 

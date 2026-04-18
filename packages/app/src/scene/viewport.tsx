@@ -11,6 +11,7 @@ import {
   GridHelper,
   Line,
   LineBasicMaterial,
+  LineSegments,
   PerspectiveCamera,
   Scene,
   TOUCH,
@@ -27,10 +28,16 @@ interface SceneRefs {
   scene: Scene;
   camera: PerspectiveCamera;
   controls: OrbitControls;
-  line: Line | null;
+  lines: Line[];
   ro: ResizeObserver;
   frame: number;
 }
+
+// Half-gauge used when drawing rails off the centre path. FVD++ has
+// style-specific gauges; for M4.5 a single default is enough to make banking
+// visible. M7's track-mesh work replaces this with real profile geometry.
+const RAIL_HALF_WIDTH = 0.3;
+const CROSSTIE_EVERY_N_NODES = 120; // ~0.12 s at 1000 Hz
 
 function hasWebGL(): boolean {
   if (typeof document === 'undefined') return false;
@@ -40,6 +47,15 @@ function hasWebGL(): boolean {
   } catch {
     return false;
   }
+}
+
+function disposeLines(state: SceneRefs): void {
+  for (const line of state.lines) {
+    state.scene.remove(line);
+    line.geometry.dispose();
+    (line.material as LineBasicMaterial).dispose();
+  }
+  state.lines = [];
 }
 
 export function Viewport({ tracks }: ViewportProps): JSX.Element {
@@ -90,7 +106,7 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
       scene,
       camera,
       controls,
-      line: null,
+      lines: [],
       frame: 0,
       ro: new ResizeObserver(() => {
         const w = host.clientWidth;
@@ -114,43 +130,83 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
       cancelAnimationFrame(state.frame);
       state.ro.disconnect();
       state.controls.dispose();
-      if (state.line) {
-        state.scene.remove(state.line);
-        state.line.geometry.dispose();
-        (state.line.material as LineBasicMaterial).dispose();
-      }
+      disposeLines(state);
       renderer.dispose();
       renderer.domElement.remove();
       refs.current = null;
     };
   }, [webglSupported]);
 
-  // Swap the rendered polyline whenever recompute hands us new node streams.
+  // Swap the rendered lines whenever recompute hands us new node streams.
   useEffect(() => {
     const state = refs.current;
     if (!state) return;
 
-    if (state.line) {
-      state.scene.remove(state.line);
-      state.line.geometry.dispose();
-      (state.line.material as LineBasicMaterial).dispose();
-      state.line = null;
-    }
+    disposeLines(state);
 
     if (tracks.length === 0) return;
 
-    // All tracks collapse into one polyline for M2. The spec's node graph
-    // view (M15) and per-track rendering split are later concerns.
     const first = tracks[0];
     if (!first || first.nodeCount === 0) return;
 
-    const geom = new BufferGeometry();
-    geom.setAttribute('position', new BufferAttribute(first.positions, 3));
-    geom.setDrawRange(0, first.nodeCount);
-    const mat = new LineBasicMaterial({ color: 0x5cc8ff });
-    const line = new Line(geom, mat);
-    state.scene.add(line);
-    state.line = line;
+    // Centreline: the classic polyline from M2. Blue so it stays visible
+    // even when the rails blend with the grid.
+    const centreGeom = new BufferGeometry();
+    centreGeom.setAttribute('position', new BufferAttribute(first.positions, 3));
+    centreGeom.setDrawRange(0, first.nodeCount);
+    const centreMat = new LineBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.55 });
+    const centre = new Line(centreGeom, centreMat);
+    state.scene.add(centre);
+    state.lines.push(centre);
+
+    // Rails: centre ± RAIL_HALF_WIDTH along the lateral axis. When the track
+    // banks, lat rotates around the forward direction, so the two rails
+    // describe the bank angle directly. This is what makes banking visible
+    // without waiting for M7's full track-mesh work.
+    const n = first.nodeCount;
+    const railLeft = new Float32Array(n * 3);
+    const railRight = new Float32Array(n * 3);
+    for (let i = 0; i < n; i += 1) {
+      const px = first.positions[i * 3]!;
+      const py = first.positions[i * 3 + 1]!;
+      const pz = first.positions[i * 3 + 2]!;
+      const lx = first.lateralAxis[i * 3]!;
+      const ly = first.lateralAxis[i * 3 + 1]!;
+      const lz = first.lateralAxis[i * 3 + 2]!;
+      railLeft[i * 3] = px - lx * RAIL_HALF_WIDTH;
+      railLeft[i * 3 + 1] = py - ly * RAIL_HALF_WIDTH;
+      railLeft[i * 3 + 2] = pz - lz * RAIL_HALF_WIDTH;
+      railRight[i * 3] = px + lx * RAIL_HALF_WIDTH;
+      railRight[i * 3 + 1] = py + ly * RAIL_HALF_WIDTH;
+      railRight[i * 3 + 2] = pz + lz * RAIL_HALF_WIDTH;
+    }
+    const leftGeom = new BufferGeometry();
+    leftGeom.setAttribute('position', new BufferAttribute(railLeft, 3));
+    leftGeom.setDrawRange(0, n);
+    const rightGeom = new BufferGeometry();
+    rightGeom.setAttribute('position', new BufferAttribute(railRight, 3));
+    rightGeom.setDrawRange(0, n);
+    const railMat = new LineBasicMaterial({ color: 0xffffff });
+    state.lines.push(new Line(leftGeom, railMat));
+    state.lines.push(new Line(rightGeom, railMat));
+    state.scene.add(state.lines[1]!);
+    state.scene.add(state.lines[2]!);
+
+    // Cross-ties between left and right rails every few nodes. LineSegments
+    // takes pairs of vertices; emit one pair per sampled node.
+    const ties: number[] = [];
+    for (let i = 0; i < n; i += CROSSTIE_EVERY_N_NODES) {
+      ties.push(railLeft[i * 3]!, railLeft[i * 3 + 1]!, railLeft[i * 3 + 2]!);
+      ties.push(railRight[i * 3]!, railRight[i * 3 + 1]!, railRight[i * 3 + 2]!);
+    }
+    if (ties.length > 0) {
+      const tiesGeom = new BufferGeometry();
+      tiesGeom.setAttribute('position', new BufferAttribute(new Float32Array(ties), 3));
+      const tiesMat = new LineBasicMaterial({ color: 0x888888 });
+      const tiesLine = new LineSegments(tiesGeom, tiesMat);
+      state.scene.add(tiesLine);
+      state.lines.push(tiesLine as unknown as Line);
+    }
   }, [tracks]);
 
   if (!webglSupported) {

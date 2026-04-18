@@ -16,6 +16,7 @@ const api: PhysicsWorkerApi = {
     const tracks: TrackStream[] = integrations.map(({ arrays, sectionStartNodes }) => {
       const count = arrays.length;
       const positions = new Float32Array(count * 3);
+      const lateralAxis = new Float32Array(count * 3);
       const velocity = new Float32Array(count);
       const forceNormal = new Float32Array(count);
       const forceLateral = new Float32Array(count);
@@ -26,6 +27,9 @@ const api: PhysicsWorkerApi = {
         positions[i * 3] = arrays.posX[i]!;
         positions[i * 3 + 1] = arrays.posY[i]!;
         positions[i * 3 + 2] = arrays.posZ[i]!;
+        lateralAxis[i * 3] = arrays.latX[i]!;
+        lateralAxis[i * 3 + 1] = arrays.latY[i]!;
+        lateralAxis[i * 3 + 2] = arrays.latZ[i]!;
         velocity[i] = arrays.vel[i]!;
         forceNormal[i] = arrays.forceNormal[i]!;
         forceLateral[i] = arrays.forceLateral[i]!;
@@ -34,6 +38,7 @@ const api: PhysicsWorkerApi = {
       return {
         nodeCount: count,
         positions,
+        lateralAxis,
         velocity,
         forceNormal,
         forceLateral,
@@ -44,6 +49,7 @@ const api: PhysicsWorkerApi = {
 
     const transferList = tracks.flatMap((t) => [
       t.positions.buffer,
+      t.lateralAxis.buffer,
       t.velocity.buffer,
       t.forceNormal.buffer,
       t.forceLateral.buffer,

@@ -95,8 +95,20 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
     const plot = new uPlot(opts, [x, n, l, v], host);
     plotRef.current = plot;
 
+    // Guard against degenerate sizes (hidden container, mid-layout
+    // transitions) and against trivial size deltas — uPlot reallocates
+    // canvases on setSize, and a ResizeObserver + canvas + growing-ancestor
+    // will feedback-loop otherwise.
+    let lastWidth = host.clientWidth;
+    let lastHeight = host.clientHeight;
     const ro = new ResizeObserver(() => {
-      plot.setSize({ width: host.clientWidth, height: host.clientHeight });
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (w < 2 || h < 2) return;
+      if (Math.abs(w - lastWidth) < 1 && Math.abs(h - lastHeight) < 1) return;
+      lastWidth = w;
+      lastHeight = h;
+      plot.setSize({ width: w, height: h });
     });
     ro.observe(host);
     roRef.current = ro;

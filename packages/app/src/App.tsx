@@ -10,9 +10,16 @@ import { Viewport } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
+import { useMediaQuery } from './ui/use-media-query.js';
 import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 
 type MobileTab = 'sections' | 'properties';
+
+// Matches Tailwind's `md:` breakpoint. Kept as a single constant here so the
+// layout branch and the Tailwind classes never drift apart — only one layout
+// tree renders at a time, otherwise a hidden ForcesGraph mounts too and its
+// zero-size container pulls uPlot into a resize loop.
+const DESKTOP_QUERY = '(min-width: 768px)';
 
 export function App(): JSX.Element {
   const { t } = useTranslation('common');
@@ -23,6 +30,7 @@ export function App(): JSX.Element {
 
   useRecomputeOnProjectChange();
 
+  const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
 
   const documentLabel =
@@ -32,109 +40,109 @@ export function App(): JSX.Element {
 
   const firstTrack = tracks[0] ?? null;
 
-  const graphPanel = (
-    <div className="min-h-0 overflow-hidden bg-surface-2 p-2">
-      <ForcesGraph
-        track={firstTrack}
-        label={{
-          forceNormal: t('graphs.forceNormal'),
-          forceLateral: t('graphs.forceLateral'),
-          velocity: t('graphs.velocity'),
-          time: t('graphs.time'),
-          force: t('graphs.force'),
-          velocityAxis: t('graphs.velocityAxis'),
-        }}
-      />
+  const graphLabel = {
+    forceNormal: t('graphs.forceNormal'),
+    forceLateral: t('graphs.forceLateral'),
+    velocity: t('graphs.velocity'),
+    time: t('graphs.time'),
+    force: t('graphs.force'),
+    velocityAxis: t('graphs.velocityAxis'),
+  };
+
+  const emptyState = (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <div className="max-w-md text-center">
+        <p className="text-sm text-neutral-400">{t('app.tagline')}</p>
+        <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
+        <p className="mt-4 text-xs text-neutral-500">{t('app.emptyHint')}</p>
+      </div>
     </div>
   );
 
-  const viewportPanel = (
-    <section
-      aria-label="viewport"
-      className="relative min-h-0 border-b border-white/10 bg-surface-0"
-    >
-      {tracks.length === 0 ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="max-w-md text-center">
-            <p className="text-sm text-neutral-400">{t('app.tagline')}</p>
-            <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
-            <p className="mt-4 text-xs text-neutral-500">{t('app.emptyHint')}</p>
-          </div>
-        </div>
-      ) : (
-        <Viewport tracks={tracks} />
-      )}
-    </section>
-  );
+  const viewportContent = tracks.length === 0 ? emptyState : <Viewport tracks={tracks} />;
 
   return (
-    <div className="flex h-full w-full flex-col bg-surface-0 text-neutral-100">
-      {/* Header. Wraps onto two lines below md. */}
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/10 bg-surface-1 px-3 py-2">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <h1 className="truncate text-base font-semibold tracking-tight md:text-lg">
-            {t('app.title')}
-          </h1>
-          <span className="hidden text-xs text-neutral-400 lg:inline">v0.0.0 · pre-release</span>
-        </div>
-
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-          <MenuBar />
-          <span
-            aria-label={t('app.currentProject')}
-            className="order-last w-full truncate text-xs text-neutral-400 md:order-none md:w-auto md:max-w-[20ch]"
-          >
-            {documentLabel}
-          </span>
-          <LanguageSwitcher />
-        </div>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0 text-neutral-100">
+      {/* Header: single-row on every width. Project label truncates with a
+          tooltip rather than wrapping. Overflow menu handles the long tail. */}
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-surface-1 px-3">
+        <h1 className="shrink-0 truncate text-base font-semibold tracking-tight">
+          {t('app.title')}
+        </h1>
+        <MenuBar />
+        <span
+          aria-label={t('app.currentProject')}
+          title={documentLabel}
+          className="min-w-0 flex-1 truncate text-right text-xs text-neutral-400"
+        >
+          {documentLabel}
+        </span>
+        <LanguageSwitcher />
       </header>
 
-      {/* Desktop: three-column grid with graphs docked under the viewport. */}
-      <main className="hidden min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] grid-rows-[1fr_35%] md:grid">
-        <aside
-          aria-label={t('panels.sections')}
-          className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3"
-        >
-          <SectionsPanel />
-        </aside>
-        {viewportPanel}
-        <aside
-          aria-label={t('panels.properties')}
-          className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3"
-        >
-          <PropertiesPanel />
-        </aside>
-        <footer aria-label={t('panels.graphs')}>{graphPanel}</footer>
-      </main>
+      {isDesktop ? (
+        <main className="grid min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] grid-rows-[1fr_35%]">
+          <aside
+            aria-label={t('panels.sections')}
+            className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3"
+          >
+            <SectionsPanel />
+          </aside>
+          <section
+            aria-label="viewport"
+            className="relative min-h-0 border-b border-white/10 bg-surface-0"
+          >
+            {viewportContent}
+          </section>
+          <aside
+            aria-label={t('panels.properties')}
+            className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3"
+          >
+            <PropertiesPanel />
+          </aside>
+          <footer
+            aria-label={t('panels.graphs')}
+            className="min-h-0 overflow-hidden bg-surface-2 p-2"
+          >
+            <ForcesGraph track={firstTrack} label={graphLabel} />
+          </footer>
+        </main>
+      ) : (
+        <main className="flex min-h-0 flex-1 flex-col">
+          <section
+            aria-label="viewport"
+            className="relative min-h-0 flex-[3] border-b border-white/10 bg-surface-0"
+          >
+            {viewportContent}
+          </section>
+          <div
+            aria-label={t('panels.graphs')}
+            className="min-h-0 flex-[2] overflow-hidden border-b border-white/10 bg-surface-2 p-2"
+          >
+            <ForcesGraph track={firstTrack} label={graphLabel} />
+          </div>
 
-      {/* Narrow: stack vertically — viewport, graphs, then a tab strip that
-          swaps Sections and Properties below. No drawers; tabs are always
-          visible and take the same tap-targets the old floating buttons did. */}
-      <main className="flex min-h-0 flex-1 flex-col md:hidden">
-        <div className="min-h-0 flex-[3]">{viewportPanel}</div>
-        <div className="min-h-0 flex-[2] border-t border-white/10">{graphPanel}</div>
+          <div className="flex shrink-0 border-t border-white/10 bg-surface-1">
+            <MobileTabButton
+              active={mobileTab === 'sections'}
+              onClick={() => setMobileTab('sections')}
+              label={t('panels.sections')}
+            />
+            <MobileTabButton
+              active={mobileTab === 'properties'}
+              onClick={() => setMobileTab('properties')}
+              label={t('panels.properties')}
+            />
+          </div>
 
-        <div className="flex border-t border-white/10 bg-surface-1">
-          <MobileTabButton
-            active={mobileTab === 'sections'}
-            onClick={() => setMobileTab('sections')}
-            label={t('panels.sections')}
-          />
-          <MobileTabButton
-            active={mobileTab === 'properties'}
-            onClick={() => setMobileTab('properties')}
-            label={t('panels.properties')}
-          />
-        </div>
-
-        <section
-          aria-label={mobileTab === 'sections' ? t('panels.sections') : t('panels.properties')}
-          className="min-h-0 flex-[2] overflow-auto border-t border-white/10 bg-surface-1 p-3"
-        >
-          {mobileTab === 'sections' ? <SectionsPanel /> : <PropertiesPanel />}
-        </section>
-      </main>
+          <section
+            aria-label={mobileTab === 'sections' ? t('panels.sections') : t('panels.properties')}
+            className="min-h-0 flex-[2] overflow-auto bg-surface-1 p-3"
+          >
+            {mobileTab === 'sections' ? <SectionsPanel /> : <PropertiesPanel />}
+          </section>
+        </main>
+      )}
     </div>
   );
 }

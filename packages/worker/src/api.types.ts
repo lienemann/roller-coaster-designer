@@ -10,7 +10,11 @@ import { type Project } from '@roller-coaster-designer/core';
  */
 export interface TrackStream {
   readonly nodeCount: number;
+  /** 3·N packed XYZ. positions[3i..3i+2] is node i's world position. */
   readonly positions: Float32Array;
+  /** 3·N packed XYZ. Rider's lateral (right) axis. Banking becomes visible
+   *  in the 3D viewport once it can draw ±lat offsets off each node. */
+  readonly lateralAxis: Float32Array;
   readonly velocity: Float32Array;
   readonly forceNormal: Float32Array;
   readonly forceLateral: Float32Array;

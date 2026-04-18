@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { SecType, type Section } from '@roller-coaster-designer/core';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAppStore } from '../state/store.js';
@@ -135,6 +135,8 @@ function StraightFields({
   );
 }
 
+type CurvedMode = 'rate' | 'totalAngle' | 'axisAngle';
+
 function CurvedFields({
   section,
   patch,
@@ -144,26 +146,120 @@ function CurvedFields({
   patch: Patcher;
   t: Translate;
 }): JSX.Element {
+  // Stored shape never changes — it's always (length, pitchRate, yawRate).
+  // `mode` is UI-only: "rate" shows rad/m directly, "totalAngle" lets the
+  // user type pitch and yaw angles for the whole section, "axisAngle"
+  // expresses a single rotation around a chosen axis. All three write back
+  // through the same patch() call so recompute and round-trip stay agnostic.
+  const [mode, setMode] = useState<CurvedMode>('rate');
+
+  const length = section.length;
+  const pitchRate = section.pitchRate;
+  const yawRate = section.yawRate;
+
+  // Total-angle view: rate × length. Editing an angle field solves for
+  // rate = angle / length (or zero when length ≤ 0).
+  const totalPitchDeg = radToDeg(pitchRate * length);
+  const totalYawDeg = radToDeg(yawRate * length);
+  const setTotalPitchDeg = (deg: number): void => {
+    patch({ pitchRate: length > 0 ? degToRad(deg) / length : 0 });
+  };
+  const setTotalYawDeg = (deg: number): void => {
+    patch({ yawRate: length > 0 ? degToRad(deg) / length : 0 });
+  };
+
+  // Axis-angle view: combine pitch and yaw into a single total-rotation
+  // magnitude with an axis direction (unit vector in the pitch/yaw plane).
+  // Stored orientation of this axis is arbitrary — we pick the natural
+  // "first rotate yaw, then pitch" decomposition so pure yaw → axis = (0,1),
+  // pure pitch → axis = (1,0).
+  const totalPitch = pitchRate * length;
+  const totalYaw = yawRate * length;
+  const totalAngleDeg = radToDeg(Math.hypot(totalPitch, totalYaw));
+  const axisAngleDeg = totalAngleDeg < 1e-6 ? 0 : radToDeg(Math.atan2(totalPitch, totalYaw));
+  const setAxisRotation = (angleDeg: number, axisDeg: number): void => {
+    const angle = degToRad(angleDeg);
+    const axis = degToRad(axisDeg);
+    const pitch = angle * Math.sin(axis);
+    const yaw = angle * Math.cos(axis);
+    patch({
+      pitchRate: length > 0 ? pitch / length : 0,
+      yawRate: length > 0 ? yaw / length : 0,
+    });
+  };
+
   return (
     <>
       <Field
         label={t('properties.length')}
-        value={section.length}
+        value={length}
         onChange={(v) => patch({ length: Math.max(0, asNumber(v)) })}
         suffix="m"
       />
-      <Field
-        label={t('properties.pitchRate')}
-        value={radToDeg(section.pitchRate)}
-        onChange={(v) => patch({ pitchRate: degToRad(asNumber(v)) })}
-        suffix="°/m"
+
+      <ModeSelector
+        label={t('properties.curvedMode')}
+        value={mode}
+        options={[
+          { value: 'rate', label: t('properties.curvedModeRate') },
+          { value: 'totalAngle', label: t('properties.curvedModeTotal') },
+          { value: 'axisAngle', label: t('properties.curvedModeAxis') },
+        ]}
+        onChange={setMode}
       />
-      <Field
-        label={t('properties.yawRate')}
-        value={radToDeg(section.yawRate)}
-        onChange={(v) => patch({ yawRate: degToRad(asNumber(v)) })}
-        suffix="°/m"
-      />
+
+      {mode === 'rate' && (
+        <>
+          <Field
+            label={t('properties.pitchRate')}
+            value={radToDeg(pitchRate)}
+            onChange={(v) => patch({ pitchRate: degToRad(asNumber(v)) })}
+            suffix="°/m"
+          />
+          <Field
+            label={t('properties.yawRate')}
+            value={radToDeg(yawRate)}
+            onChange={(v) => patch({ yawRate: degToRad(asNumber(v)) })}
+            suffix="°/m"
+          />
+        </>
+      )}
+
+      {mode === 'totalAngle' && (
+        <>
+          <Field
+            label={t('properties.totalPitch')}
+            value={totalPitchDeg}
+            onChange={(v) => setTotalPitchDeg(asNumber(v))}
+            suffix="°"
+          />
+          <Field
+            label={t('properties.totalYaw')}
+            value={totalYawDeg}
+            onChange={(v) => setTotalYawDeg(asNumber(v))}
+            suffix="°"
+          />
+        </>
+      )}
+
+      {mode === 'axisAngle' && (
+        <>
+          <Field
+            label={t('properties.totalAngle')}
+            value={totalAngleDeg}
+            onChange={(v) => setAxisRotation(asNumber(v), axisAngleDeg)}
+            suffix="°"
+          />
+          <Field
+            label={t('properties.axisDirection')}
+            value={axisAngleDeg}
+            onChange={(v) => setAxisRotation(totalAngleDeg, asNumber(v))}
+            suffix="°"
+          />
+          <p className="text-[10px] leading-tight text-neutral-500">{t('properties.axisHint')}</p>
+        </>
+      )}
+
       <Field
         label={t('properties.leadIn')}
         value={section.leadIn}
@@ -177,6 +273,30 @@ function CurvedFields({
         suffix="m"
       />
     </>
+  );
+}
+
+function ModeSelector<T extends string>(props: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}): JSX.Element {
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs">
+      <span className="min-w-0 flex-1 truncate text-neutral-400">{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value as T)}
+        className="rounded border border-white/10 bg-surface-0 px-2 py-1 text-neutral-100 outline-none focus:border-white/30"
+      >
+        {props.options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
