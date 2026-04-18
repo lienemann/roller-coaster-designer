@@ -64,7 +64,13 @@
     "smoothEnd": "Weicher End-Tangens",
     "start": "(Start)",
     "end": "(Ende)",
-    "nlCsvReadonly": "NoLimits-CSV-Abschnitte sind in M3 schreibgeschützt."
+    "nlCsvReadonly": "NoLimits-CSV-Abschnitte sind in M3 schreibgeschützt.",
+    "banking": "Neigung",
+    "bankingStart": "Am Anfang",
+    "bankingEnd": "Am Ende",
+    "bankingSync": "Start an vorheriges Ende angleichen",
+    "bankingSyncHint": "Kopiert die End-Neigung des vorherigen Abschnitts an den Start dieses Abschnitts, damit der Übergang stetig ist.",
+    "bankingShortcutNote": "Einzelner kubischer Übergang von Start zu Ende. Der vollständige Timeline-Editor (später) erlaubt mehrere Übergänge."
   },
   "graphs": {
     "forceNormal": "Normal-g",

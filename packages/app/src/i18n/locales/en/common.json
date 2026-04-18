@@ -64,7 +64,13 @@
     "smoothEnd": "Smooth end tangent",
     "start": "(start)",
     "end": "(end)",
-    "nlCsvReadonly": "NoLimits CSV sections are read-only in M3."
+    "nlCsvReadonly": "NoLimits CSV sections are read-only in M3.",
+    "banking": "Banking",
+    "bankingStart": "At section start",
+    "bankingEnd": "At section end",
+    "bankingSync": "Sync start with previous",
+    "bankingSyncHint": "Copies the previous section's end banking into this section's start so the roll is continuous.",
+    "bankingShortcutNote": "Single Cubic transition from start to end. The full timeline editor (later) lets you stack multiple transitions."
   },
   "graphs": {
     "forceNormal": "Normal g",
