@@ -1003,6 +1003,158 @@ Builds on the Mesh reference asset feature (M13): users can import `.gltf` / `.g
 
 **Milestone:** M19, alongside other T3 features. Realistic because it reuses mesh import machinery from M13 and adds only collision logic on top.
 
+### 6.11 NoLimits 2-inspired features
+
+NoLimits 2 is the reference simulator in the coaster design space — used by Vekoma, Intamin, Gerstlauer, Mack, Maurer, and Stengel Engineering for client-facing visualization. It's a simulator and park designer, not a force-vector design tool, so most of its feature set is not relevant to WebFVD. But three ideas from NL2 translate well into our scope and would meaningfully improve the product without drifting from the FVD paradigm.
+
+**Principle for this section:** take UX patterns that reduce user effort, skip anything that expands scope toward being a full simulator.
+
+#### 6.11.1 Element library **[T2]**
+
+NL2's element system lets users drag a pre-built vertical loop, corkscrew, cobra roll, Immelmann, zero-g roll, heartline roll, or wave turn into the track. The user tweaks a few parameters (height, width, rollover angle), the element expands into geometry, and it works.
+
+In FVD++ and KexEdit, every inversion has to be built from force curves — users who know the physics can do it, but there's a steep learning curve before a designer can produce anything resembling a real element. NL2's library closes that gap.
+
+**Data model.** An element is a **parameterized template** that expands into a sequence of WebFVD sections:
+
+```typescript
+interface ElementTemplate {
+  id: string; // "vertical-loop", "cobra-roll", etc.
+  displayName: string; // i18n key (common.elements.verticalLoop)
+  category: ElementCategory; // "inversion" | "turn" | "hill" | "transition"
+  parameters: ElementParameter[]; // user-tunable inputs
+  /** Optional relative path to a preview SVG / PNG (see "Preview images"
+   *  below). Resolved against the element-library bundle root. */
+  previewImage?: string;
+  expand: (params: Record<string, number>) => SectionDefinition[];
+}
+
+interface ElementParameter {
+  id: string;
+  displayName: string; // i18n key
+  unit: Unit; // meters, degrees, g, etc.
+  min: number;
+  max: number;
+  default: number;
+}
+```
+
+The `expand` function is pure — given the parameter values and the current track state (entry velocity, entry orientation), it returns a list of section definitions to insert. It does not modify existing sections.
+
+**Built-in elements (T2 initial set).** Each has an `expand` function that composes the existing section primitives:
+
+- **Vertical loop** (parameters: height, entry G, exit G). Expands to three `Forced` sections: entry ramp (pitch up to vertical), loop body (clothoid-based per §6.10.4), exit ramp.
+- **Cobra roll** (parameters: height, width, rollover duration). Expands to two half-loops with a heartline roll between them; five `Forced` + one `Geometric` section.
+- **Immelmann** (parameters: height, exit angle). Half-loop followed by a half-roll exit; three sections.
+- **Zero-G roll** (parameters: roll duration, peak G, roll rate). Single `Forced` section with a specific roll function and lateral G curve.
+- **Heartline roll** (parameters: roll duration, entry/exit roll). Single `Forced` section with a roll-centered rotation.
+- **Wave turn** (parameters: width, bank angle, duration). `Curved` section with a specific roll profile.
+- **Camelback hill** (parameters: height, width, peak airtime G). `Forced` section with a force curve centered around the peak.
+- **Corkscrew** (parameters: length, rotation direction). Two linked half-rolls; three sections.
+
+The exact expansion math for each element should match reasonable real-coaster proportions — not rigorously physically optimized, just plausible starting points the user can refine afterward.
+
+**Preview images.** Every element template ships a small preview graphic so the library picker reads at a glance rather than forcing users to decode element names:
+
+- **Built-in elements** ship hand-drawn SVGs (≤4 KB each) showing the element's silhouette from a standard three-quarter angle. SVG keeps them crisp at any zoom and inlines into the bundle without a texture-loading round-trip.
+- **Custom / imported elements** may include a raster `.png` (capped at 256 × 256 px). When a user saves a selection as a custom element, the app auto-generates a preview by rendering the selected sections through the existing Three.js pipeline to an offscreen canvas with a neutral material and the default three-quarter home angle, then encodes to PNG and stores it alongside the element data.
+- The **element library picker** (left panel "Elements" tab) shows previews in a grid with the display name below; hover tooltips the parameter list.
+- Previews travel inside the `.webfvd-element.json` as either a `"previewImage"` path reference (for bundles) or an inline `"previewDataUri"` (for single-file custom elements) so a single-file export stays self-contained.
+
+**User-defined elements.** Users can save any contiguous selection of sections as a custom element. The save dialog asks:
+
+- Element name.
+- Which section properties become parameters (with min/max bounds).
+- Whether the element should expand relative to entry conditions (default) or absolute (rare).
+- Whether to auto-generate a preview image (default yes) or upload one.
+
+Custom elements stored in IndexedDB under the user's profile, exportable as `.webfvd-element.json` files for sharing.
+
+**UI.**
+
+- Left panel gains a new **"Elements" tab** alongside "Sections". Tree view by category, searchable, with preview thumbnails in the grid.
+- Drag an element onto the sections list to insert it at that position.
+- Double-click to open a parameter dialog (with the same preview) before insertion.
+- Right-click on selected sections → "Save as element..." for custom elements.
+- Element insertions become a single undo-redo group.
+
+**File format.** Element library files:
+
+```json
+{
+  "version": 1,
+  "id": "com.example.my-custom-loop",
+  "displayName": "My Custom Loop",
+  "category": "inversion",
+  "previewImage": "previews/my-custom-loop.svg",
+  "parameters": [],
+  "sections": []
+}
+```
+
+A bundle of elements is just a `.zip` containing multiple `.webfvd-element.json` files plus a `previews/` directory of referenced images; the UI supports importing zipped bundles.
+
+**Milestone:** M15 or M16. It's a T2 feature that depends on the clothoid section type (M13) landing first, since several elements use clothoids in their expansion.
+
+#### 6.11.2 Expanded track styles **[T2]**
+
+FVD++ ships 8 track styles (Generic, GenericFlat, Vekoma, BM, Triangle, Box, SmallFlat, DoubleSpine). NL2 ships ~40. The difference is stark when a user wants to visualize a specific ride type — there's no way to render a B&M Floorless or a Vekoma Motorbike in FVD++ because those cross-sections simply aren't in the style library.
+
+Expanding the style list is cheap (parameterized cross-sections, not licensed IP) and broadly improves coverage.
+
+**New styles to add (T2 target, 12 additional):**
+
+| Style                   | Approximate cross-section                                | Typical use                         |
+| ----------------------- | -------------------------------------------------------- | ----------------------------------- |
+| `InvertedGeneric`       | Two rails below, no spine below (train hangs)            | B&M Invert, Vekoma SLC lookalikes   |
+| `FloorlessGeneric`      | Standard two-rail + single spine, car sits without floor | B&M Floorless lookalikes            |
+| `WingGeneric`           | Two rails + central spine, seats on sides                | B&M Wing, Gerstlauer Infinity       |
+| `FlyingGeneric`         | Two rails + spine, riders suspended                      | B&M Flying                          |
+| `SpinnerGeneric`        | Standard two-rail, freely rotating car (visual hint)     | Mack Spinner, Maurer                |
+| `LaunchGeneric`         | Heavier rails + LSM fin channel between                  | Intamin accelerator, Mack Stryker   |
+| `HyperGeneric`          | Wider gauge, larger rail diameter                        | Intamin Mega, B&M Hyper             |
+| `WoodenGeneric`         | Steel rails on wooden stack of laminated beams           | GCI, Gravity Group, Intamin pre-fab |
+| `MineTrain`             | Narrow gauge, two rails only, thin spine                 | Arrow / Vekoma mine trains          |
+| `FamilyGeneric`         | Thin rails, light cross-section                          | Zamperla family coasters            |
+| `SuspendedGeneric`      | Monorail spine + bogey above, car swings below           | Arrow suspended                     |
+| `BeyondVerticalGeneric` | Heavy spine, supports outrigger angle                    | Gerstlauer Euro-Fighter style       |
+
+**Naming convention.** All new styles are suffixed `Generic` to make clear they are not licensed manufacturer profiles. Cross-section dimensions are chosen to _resemble_ the manufacturer style without matching any proprietary measurements.
+
+**Implementation.** Each style is a data entry in a JSON file:
+
+```json
+{
+  "id": "FloorlessGeneric",
+  "railGauge": 1.09,
+  "railRadius": 0.0475,
+  "spineWidth": 0.25,
+  "spineHeight": 0.3,
+  "crosstieSpacing": 0.6,
+  "crosstieSize": [0.1, 0.04],
+  "heartOffset": 1.1,
+  "variant": "two-rail-spine"
+}
+```
+
+The `variant` field selects one of a small set of mesh generators (`two-rail-spine`, `two-rail-only`, `inverted`, `wooden`). Adding new styles usually means adding a data entry, not code — code changes only when a truly new topology appears.
+
+**Legal care.** Do not use manufacturer names (B&M, Vekoma, Mack, Intamin, Gerstlauer) in style identifiers, file paths, UI strings, or i18n keys. Describe styles by _visual type_ ("floorless", "wing") or _ride class_ ("hyper", "family"). Never imply equivalence with or endorsement by any manufacturer.
+
+**Milestone:** M16, alongside the T2 polish pass. Can be implemented incrementally — every couple of new styles is one PR.
+
+#### 6.11.3 NL2 CSV export **[T1]**
+
+FVD++ (and therefore WebFVD at M5) already imports NL2 CSV. We close the loop by also exporting. NL2 users who want to take a WebFVD-designed track into NoLimits 2 for rendering or client visualization get a straightforward path.
+
+**Format.** NL2's CSV format is published — position and orientation vectors per node at a fixed sample rate. Confirm exact column order and sample spacing from NL2 documentation before implementing (don't guess).
+
+**Implementation.** A new writer in `packages/core/src/io/nl2-csv-writer.ts`, symmetric to the existing reader. Golden test: export a track, re-import it into WebFVD, check that the cumulative geometry matches within tolerance.
+
+**UI.** Add to the Export menu: "NoLimits 2 CSV…". Standard file dialog.
+
+**Milestone:** M10, alongside the other NoLimits exporters. Half a day of work.
+
 ## 7. UI (redesigned)
 
 FVD++'s Qt UI is three things fighting for space: the 3D viewport, the sections tree, and the graphs. The redesign gives each a proper role, and adds a **table view** and a **stats overlay** that FVD++ lacks but power users need.
@@ -1596,6 +1748,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 
 - NL1 `.nlelem` writer (4 exporter variants from `track.cpp`).
 - NL2 binary export (`exportNL2Track`).
+- **NL2 CSV export** (§6.11.3): symmetric writer to the existing CSV reader; File → Export → "NoLimits 2 CSV…". Round-trip golden test (export → re-import → cumulative geometry matches within tolerance).
 - Byte-match test against FVD++ 0.79 outputs for the golden set. Any mismatch is a bug; document or fix.
 - **T1 Release checklist:**
   - DE translation reviewed by human.
@@ -1653,11 +1806,13 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **Right-click context menu** for adding nodes (per KexEdit `docs/reference/node-graph.md`).
 - **Drag-to-reorder in list = drag-to-reconnect in graph**: both views represent the same underlying linear/extended-linear data model.
 
-#### M16 — T2 ship **[T2]**
+#### M16 — Element library, expanded track styles, T2 ship **[T2]**
 
+- **Element library** (§6.11.1): built-in set (vertical loop, cobra roll, Immelmann, zero-G roll, heartline roll, wave turn, camelback hill, corkscrew) with SVG preview images; "Elements" tab in the left panel with drag-to-insert + save-as-element for user-authored templates; auto-generated PNG previews for custom elements (offscreen Three.js render) stored next to the template in IndexedDB.
+- **Expanded track styles** (§6.11.2): 10–12 additional `*Generic` styles beyond FVD++'s 8 (Inverted, Floorless, Wing, Flying, Spinner, Launch, Hyper, Wooden, MineTrain, Family, Suspended, BeyondVertical), data-driven via a style registry; no manufacturer names in identifiers or UI strings.
 - Polish: UX review of all M11–M15 additions, fix rough edges.
 - Updated DE translation for new features.
-- Tutorial series: "Build a shuttle coaster," "Close a circuit with a bridge," "Use the optimizer to perfect a roll."
+- Tutorial series: "Build a shuttle coaster," "Close a circuit with a bridge," "Use the optimizer to perfect a roll," "Drop in a vertical loop with the element library."
 - **Ship.**
 
 ### Tier 3 — "Modern coaster design tool"
@@ -1721,6 +1876,14 @@ These are **not** deferred to a later tier — they're out of the plan entirely.
 - **Manufacturer-specific parameterized track libraries.** We ship 8 generic styles (from FVD++). We don't attempt to reproduce B&M's exact rail profile, Mack Stryker dimensions, Vekoma SLC geometry, etc. — these are proprietary to those companies and legally risky to reverse-engineer from public photos.
 - **Heart-rate modeling, biomechanical prediction, motion sickness likelihood.** Professional tools can predict subjective ride comfort from trajectory data because their vendors have spent decades correlating measurements to response. We don't have the dataset and won't acquire it; stick to measurable physical quantities.
 - **Launch system electrical / thermal / power-grid design.** LSM coil layout, power draw, thermal dissipation, grid integration. Our `LaunchSection` (T3, §6.8.1) specifies a kinematic profile; the electrical engineering to realize it is out of scope.
+- **Full terrain / scenery / park-designer system.** Heightmap terrain, painted texture layers, water with reflection/refraction shaders, 3D animated trees with LOD, walkways, fences, buildings. NL2 is a park designer; we're a track design tool. The Mesh reference asset feature (§6.8 T2) covers the minimum case of "I need to see where the track is relative to other geometry."
+- **Lua / JavaScript / in-editor scripting API.** NL2's Lua scripting drives much of its community's creativity, but for a browser-based app we decline for three reasons: (1) safely sandboxing user-provided code in a web context is a meaningful engineering project on its own; (2) a scripting API is a commitment to maintain a stable interface indefinitely, competing for design attention with the core tool; (3) what scripting typically enables (custom animations, effects, control-panel logic) is out of our scope as a design tool. Users who need behaviour not expressible in WebFVD's data model should use a separate tool.
+- **Block system, multi-train dispatch simulation, station operations.** NL2 simulates how a ride actually runs — multiple trains, block sections, dispatch timing, E-stop behaviour, transfer tables, maintenance modes. This is orthogonal to design: a coaster's physical design can be validated independent of its operating rules. Our playback (§6.3) always shows a single train traversing the circuit.
+- **Animated flat-ride library.** Ferris wheels, drop towers, pirate ships, observation towers. We design roller coasters; flat rides are a different category.
+- **Cinematic rendering.** Day/night cycle, dynamic weather, HDR, ambient occlusion, sun shafts, bloom, depth-of-field, volumetric fog. Three.js's default renderer gives us adequate visuals for a design tool. Users who want pretty pictures export to NoLimits 2 and render there.
+- **Custom material editor, shader authoring, `.nl2mat`-style material files.** Our track styles use fixed PBR materials. Theming is a rendering problem; we stay in design.
+- **Package encryption / password protection / DRM.** NL2 Professional offers password-protected packages so commercial designers can send viewable-but-not-editable files to clients. Our files are open JSON; users who need read-only views should export video or screenshots. We will not add encryption, checksums, or any "protection" feature that obscures project structure.
+- **Satellite-imagery overlay as ground plane.** Useful for fitting a design to a specific plot of land, but out of scope here; users who need it can import a flat Mesh reference asset (§6.8 T2).
 
 ## 20b. Deferred to later tiers (will happen)
 

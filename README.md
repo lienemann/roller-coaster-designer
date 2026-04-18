@@ -24,6 +24,21 @@ parameterised track libraries. Compliance-adjacent UI always carries the
 and the only honest framing for a browser tool. See §6.10 and §20 of the
 spec for the full scope line.
 
+**Coming from NoLimits 2?** You get a force-vector design approach NL2
+doesn't offer, clean physics-based editing, interactive graphs, and
+quick iteration on force profiles. What's familiar: an element library
+for fast prototyping of loops / rolls / hills (T2), a decent range of
+generic track styles, and CSV interop with your existing NL2 workflow.
+What we deliberately don't build: terrain, scenery, scripting, block
+systems, multi-train dispatch simulation, or cinematic rendering.
+We design _the ride itself_, not the park around it — see §6.11 and
+§20 of the spec for the full list.
+
+**Coming from FVD++?** Everything FVD++ had (T1) plus modern UX, plus
+closed circuits and shuttles (T2), plus the element library and
+track-style variety (T2), plus compliance checking, jerk analysis, and
+multi-rider pivots (§6.10, T2).
+
 ## Credits
 
 This project stands on two shoulders and says so plainly.
