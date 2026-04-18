@@ -16,7 +16,6 @@ export function MenuBar(): JSX.Element {
   const loadProject = useAppStore((s) => s.loadProject);
   const loadDemoProject = useAppStore((s) => s.loadDemoProject);
   const markSaved = useAppStore((s) => s.markSaved);
-  const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
   const environment = useAppStore((s) => s.environment);
   const setSkyImage = useAppStore((s) => s.setSkyImage);
   const setFloorImage = useAppStore((s) => s.setFloorImage);
@@ -64,18 +63,8 @@ export function MenuBar(): JSX.Element {
     }
   }, [project, markSaved, t]);
 
-  const handleCloseTrack = useCallback(() => {
-    try {
-      closeCurrentTrack();
-    } catch (err) {
-      alert(translateError(err, t));
-    }
-  }, [closeCurrentTrack, t]);
-
   const fsaSupported = hasFileSystemAccess();
   const canSave = project !== null && (fsaSupported ? handle !== null : false);
-  const canCloseTrack =
-    project !== null && project.tracks.length > 0 && (project.tracks[0]?.sections.length ?? 0) >= 2;
 
   // Primary actions stay visible at all widths; secondary actions collapse
   // into an overflow menu on narrow screens. CSS-only hide/show matches the
@@ -104,10 +93,6 @@ export function MenuBar(): JSX.Element {
           {t('common:menu.saveAs')}
         </MenuButton>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
-        <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
-          {t('common:menu.closeTrack')}
-        </MenuButton>
-        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
         <MenuButton onClick={() => setSceneOpen(true)}>{t('common:menu.scene')}</MenuButton>
         <MenuButton onClick={() => alert(t('common:menu.prefsStub'))}>
           {t('common:menu.preferences')}
@@ -126,11 +111,6 @@ export function MenuBar(): JSX.Element {
             title: canSave ? undefined : t('common:menu.saveUnavailable'),
           },
           { label: t('common:menu.saveAs'), onClick: handleSaveAs, disabled: project === null },
-          {
-            label: t('common:menu.closeTrack'),
-            onClick: handleCloseTrack,
-            disabled: !canCloseTrack,
-          },
           { label: t('common:menu.scene'), onClick: () => setSceneOpen(true) },
           {
             label: t('common:menu.preferences'),

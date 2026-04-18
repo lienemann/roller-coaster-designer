@@ -21,9 +21,23 @@ export function SectionsPanel(): JSX.Element {
   const addCurved = useAppStore((s) => s.addCurvedSection);
   const addBezier = useAppStore((s) => s.addBezierSection);
   const removeSection = useAppStore((s) => s.removeSection);
+  const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
 
   const sections = project?.tracks[0]?.sections ?? [];
   const canAdd = project !== null && sections.length > 0;
+  // Closure needs at least the anchor + one non-anchor section before it
+  // can re-enter the anchor tangentially.
+  const canClose = project !== null && sections.length >= 2;
+
+  const onCloseTrack = useCallback(() => {
+    try {
+      closeCurrentTrack();
+    } catch (err) {
+      // closeTrack throws WebFvdError codes; surface to the user without
+      // pulling in the full translator dependency here.
+      alert(err instanceof Error ? err.message : 'Close failed');
+    }
+  }, [closeCurrentTrack]);
 
   const onRemove = useCallback(
     (event: React.MouseEvent, idx: number) => {
@@ -93,6 +107,16 @@ export function SectionsPanel(): JSX.Element {
         />
         <AddButton onClick={addCurved} disabled={!canAdd} label={t('common:sections.addCurved')} />
         <AddButton onClick={addBezier} disabled={!canAdd} label={t('common:sections.addBezier')} />
+        {/* Close Track lives with the add buttons: it appends a closure
+            Bezier back to the anchor. Same button row, different glyph. */}
+        <button
+          type="button"
+          onClick={onCloseTrack}
+          disabled={!canClose}
+          className="rounded border border-white/10 bg-surface-2 px-2 py-1 text-xs text-neutral-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          ↻ {t('common:menu.closeTrack')}
+        </button>
       </div>
     </div>
   );
