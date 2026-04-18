@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+coverage/
+
+# Vite / dev-server caches
+.vite/
+.turbo/
+.cache/
+
+# Reference clones (per docs/webfvd-spec.md §22 — manual clones, never checked in)
+reference/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / local overrides
+.env
+.env.*
+!.env.example
+*.local
