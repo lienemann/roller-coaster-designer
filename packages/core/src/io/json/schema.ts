@@ -65,11 +65,21 @@ export const funcSchema = z.object({
   subfuncs: z.array(subFuncSchema),
 });
 
+// Every section gets an optional `color` — a `#rrggbb` UI tint the app
+// uses to keep rails + graph markers in sync. Pure cosmetic; no physics
+// cares about it. Added to each variant rather than merged via `.and()` so
+// discriminated-union narrowing stays O(1).
+const colorField = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a #rrggbb hex string.')
+  .optional();
+
 // Section variants. Using z.discriminatedUnion on the numeric `type` field
 // gives Zod O(1) dispatch and keeps error paths precise.
 const anchorSchema = z.object({
   type: z.literal(SecType.Anchor),
   name: z.string(),
+  color: colorField,
   position: vec3,
   pitch: finiteNumber,
   yaw: finiteNumber,
@@ -80,6 +90,7 @@ const anchorSchema = z.object({
 const straightSchema = z.object({
   type: z.literal(SecType.Straight),
   name: z.string(),
+  color: colorField,
   length: finiteNumber.nonnegative(),
   rollFunc: funcSchema,
 });
@@ -87,6 +98,7 @@ const straightSchema = z.object({
 const curvedSchema = z.object({
   type: z.literal(SecType.Curved),
   name: z.string(),
+  color: colorField,
   length: finiteNumber.nonnegative(),
   pitchRate: finiteNumber,
   yawRate: finiteNumber,
@@ -98,6 +110,7 @@ const curvedSchema = z.object({
 const forcedSchema = z.object({
   type: z.literal(SecType.Forced),
   name: z.string(),
+  color: colorField,
   argument: argumentSchema,
   orientation: orientationSchema,
   extent: finiteNumber.nonnegative(),
@@ -109,6 +122,7 @@ const forcedSchema = z.object({
 const geometricSchema = z.object({
   type: z.literal(SecType.Geometric),
   name: z.string(),
+  color: colorField,
   argument: argumentSchema,
   extent: finiteNumber.nonnegative(),
   rollFunc: funcSchema,
@@ -119,6 +133,7 @@ const geometricSchema = z.object({
 const bezierSchema = z.object({
   type: z.literal(SecType.Bezier),
   name: z.string(),
+  color: colorField,
   controlPoints: z.tuple([vec3, vec3, vec3, vec3]),
   rollFunc: funcSchema,
   smoothStart: z.boolean(),
@@ -128,6 +143,7 @@ const bezierSchema = z.object({
 const noLimitsCsvSchema = z.object({
   type: z.literal(SecType.NoLimitsCSV),
   name: z.string(),
+  color: colorField,
   csvRef: z.string(),
 });
 

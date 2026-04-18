@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ForcesGraph } from './graphs/forces-graph.js';
 import { PropertiesPanel } from './panels/properties-panel.js';
 import { SectionsPanel } from './panels/sections-panel.js';
+import { sectionColor } from './scene/section-colors.js';
 import { Viewport } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
@@ -15,10 +16,6 @@ import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 
 type MobileTab = 'sections' | 'properties';
 
-// Matches Tailwind's `md:` breakpoint. Kept as a single constant here so the
-// layout branch and the Tailwind classes never drift apart — only one layout
-// tree renders at a time, otherwise a hidden ForcesGraph mounts too and its
-// zero-size container pulls uPlot into a resize loop.
 const DESKTOP_QUERY = '(min-width: 768px)';
 
 export function App(): JSX.Element {
@@ -27,11 +24,20 @@ export function App(): JSX.Element {
   const projectName = useAppStore((s) => s.projectName);
   const isDirty = useAppStore((s) => s.isDirty);
   const tracks = useAppStore((s) => s.tracks);
+  const selectedSectionIndex = useAppStore((s) => s.selectedSectionIndex);
 
   useRecomputeOnProjectChange();
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
+
+  // When the user picks a section on narrow layouts, flip to the Properties
+  // tab so they see the edit fields immediately. Desktop shows both at once.
+  useEffect(() => {
+    if (!isDesktop && selectedSectionIndex !== null) {
+      setMobileTab('properties');
+    }
+  }, [isDesktop, selectedSectionIndex]);
 
   const documentLabel =
     project === null
@@ -39,6 +45,20 @@ export function App(): JSX.Element {
       : `${projectName ?? t('app.untitled')}${isDirty ? ' *' : ''}`;
 
   const firstTrack = tracks[0] ?? null;
+
+  // Pre-compute the per-section colours + starting times for the graph's
+  // section-boundary markers. Memoised so the uPlot instance doesn't rebuild
+  // on every App render.
+  const sectionColors = useMemo<string[]>(() => {
+    const sections = project?.tracks[0]?.sections ?? [];
+    return sections.map((section, idx) => section.color ?? sectionColor(idx));
+  }, [project]);
+  const sectionStartTimes = useMemo<number[]>(() => {
+    const starts = firstTrack?.sectionStartNodes ?? [];
+    const times = firstTrack?.cumulativeTime;
+    if (!times) return [];
+    return starts.map((nodeIndex) => times[nodeIndex] ?? 0);
+  }, [firstTrack]);
 
   const graphLabel = {
     forceNormal: t('graphs.forceNormal'),
@@ -59,13 +79,22 @@ export function App(): JSX.Element {
     </div>
   );
 
-  const viewportContent = tracks.length === 0 ? emptyState : <Viewport tracks={tracks} />;
+  const viewportContent =
+    tracks.length === 0 ? (
+      emptyState
+    ) : (
+      <Viewport
+        tracks={tracks}
+        sectionColors={sectionColors}
+        selectedSectionIndex={selectedSectionIndex}
+      />
+    );
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0 text-neutral-100">
-      {/* Header: single-row on every width. Project label truncates with a
-          tooltip rather than wrapping. Overflow menu handles the long tail. */}
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-surface-1 px-3">
+      {/* Header: single-row on every width. z-40 so the MenuBar's overflow
+          popover floats above the viewport canvas on narrow widths. */}
+      <header className="relative z-40 flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-surface-1 px-3">
         <h1 className="shrink-0 truncate text-base font-semibold tracking-tight">
           {t('app.title')}
         </h1>
@@ -104,7 +133,12 @@ export function App(): JSX.Element {
             aria-label={t('panels.graphs')}
             className="min-h-0 overflow-hidden bg-surface-2 p-2"
           >
-            <ForcesGraph track={firstTrack} label={graphLabel} />
+            <ForcesGraph
+              track={firstTrack}
+              sectionStartTimes={sectionStartTimes}
+              sectionColors={sectionColors}
+              label={graphLabel}
+            />
           </footer>
         </main>
       ) : (
@@ -119,7 +153,12 @@ export function App(): JSX.Element {
             aria-label={t('panels.graphs')}
             className="min-h-0 flex-[2] overflow-hidden border-b border-white/10 bg-surface-2 p-2"
           >
-            <ForcesGraph track={firstTrack} label={graphLabel} />
+            <ForcesGraph
+              track={firstTrack}
+              sectionStartTimes={sectionStartTimes}
+              sectionColors={sectionColors}
+              label={graphLabel}
+            />
           </div>
 
           <div className="flex shrink-0 border-t border-white/10 bg-surface-1">

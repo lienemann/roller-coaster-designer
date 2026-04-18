@@ -21,9 +21,24 @@ const api: PhysicsWorkerApi = {
       const forceNormal = new Float32Array(count);
       const forceLateral = new Float32Array(count);
       const cumulativeTime = new Float32Array(count);
+      const sectionIndex = new Uint16Array(count);
 
       const dt = 1 / F_HZ;
+
+      // Walk the sectionStartNodes table once to fill sectionIndex cheaply.
+      // Out-of-bound section indices are clamped to 0xffff; 65535 sections is
+      // well beyond what any realistic track needs (FVD++ caps at a few
+      // hundred) and keeps the column packed in 2 bytes per node.
+      let currentSection = 0;
+      let nextStart = sectionStartNodes[1] ?? count;
+
       for (let i = 0; i < count; i += 1) {
+        while (i >= nextStart && currentSection + 1 < sectionStartNodes.length) {
+          currentSection += 1;
+          nextStart = sectionStartNodes[currentSection + 1] ?? count;
+        }
+        sectionIndex[i] = currentSection > 0xffff ? 0xffff : currentSection;
+
         positions[i * 3] = arrays.posX[i]!;
         positions[i * 3 + 1] = arrays.posY[i]!;
         positions[i * 3 + 2] = arrays.posZ[i]!;
@@ -43,6 +58,7 @@ const api: PhysicsWorkerApi = {
         forceNormal,
         forceLateral,
         cumulativeTime,
+        sectionIndex,
         sectionStartNodes,
       };
     });
@@ -54,6 +70,7 @@ const api: PhysicsWorkerApi = {
       t.forceNormal.buffer,
       t.forceLateral.buffer,
       t.cumulativeTime.buffer,
+      t.sectionIndex.buffer,
     ]);
     return Promise.resolve(transfer({ tracks }, transferList) as RecomputeResult);
   },

@@ -176,7 +176,7 @@ function OverflowMenu(props: { label: string; items: OverflowItem[] }): JSX.Elem
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 flex min-w-[10rem] flex-col gap-0.5 rounded border border-white/10 bg-surface-1 p-1 text-sm shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1 flex min-w-[10rem] flex-col gap-0.5 rounded border border-white/10 bg-surface-1 p-1 text-sm shadow-lg"
         >
           {props.items.map((item) => (
             <button

@@ -15,6 +15,13 @@ import { type Func } from './function.js';
 
 interface SectionBase {
   name: string;
+  /**
+   * Optional UI colour for this section, `#rrggbb`. Used to tint rails in
+   * the viewport and mark section boundaries in the graph so the two stay
+   * in sync visually. When omitted, the app falls back to a palette-indexed
+   * default — nothing physical depends on this field.
+   */
+  color?: string | undefined;
 }
 
 // Anchor — starting pose of a track. Always the first section.

@@ -67,6 +67,13 @@ export function PropertiesPanel(): JSX.Element {
         onChange={(v) => patch({ name: typeof v === 'string' ? v : String(v) })}
       />
 
+      <ColorField
+        label={t('properties.color')}
+        value={section.color ?? ''}
+        onChange={(value) => patch({ color: value || undefined })}
+        resetLabel={t('properties.colorReset')}
+      />
+
       {section.type === SecType.Anchor && <AnchorFields section={section} patch={patch} t={t} />}
       {section.type === SecType.Straight && (
         <StraightFields section={section} patch={patch} t={t} />
@@ -631,6 +638,37 @@ function Vec3Field(props: {
         ))}
       </div>
     </div>
+  );
+}
+
+function ColorField(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  resetLabel: string;
+}): JSX.Element {
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs">
+      <span className="min-w-0 flex-1 truncate text-neutral-400">{props.label}</span>
+      <span className="flex items-center gap-1">
+        <input
+          type="color"
+          value={props.value || '#5cc8ff'}
+          onChange={(e) => props.onChange(e.target.value)}
+          className="h-7 w-10 cursor-pointer rounded border border-white/10 bg-transparent"
+        />
+        {props.value !== '' && (
+          <button
+            type="button"
+            onClick={() => props.onChange('')}
+            title={props.resetLabel}
+            className="rounded px-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200"
+          >
+            ×
+          </button>
+        )}
+      </span>
+    </label>
   );
 }
 

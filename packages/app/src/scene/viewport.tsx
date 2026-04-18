@@ -19,8 +19,18 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+import { colorHexToInt, sectionColor } from './section-colors.js';
+
 export interface ViewportProps {
   readonly tracks: readonly TrackStream[];
+  /**
+   * Hex color per section (same order as the track's sections). Used to
+   * tint the rails per section. Missing entries fall back to the default
+   * palette.
+   */
+  readonly sectionColors?: readonly string[];
+  /** Selected section; its rails brighten and thicken. */
+  readonly selectedSectionIndex?: number | null;
 }
 
 interface SceneRefs {
@@ -33,11 +43,9 @@ interface SceneRefs {
   frame: number;
 }
 
-// Half-gauge used when drawing rails off the centre path. FVD++ has
-// style-specific gauges; for M4.5 a single default is enough to make banking
-// visible. M7's track-mesh work replaces this with real profile geometry.
 const RAIL_HALF_WIDTH = 0.3;
-const CROSSTIE_EVERY_N_NODES = 120; // ~0.12 s at 1000 Hz
+const CROSSTIE_EVERY_N_NODES = 120;
+const HIGHLIGHT_MULTIPLIER = 1.6; // brighten the selected section's rails
 
 function hasWebGL(): boolean {
   if (typeof document === 'undefined') return false;
@@ -58,13 +66,47 @@ function disposeLines(state: SceneRefs): void {
   state.lines = [];
 }
 
-export function Viewport({ tracks }: ViewportProps): JSX.Element {
+/** Runs of same-section-index node ranges as half-open [start, endExclusive]. */
+interface SectionRun {
+  readonly sectionIndex: number;
+  readonly start: number;
+  readonly endExclusive: number;
+}
+
+function computeSectionRuns(sectionIndex: Uint16Array, count: number): SectionRun[] {
+  const runs: SectionRun[] = [];
+  if (count === 0) return runs;
+  let runStart = 0;
+  let currentSection = sectionIndex[0] ?? 0;
+  for (let i = 1; i < count; i += 1) {
+    const si = sectionIndex[i] ?? currentSection;
+    if (si !== currentSection) {
+      runs.push({ sectionIndex: currentSection, start: runStart, endExclusive: i + 1 });
+      runStart = i;
+      currentSection = si;
+    }
+  }
+  runs.push({ sectionIndex: currentSection, start: runStart, endExclusive: count });
+  return runs;
+}
+
+/** Brighten a hex color by `mul` (clamped to 0..255 per channel). */
+function brighten(hex: number, mul: number): number {
+  const r = Math.min(255, Math.round(((hex >> 16) & 0xff) * mul));
+  const g = Math.min(255, Math.round(((hex >> 8) & 0xff) * mul));
+  const b = Math.min(255, Math.round((hex & 0xff) * mul));
+  return (r << 16) | (g << 8) | b;
+}
+
+export function Viewport({
+  tracks,
+  sectionColors,
+  selectedSectionIndex,
+}: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
   const [webglSupported] = useState(hasWebGL);
 
-  // One-time Three.js setup. The viewport doesn't remount on project changes;
-  // only the line geometry is swapped.
   useEffect(() => {
     if (!webglSupported) return undefined;
     const host = hostRef.current;
@@ -93,11 +135,7 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 5, 0);
-    // Spec §6.4 tablet scheme: one-finger orbit, two-finger pan + pinch zoom.
-    // Three's DOLLY_PAN on two fingers bundles pan and pinch on the same
-    // gesture, which matches how trackpad users expect gestures to compose.
     controls.touches = { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN };
-    // Tuned for finger input — OrbitControls' defaults are mouse-paced.
     controls.rotateSpeed = 0.8;
     controls.zoomSpeed = 0.9;
 
@@ -137,7 +175,8 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
     };
   }, [webglSupported]);
 
-  // Swap the rendered lines whenever recompute hands us new node streams.
+  // Swap the rendered lines whenever recompute hands us new node streams,
+  // or the user selects a different section (highlight).
   useEffect(() => {
     const state = refs.current;
     if (!state) return;
@@ -145,25 +184,13 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
     disposeLines(state);
 
     if (tracks.length === 0) return;
-
     const first = tracks[0];
     if (!first || first.nodeCount === 0) return;
 
-    // Centreline: the classic polyline from M2. Blue so it stays visible
-    // even when the rails blend with the grid.
-    const centreGeom = new BufferGeometry();
-    centreGeom.setAttribute('position', new BufferAttribute(first.positions, 3));
-    centreGeom.setDrawRange(0, first.nodeCount);
-    const centreMat = new LineBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.55 });
-    const centre = new Line(centreGeom, centreMat);
-    state.scene.add(centre);
-    state.lines.push(centre);
-
-    // Rails: centre ± RAIL_HALF_WIDTH along the lateral axis. When the track
-    // banks, lat rotates around the forward direction, so the two rails
-    // describe the bank angle directly. This is what makes banking visible
-    // without waiting for M7's full track-mesh work.
     const n = first.nodeCount;
+
+    // Pre-compute rail vertex streams once; per-section runs each take a
+    // slice of these buffers via setDrawRange.
     const railLeft = new Float32Array(n * 3);
     const railRight = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) {
@@ -180,20 +207,42 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
       railRight[i * 3 + 1] = py + ly * RAIL_HALF_WIDTH;
       railRight[i * 3 + 2] = pz + lz * RAIL_HALF_WIDTH;
     }
-    const leftGeom = new BufferGeometry();
-    leftGeom.setAttribute('position', new BufferAttribute(railLeft, 3));
-    leftGeom.setDrawRange(0, n);
-    const rightGeom = new BufferGeometry();
-    rightGeom.setAttribute('position', new BufferAttribute(railRight, 3));
-    rightGeom.setDrawRange(0, n);
-    const railMat = new LineBasicMaterial({ color: 0xffffff });
-    state.lines.push(new Line(leftGeom, railMat));
-    state.lines.push(new Line(rightGeom, railMat));
-    state.scene.add(state.lines[1]!);
-    state.scene.add(state.lines[2]!);
 
-    // Cross-ties between left and right rails every few nodes. LineSegments
-    // takes pairs of vertices; emit one pair per sampled node.
+    // Centreline: translucent grey so it doesn't fight with colored rails.
+    const centreGeom = new BufferGeometry();
+    centreGeom.setAttribute('position', new BufferAttribute(first.positions, 3));
+    centreGeom.setDrawRange(0, n);
+    const centre = new Line(
+      centreGeom,
+      new LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.4 }),
+    );
+    state.scene.add(centre);
+    state.lines.push(centre);
+
+    // One pair of rail lines per section run. Using shared BufferGeometries
+    // and setDrawRange on copies would require per-material reuse — simpler
+    // to clone per run; 50-section tracks are still cheap.
+    const runs = computeSectionRuns(first.sectionIndex, n);
+    for (const run of runs) {
+      const baseHex = colorHexToInt(
+        sectionColors?.[run.sectionIndex] ?? sectionColor(run.sectionIndex),
+      );
+      const isSelected = run.sectionIndex === selectedSectionIndex;
+      const hex = isSelected ? brighten(baseHex, HIGHLIGHT_MULTIPLIER) : baseHex;
+      const width = isSelected ? 2 : 1;
+
+      for (const vertices of [railLeft, railRight]) {
+        const geom = new BufferGeometry();
+        geom.setAttribute('position', new BufferAttribute(vertices, 3));
+        geom.setDrawRange(run.start, run.endExclusive - run.start);
+        const mat = new LineBasicMaterial({ color: hex, linewidth: width });
+        const line = new Line(geom, mat);
+        state.scene.add(line);
+        state.lines.push(line);
+      }
+    }
+
+    // Cross-ties.
     const ties: number[] = [];
     for (let i = 0; i < n; i += CROSSTIE_EVERY_N_NODES) {
       ties.push(railLeft[i * 3]!, railLeft[i * 3 + 1]!, railLeft[i * 3 + 2]!);
@@ -202,12 +251,11 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
     if (ties.length > 0) {
       const tiesGeom = new BufferGeometry();
       tiesGeom.setAttribute('position', new BufferAttribute(new Float32Array(ties), 3));
-      const tiesMat = new LineBasicMaterial({ color: 0x888888 });
-      const tiesLine = new LineSegments(tiesGeom, tiesMat);
+      const tiesLine = new LineSegments(tiesGeom, new LineBasicMaterial({ color: 0x666666 }));
       state.scene.add(tiesLine);
       state.lines.push(tiesLine as unknown as Line);
     }
-  }, [tracks]);
+  }, [tracks, sectionColors, selectedSectionIndex]);
 
   if (!webglSupported) {
     return (
@@ -227,10 +275,6 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
       role="img"
       aria-label="viewport"
       className="relative h-full w-full select-none bg-surface-0"
-      // Disables the browser's default touch behaviours on the canvas so
-      // one-finger drags don't scroll the page and two-finger pinches don't
-      // zoom the page. Without this OrbitControls still receives events, but
-      // the page itself rides along behind the gesture. Spec §6.4.
       style={{ touchAction: 'none' }}
     />
   );

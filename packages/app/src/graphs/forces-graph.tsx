@@ -2,11 +2,15 @@
 
 import { type TrackStream } from '@roller-coaster-designer/worker';
 import { useEffect, useRef } from 'react';
-import uPlot, { type Options as UPlotOptions } from 'uplot';
+import uPlot, { type Options as UPlotOptions, type Plugin } from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 
 export interface ForcesGraphProps {
   readonly track: TrackStream | null;
+  /** Seconds at which each section begins; drawn as vertical markers. */
+  readonly sectionStartTimes?: readonly number[];
+  /** Colour hex per section (same order as sectionStartTimes + 1). */
+  readonly sectionColors?: readonly string[];
   readonly label: {
     forceNormal: string;
     forceLateral: string;
@@ -17,15 +21,25 @@ export interface ForcesGraphProps {
   };
 }
 
+// uPlot draws its legend as a DOM row inside the host div, below the canvas.
+// We pass uPlot a smaller height so canvas + legend together fit inside the
+// host's CSS box; otherwise the legend overflows and gets clipped by the
+// parent's overflow:hidden. One row for live values + ~10 px padding.
+const LEGEND_RESERVED_PX = 40;
+
 /**
- * uPlot value-over-time chart for the two sampled force columns. Rebuilds
- * the uPlot instance when the track reference changes so we never `setData`
- * a buffer that's shorter than the chart thinks it is.
+ * uPlot value-over-time chart. Section-start markers (thin vertical lines)
+ * and per-section colours are optional and drawn through a custom plugin.
  *
  * Value units: g-force (dimensionless multiples of F_G). Time units: seconds
  * along the integrated path — cumulativeTime[i] = i / F_HZ.
  */
-export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
+export function ForcesGraph({
+  track,
+  sectionStartTimes,
+  sectionColors,
+  label,
+}: ForcesGraphProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
@@ -41,11 +55,38 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
 
     if (!track || track.nodeCount < 2) return undefined;
 
-    // Two y-axes: forces on the left (g-units), velocity on the right (m/s).
-    // uPlot calls them "scales"; each series picks one by name.
+    const hostWidth = host.clientWidth || 600;
+    const hostHeight = host.clientHeight || 200;
+    const chartHeight = Math.max(60, hostHeight - LEGEND_RESERVED_PX);
+
+    const plugin: Plugin = {
+      hooks: {
+        draw: (u: uPlot) => {
+          if (!sectionStartTimes || sectionStartTimes.length === 0) return;
+          const ctx = u.ctx;
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 1;
+          // Skip the first marker (t=0, the anchor) — it's right at the axis.
+          for (let i = 1; i < sectionStartTimes.length; i += 1) {
+            const t = sectionStartTimes[i]!;
+            const x = u.valToPos(t, 'x', true);
+            if (!Number.isFinite(x)) continue;
+            ctx.strokeStyle = sectionColors?.[i] ?? '#ffffff55';
+            ctx.globalAlpha = 0.45;
+            ctx.beginPath();
+            ctx.moveTo(x, u.bbox.top);
+            ctx.lineTo(x, u.bbox.top + u.bbox.height);
+            ctx.stroke();
+          }
+          ctx.restore();
+        },
+      },
+    };
+
     const opts: UPlotOptions = {
-      width: host.clientWidth || 600,
-      height: host.clientHeight || 160,
+      width: hostWidth,
+      height: chartHeight,
       scales: { x: { time: false }, g: {}, v: {} },
       axes: [
         { stroke: '#a3a3a3', grid: { stroke: '#262626' }, label: label.time },
@@ -84,10 +125,9 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
         },
       ],
       legend: { show: true, live: true },
+      plugins: [plugin],
     };
 
-    // uPlot wants plain number arrays for each series. Stride the Float32Arrays
-    // into tuples on construction; subsequent resizes just recreate the plot.
     const x = Array.from(track.cumulativeTime);
     const n = Array.from(track.forceNormal);
     const l = Array.from(track.forceLateral);
@@ -95,12 +135,8 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
     const plot = new uPlot(opts, [x, n, l, v], host);
     plotRef.current = plot;
 
-    // Guard against degenerate sizes (hidden container, mid-layout
-    // transitions) and against trivial size deltas — uPlot reallocates
-    // canvases on setSize, and a ResizeObserver + canvas + growing-ancestor
-    // will feedback-loop otherwise.
-    let lastWidth = host.clientWidth;
-    let lastHeight = host.clientHeight;
+    let lastWidth = hostWidth;
+    let lastHeight = hostHeight;
     const ro = new ResizeObserver(() => {
       const w = host.clientWidth;
       const h = host.clientHeight;
@@ -108,7 +144,7 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
       if (Math.abs(w - lastWidth) < 1 && Math.abs(h - lastHeight) < 1) return;
       lastWidth = w;
       lastHeight = h;
-      plot.setSize({ width: w, height: h });
+      plot.setSize({ width: w, height: Math.max(60, h - LEGEND_RESERVED_PX) });
     });
     ro.observe(host);
     roRef.current = ro;
@@ -119,12 +155,11 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
       plotRef.current = null;
       roRef.current = null;
     };
-  }, [track, label]);
+  }, [track, label, sectionStartTimes, sectionColors]);
 
   if (!track || track.nodeCount < 2) {
     return (
       <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
-        {/* Placeholder. Real empty-state illustration lands with M8 preferences. */}
         <span>—</span>
       </div>
     );

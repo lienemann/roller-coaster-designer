@@ -41,6 +41,8 @@
   "properties": {
     "empty": "Select a section to edit its parameters.",
     "name": "Name",
+    "color": "Colour",
+    "colorReset": "Reset to default palette colour",
     "position": "Position (m)",
     "pitch": "Pitch",
     "yaw": "Yaw",

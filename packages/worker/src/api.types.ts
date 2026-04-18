@@ -19,6 +19,10 @@ export interface TrackStream {
   readonly forceNormal: Float32Array;
   readonly forceLateral: Float32Array;
   readonly cumulativeTime: Float32Array;
+  /** Uint16 per node naming which section produced it; indexes
+   *  sectionStartNodes. Lets the viewport colour and highlight per section
+   *  without re-scanning sectionStartNodes on every vertex. */
+  readonly sectionIndex: Uint16Array;
   readonly sectionStartNodes: number[];
 }
 

@@ -41,6 +41,8 @@
   "properties": {
     "empty": "Wähle einen Abschnitt aus, um seine Parameter zu bearbeiten.",
     "name": "Name",
+    "color": "Farbe",
+    "colorReset": "Auf Palette-Standard zurücksetzen",
     "position": "Position (m)",
     "pitch": "Pitch",
     "yaw": "Yaw",
