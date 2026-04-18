@@ -7,7 +7,7 @@ import { ForcesGraph } from './graphs/forces-graph.js';
 import { PropertiesPanel } from './panels/properties-panel.js';
 import { SectionsPanel } from './panels/sections-panel.js';
 import { sectionColor } from './scene/section-colors.js';
-import { Viewport } from './scene/viewport.js';
+import { Viewport, type CameraMode } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
@@ -30,6 +30,7 @@ export function App(): JSX.Element {
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
 
   // When the user picks a section on narrow layouts, flip to the Properties
   // tab so they see the edit fields immediately. Desktop shows both at once.
@@ -83,11 +84,30 @@ export function App(): JSX.Element {
     tracks.length === 0 ? (
       emptyState
     ) : (
-      <Viewport
-        tracks={tracks}
-        sectionColors={sectionColors}
-        selectedSectionIndex={selectedSectionIndex}
-      />
+      <>
+        <Viewport
+          tracks={tracks}
+          sectionColors={sectionColors}
+          selectedSectionIndex={selectedSectionIndex}
+          cameraMode={cameraMode}
+        />
+        <div
+          role="toolbar"
+          aria-label={t('viewport.cameraMode')}
+          className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1"
+        >
+          <CameraModeButton
+            active={cameraMode === 'orbit'}
+            onClick={() => setCameraMode('orbit')}
+            label={t('viewport.orbit')}
+          />
+          <CameraModeButton
+            active={cameraMode === 'pov'}
+            onClick={() => setCameraMode('pov')}
+            label={t('viewport.pov')}
+          />
+        </div>
+      </>
     );
 
   return (
@@ -201,6 +221,27 @@ function MobileTabButton(props: {
         props.active
           ? 'bg-surface-2 text-neutral-100'
           : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'
+      }`}
+    >
+      {props.label}
+    </button>
+  );
+}
+
+function CameraModeButton(props: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-pressed={props.active}
+      onClick={props.onClick}
+      className={`pointer-events-auto rounded px-2 py-1 text-xs font-semibold ring-1 ring-white/10 backdrop-blur-sm ${
+        props.active
+          ? 'bg-sky-400/20 text-sky-100 ring-sky-400/40'
+          : 'bg-surface-1/80 text-neutral-300 hover:bg-surface-2'
       }`}
     >
       {props.label}

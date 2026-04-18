@@ -88,7 +88,22 @@ export function closeTrack(track: Track): Track {
     return track;
   }
 
-  const handleLen = Math.max(gap / 3, 0.01);
+  // Handle length scales with the angle between entry and exit tangents: the
+  // classic 1/3-gap rule only looks smooth when the tangents are aligned. As
+  // the tangents diverge, the Bezier must curve harder in the same gap, which
+  // produces a hairpin (or self-intersection). Stretch the handles out so the
+  // curve has room to breathe.
+  //
+  // dotET  →  +1  aligned  → handle = gap / 3
+  //           0   orthogonal → handle ≈ gap * 0.58
+  //          −1   opposite → handle ≈ gap * 1.17 (prevents a cusp)
+  //
+  // Minimum absolute length keeps degenerate near-zero gaps from producing
+  // zero-length handles that collapse the curve to a line.
+  const dotET =
+    endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2];
+  const angleScale = 1 + 2.5 * (1 - Math.max(-1, Math.min(1, dotET))) / 2;
+  const handleLen = Math.max((gap / 3) * angleScale, 0.5);
   const p1: [number, number, number] = [
     endPos[0] + endDir[0] * handleLen,
     endPos[1] + endDir[1] * handleLen,

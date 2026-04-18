@@ -74,6 +74,11 @@
     "bankingSyncHint": "Kopiert die End-Neigung des vorherigen Abschnitts an den Start dieses Abschnitts, damit der Übergang stetig ist.",
     "bankingShortcutNote": "Einzelner kubischer Übergang von Start zu Ende. Der vollständige Timeline-Editor (später) erlaubt mehrere Übergänge."
   },
+  "viewport": {
+    "cameraMode": "Kameramodus",
+    "orbit": "Orbit",
+    "pov": "POV"
+  },
   "graphs": {
     "forceNormal": "Normal-g",
     "forceLateral": "Lateral-g",
