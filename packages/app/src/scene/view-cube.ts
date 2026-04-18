@@ -122,13 +122,16 @@ export function createViewCube(labels: ViewCubeLabels): ViewCube {
   scene.add(cubeBody);
 
   const faceDecals: Mesh[] = [];
+  // Each entry: [normal, up, right] in world axes. `right` is the
+  // viewer's right when looking AT the face from outside (not just world
+  // +X); getting this wrong mirrors the face text.
   const faceAxes: [Vector3, Vector3, Vector3][] = [
-    [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)], // +X: up=Y, right=-Z
-    [new Vector3(-1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, -1)], // -X
-    [new Vector3(0, 1, 0), new Vector3(0, 0, -1), new Vector3(1, 0, 0)], // +Y: up=-Z, right=X
-    [new Vector3(0, -1, 0), new Vector3(0, 0, 1), new Vector3(1, 0, 0)], // -Y
-    [new Vector3(0, 0, 1), new Vector3(0, 1, 0), new Vector3(-1, 0, 0)], // +Z: up=Y, right=-X
-    [new Vector3(0, 0, -1), new Vector3(0, 1, 0), new Vector3(1, 0, 0)], // -Z
+    [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, -1)], // +X (Right): viewer right = -Z
+    [new Vector3(-1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)], // -X (Left): viewer right = +Z
+    [new Vector3(0, 1, 0), new Vector3(0, 0, -1), new Vector3(1, 0, 0)], // +Y (Top)
+    [new Vector3(0, -1, 0), new Vector3(0, 0, 1), new Vector3(1, 0, 0)], // -Y (Bottom)
+    [new Vector3(0, 0, 1), new Vector3(0, 1, 0), new Vector3(1, 0, 0)], // +Z (Front): viewer right = +X
+    [new Vector3(0, 0, -1), new Vector3(0, 1, 0), new Vector3(-1, 0, 0)], // -Z (Back): viewer right = -X
   ];
   const decalSize = 0.78; // a touch smaller than the cube face so the
   // chamfered edge strip shows through.

@@ -101,6 +101,10 @@ export function MenuBar(): JSX.Element {
         <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
           {t('common:menu.closeTrack')}
         </MenuButton>
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+        <MenuButton onClick={() => alert(t('common:menu.prefsStub'))}>
+          {t('common:menu.preferences')}
+        </MenuButton>
       </span>
 
       <OverflowMenu
@@ -119,6 +123,10 @@ export function MenuBar(): JSX.Element {
             label: t('common:menu.closeTrack'),
             onClick: handleCloseTrack,
             disabled: !canCloseTrack,
+          },
+          {
+            label: t('common:menu.preferences'),
+            onClick: () => alert(t('common:menu.prefsStub')),
           },
         ]}
       />

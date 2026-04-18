@@ -24,6 +24,8 @@
     "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead.",
     "closeTrack": "Close Track",
     "loadDemo": "Load Demo",
+    "preferences": "Preferences…",
+    "prefsStub": "A full preferences panel lands at M8 (units, theme, graph colours, mesh quality, playback defaults). For now, language is set via the switcher in the top-right.",
     "more": "More…"
   },
   "panels": {
@@ -86,6 +88,7 @@
     "styleRibbon": "Ribbon",
     "persp": "Perspective",
     "ortho": "Ortho",
+    "heartline": "Show heart line",
     "cube": {
       "top": "Top",
       "bottom": "Bottom",

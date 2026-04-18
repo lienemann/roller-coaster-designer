@@ -157,7 +157,48 @@ export const useAppStore = create<AppState>((set) => ({
 
   addStraightSection: () => set((state) => appendSection(state, makeDefaultStraight())),
   addCurvedSection: () => set((state) => appendSection(state, makeDefaultCurved())),
-  addBezierSection: () => set((state) => appendSection(state, makeDefaultBezier())),
+  addBezierSection: () =>
+    set((state) => {
+      // Take the last computed node's pose so the new bezier starts where
+      // the previous section ended and points forward along its direction.
+      // Falls back to the hardcoded default if no geometry exists yet.
+      const track = state.tracks[0];
+      if (!track || track.nodeCount < 2) {
+        return appendSection(state, makeDefaultBezier());
+      }
+      const n = track.nodeCount;
+      const p = [
+        track.positions[(n - 1) * 3]!,
+        track.positions[(n - 1) * 3 + 1]!,
+        track.positions[(n - 1) * 3 + 2]!,
+      ] as const;
+      const prev = [
+        track.positions[(n - 2) * 3]!,
+        track.positions[(n - 2) * 3 + 1]!,
+        track.positions[(n - 2) * 3 + 2]!,
+      ] as const;
+      const dx = p[0] - prev[0];
+      const dy = p[1] - prev[1];
+      const dz = p[2] - prev[2];
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const uz = dz / len;
+      const sec: BezierSection = {
+        type: SecType.Bezier,
+        name: 'Bezier',
+        controlPoints: [
+          [p[0], p[1], p[2]],
+          [p[0] + ux * 5, p[1] + uy * 5, p[2] + uz * 5],
+          [p[0] + ux * 10, p[1] + uy * 10, p[2] + uz * 10],
+          [p[0] + ux * 15, p[1] + uy * 15, p[2] + uz * 15],
+        ],
+        rollFunc: createEmptyFunc(EFuncType.Roll),
+        smoothStart: true,
+        smoothEnd: true,
+      };
+      return appendSection(state, sec);
+    }),
 
   removeSection: (index) =>
     set((state) => {

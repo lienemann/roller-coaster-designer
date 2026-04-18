@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { SecType } from '@roller-coaster-designer/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -16,7 +17,10 @@ import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 
 type MobileTab = 'sections' | 'properties';
 
-const DESKTOP_QUERY = '(min-width: 768px)';
+// Bump the desktop threshold above typical phone landscape widths (720px
+// on modern phones) so portrait + landscape both use the stacked mobile
+// layout. Tablets (iPad at 1024 and up) still get the three-column grid.
+const DESKTOP_QUERY = '(min-width: 1024px)';
 
 export function App(): JSX.Element {
   const { t } = useTranslation('common');
@@ -26,6 +30,7 @@ export function App(): JSX.Element {
   const tracks = useAppStore((s) => s.tracks);
   const selectedSectionIndex = useAppStore((s) => s.selectedSectionIndex);
   const selectSection = useAppStore((s) => s.selectSection);
+  const patchSelectedSection = useAppStore((s) => s.patchSelectedSection);
 
   useRecomputeOnProjectChange();
 
@@ -39,6 +44,7 @@ export function App(): JSX.Element {
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
   const [renderStyle, setRenderStyle] = useState<RenderStyle>('tubular');
   const [projection, setProjection] = useState<Projection>('perspective');
+  const [showHeartline, setShowHeartline] = useState(false);
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [sectionsCollapsed, setSectionsCollapsed] = useState(false);
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
@@ -65,6 +71,24 @@ export function App(): JSX.Element {
     const sections = project?.tracks[0]?.sections ?? [];
     return sections.map((section, idx) => section.color ?? sectionColor(idx));
   }, [project]);
+  // Bezier control points for the currently-selected section, in world
+  // coordinates. Null unless the selection is a Bezier — Viewport uses this
+  // to show TransformControls handles.
+  const bezierHandles = useMemo<
+    | readonly [
+        [number, number, number],
+        [number, number, number],
+        [number, number, number],
+        [number, number, number],
+      ]
+    | null
+  >(() => {
+    if (selectedSectionIndex === null) return null;
+    const sec = project?.tracks[0]?.sections[selectedSectionIndex];
+    if (sec?.type !== SecType.Bezier) return null;
+    return sec.controlPoints;
+  }, [project, selectedSectionIndex]);
+
   const sectionStartTimes = useMemo<number[]>(() => {
     const starts = firstTrack?.sectionStartNodes ?? [];
     const times = firstTrack?.cumulativeTime;
@@ -122,46 +146,82 @@ export function App(): JSX.Element {
           renderStyle={renderStyle}
           onHome={requestResetView}
           projection={projection}
+          showHeartline={showHeartline}
+          bezierHandles={bezierHandles}
+          onBezierHandleChange={(index, pos) => {
+            if (!bezierHandles) return;
+            const next: [
+              [number, number, number],
+              [number, number, number],
+              [number, number, number],
+              [number, number, number],
+            ] = [
+              [...bezierHandles[0]],
+              [...bezierHandles[1]],
+              [...bezierHandles[2]],
+              [...bezierHandles[3]],
+            ];
+            next[index] = pos;
+            patchSelectedSection({ controlPoints: next });
+          }}
         />
-        {/* Toolbar lives top-LEFT so it doesn't fight the ViewCube in the
-            top-right corner of the viewport. */}
+        {/* Compact viewport toolbar — grouped segmented controls so the
+            bar stays narrow enough to clear the ViewCube on the right. */}
         <div
           role="toolbar"
           aria-label={t('viewport.cameraMode')}
-          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1"
+          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap items-center gap-1"
         >
-          <CameraModeButton
-            active={cameraMode === 'orbit'}
-            onClick={() => setCameraMode('orbit')}
-            label={t('viewport.orbit')}
+          <SegmentedGroup>
+            <Segment
+              active={cameraMode === 'orbit'}
+              onClick={() => setCameraMode('orbit')}
+              icon="⟲"
+              title={t('viewport.orbit')}
+            />
+            <Segment
+              active={cameraMode === 'pov'}
+              onClick={() => setCameraMode('pov')}
+              icon="↗"
+              title={t('viewport.pov')}
+            />
+          </SegmentedGroup>
+          <SegmentedGroup>
+            <Segment
+              active={renderStyle === 'tubular'}
+              onClick={() => setRenderStyle('tubular')}
+              icon="⬤"
+              title={t('viewport.styleTubular')}
+            />
+            <Segment
+              active={renderStyle === 'ribbon'}
+              onClick={() => setRenderStyle('ribbon')}
+              icon="━"
+              title={t('viewport.styleRibbon')}
+            />
+          </SegmentedGroup>
+          <SegmentedGroup>
+            <Segment
+              active={projection === 'perspective'}
+              onClick={() => setProjection('perspective')}
+              icon="◢"
+              title={t('viewport.persp')}
+            />
+            <Segment
+              active={projection === 'ortho'}
+              onClick={() => setProjection('ortho')}
+              icon="□"
+              title={t('viewport.ortho')}
+            />
+          </SegmentedGroup>
+          <IconToggle
+            active={showHeartline}
+            onClick={() => setShowHeartline((v) => !v)}
+            icon="♥"
+            title={t('viewport.heartline')}
           />
-          <CameraModeButton
-            active={cameraMode === 'pov'}
-            onClick={() => setCameraMode('pov')}
-            label={t('viewport.pov')}
-          />
-          <CameraModeButton active={false} onClick={requestFitView} label={t('viewport.fit')} />
-          <CameraModeButton active={false} onClick={requestResetView} label={t('viewport.reset')} />
-          <CameraModeButton
-            active={renderStyle === 'tubular'}
-            onClick={() => setRenderStyle('tubular')}
-            label={t('viewport.styleTubular')}
-          />
-          <CameraModeButton
-            active={renderStyle === 'ribbon'}
-            onClick={() => setRenderStyle('ribbon')}
-            label={t('viewport.styleRibbon')}
-          />
-          <CameraModeButton
-            active={projection === 'perspective'}
-            onClick={() => setProjection('perspective')}
-            label={t('viewport.persp')}
-          />
-          <CameraModeButton
-            active={projection === 'ortho'}
-            onClick={() => setProjection('ortho')}
-            label={t('viewport.ortho')}
-          />
+          <IconAction onClick={requestFitView} icon="⛶" title={t('viewport.fit')} />
+          <IconAction onClick={requestResetView} icon="⟳" title={t('viewport.reset')} />
         </div>
       </>
     );
@@ -190,8 +250,8 @@ export function App(): JSX.Element {
           className="grid min-h-0 flex-1"
           style={{
             gridTemplateColumns: `${
-              sectionsCollapsed ? '32px' : 'minmax(220px, 1fr)'
-            } 3fr ${propertiesCollapsed ? '32px' : 'minmax(320px, 1.4fr)'}`,
+              sectionsCollapsed ? '32px' : 'minmax(180px, 1fr)'
+            } 3fr ${propertiesCollapsed ? '32px' : 'minmax(280px, 1.3fr)'}`,
             gridTemplateRows: graphCollapsed ? '1fr 32px' : '1fr 35%',
           }}
         >
@@ -393,23 +453,79 @@ function GraphHeader(props: {
   );
 }
 
-function CameraModeButton(props: {
+function SegmentedGroup(props: { children: React.ReactNode }): JSX.Element {
+  return (
+    <div
+      className="pointer-events-auto flex overflow-hidden rounded ring-1 ring-white/10 backdrop-blur-sm"
+      style={{ backgroundColor: 'rgba(20, 20, 20, 0.6)' }}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+function Segment(props: {
   active: boolean;
   onClick: () => void;
-  label: string;
+  icon: string;
+  title: string;
 }): JSX.Element {
   return (
     <button
       type="button"
       aria-pressed={props.active}
+      aria-label={props.title}
+      title={props.title}
       onClick={props.onClick}
-      className={`pointer-events-auto rounded px-2 py-1 text-xs font-semibold ring-1 ring-white/10 backdrop-blur-sm ${
+      className={`pointer-events-auto flex h-6 w-7 items-center justify-center text-[13px] leading-none ${
         props.active
-          ? 'bg-sky-400/20 text-sky-100 ring-sky-400/40'
-          : 'bg-surface-1/80 text-neutral-300 hover:bg-surface-2'
+          ? 'bg-sky-400/25 text-sky-100'
+          : 'text-neutral-300 hover:bg-white/10 hover:text-neutral-100'
       }`}
     >
-      {props.label}
+      {props.icon}
+    </button>
+  );
+}
+
+function IconAction(props: { onClick: () => void; icon: string; title: string }): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={props.title}
+      title={props.title}
+      onClick={props.onClick}
+      className="pointer-events-auto flex h-6 w-7 items-center justify-center rounded text-[13px] leading-none text-neutral-300 ring-1 ring-white/10 backdrop-blur-sm hover:bg-white/10 hover:text-neutral-100"
+      style={{ backgroundColor: 'rgba(20, 20, 20, 0.6)' }}
+    >
+      {props.icon}
+    </button>
+  );
+}
+
+function IconToggle(props: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  title: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-pressed={props.active}
+      aria-label={props.title}
+      title={props.title}
+      onClick={props.onClick}
+      className={`pointer-events-auto flex h-6 w-7 items-center justify-center rounded text-[13px] leading-none ring-1 backdrop-blur-sm ${
+        props.active
+          ? 'bg-rose-400/25 text-rose-100 ring-rose-400/40'
+          : 'text-neutral-300 ring-white/10 hover:bg-white/10 hover:text-neutral-100'
+      }`}
+      style={{
+        backgroundColor: props.active ? undefined : 'rgba(20, 20, 20, 0.6)',
+      }}
+    >
+      {props.icon}
     </button>
   );
 }

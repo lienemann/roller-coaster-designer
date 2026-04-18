@@ -24,6 +24,8 @@
     "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
     "closeTrack": "Strecke schließen",
     "loadDemo": "Demo laden",
+    "preferences": "Einstellungen…",
+    "prefsStub": "Ein vollständiges Einstellungs-Fenster folgt mit M8 (Einheiten, Theme, Diagrammfarben, Mesh-Qualität, Playback-Standards). Die Sprache lässt sich vorerst über den Umschalter oben rechts ändern.",
     "more": "Mehr…"
   },
   "panels": {
@@ -86,6 +88,7 @@
     "styleRibbon": "Band",
     "persp": "Perspektive",
     "ortho": "Ortho",
+    "heartline": "Herzlinie anzeigen",
     "cube": {
       "top": "Oben",
       "bottom": "Unten",
