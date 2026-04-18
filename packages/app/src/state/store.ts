@@ -8,6 +8,7 @@ import {
   createEmptyFunc,
   createEmptyProject,
   createLinearSubFunc,
+  regenerateClosure,
   type AnchorSection,
   type BezierSection,
   type CurvedSection,
@@ -81,6 +82,20 @@ export interface AppState {
 
   /** Shallow merge patch onto the selected section. */
   readonly patchSelectedSection: (patch: Partial<Section>) => void;
+
+  /** Optional scene environment — user-uploaded sky / floor textures and
+   *  a fallback floor colour. Data URIs so reload-clear is intentional
+   *  (matches the "no persistence until preferences land" policy). */
+  readonly environment: {
+    readonly skyDataUri: string | null;
+    readonly floorDataUri: string | null;
+    readonly floorColor: string;
+    readonly floorVisible: boolean;
+  };
+  readonly setSkyImage: (dataUri: string | null) => void;
+  readonly setFloorImage: (dataUri: string | null) => void;
+  readonly setFloorColor: (hex: string) => void;
+  readonly setFloorVisible: (visible: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -236,17 +251,42 @@ export const useAppStore = create<AppState>((set) => ({
       if (!current) return state;
       // The patch must preserve the discriminant; Partial<Section> wouldn't
       // permit a type swap anyway because it's still a discriminated union.
-      const merged = { ...current, ...patch } as Section;
+      let merged = { ...current, ...patch } as Section;
+      // Dragging the closure's control points in the 3D view means the user
+      // has taken it over by hand — clear the closure flag so the auto-
+      // regeneration below leaves it alone.
+      if (merged.type === SecType.Bezier && merged.isClosure === true && 'controlPoints' in patch) {
+        merged = { ...merged, isClosure: false };
+      }
       const sections = [...track.sections];
       sections[idx] = merged;
+      // If a closure still exists at the end of the track, regenerate its
+      // control points from the updated upstream geometry so the ring
+      // stays continuous after this edit.
+      const rebuilt = regenerateClosure({ ...track, sections });
       return {
         project: {
           ...state.project,
-          tracks: [{ ...track, sections }, ...state.project.tracks.slice(1)],
+          tracks: [rebuilt, ...state.project.tracks.slice(1)],
         },
         isDirty: true,
       };
     }),
+
+  environment: {
+    skyDataUri: null,
+    floorDataUri: null,
+    floorColor: '#0b0b0b',
+    floorVisible: true,
+  },
+  setSkyImage: (dataUri) =>
+    set((state) => ({ environment: { ...state.environment, skyDataUri: dataUri } })),
+  setFloorImage: (dataUri) =>
+    set((state) => ({ environment: { ...state.environment, floorDataUri: dataUri } })),
+  setFloorColor: (hex) =>
+    set((state) => ({ environment: { ...state.environment, floorColor: hex } })),
+  setFloorVisible: (visible) =>
+    set((state) => ({ environment: { ...state.environment, floorVisible: visible } })),
 }));
 
 // --- helpers ---------------------------------------------------------------

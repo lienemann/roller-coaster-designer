@@ -12,6 +12,7 @@ import { Viewport, type CameraMode, type Projection, type RenderStyle } from './
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
+import { Splitter } from './ui/splitter.js';
 import { useMediaQuery } from './ui/use-media-query.js';
 import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 
@@ -35,6 +36,7 @@ export function App(): JSX.Element {
   const selectedSectionIndex = useAppStore((s) => s.selectedSectionIndex);
   const selectSection = useAppStore((s) => s.selectSection);
   const patchSelectedSection = useAppStore((s) => s.patchSelectedSection);
+  const environment = useAppStore((s) => s.environment);
 
   useRecomputeOnProjectChange();
 
@@ -53,6 +55,19 @@ export function App(): JSX.Element {
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [sectionsCollapsed, setSectionsCollapsed] = useState(false);
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
+  // Panel sizes in pixels. Splitters mutate these on drag. Defaults chosen
+  // to match the pre-splitter grid fractions on a typical 1440-wide
+  // desktop; users then tune to taste.
+  const [leftWidthPx, setLeftWidthPx] = useState(260);
+  const [rightWidthPx, setRightWidthPx] = useState(340);
+  const [graphHeightPx, setGraphHeightPx] = useState(240);
+  const LEFT_MIN = 160;
+  const LEFT_MAX = 600;
+  const RIGHT_MIN = 220;
+  const RIGHT_MAX = 700;
+  const GRAPH_MIN = 80;
+  const GRAPH_MAX = 700;
+  const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
   // When the user picks a section on narrow layouts, flip to the Properties
   // tab so they see the edit fields immediately. Desktop shows both at once.
@@ -153,6 +168,10 @@ export function App(): JSX.Element {
           projection={projection}
           showHeartline={showHeartline}
           heartOffset={project?.tracks[0]?.heart ?? 1.1}
+          skyDataUri={environment.skyDataUri}
+          floorDataUri={environment.floorDataUri}
+          floorColor={environment.floorColor}
+          floorVisible={environment.floorVisible}
           bezierHandles={bezierHandles}
           onBezierHandleChange={(index, pos) => {
             if (!bezierHandles) return;
@@ -171,12 +190,13 @@ export function App(): JSX.Element {
             patchSelectedSection({ controlPoints: next });
           }}
         />
-        {/* Compact viewport toolbar — grouped segmented controls so the
-            bar stays narrow enough to clear the ViewCube on the right. */}
+        {/* Compact viewport toolbar. Stacks vertically on narrow widths
+            so it never overlaps the ViewCube in the top-right corner;
+            flows horizontally from sm (640 px) upward. */}
         <div
           role="toolbar"
           aria-label={t('viewport.cameraMode')}
-          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap items-center gap-1"
+          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center"
         >
           {/* Camera mode: Orbit (spiral arrow) vs POV (eye). */}
           <SegmentedGroup>
@@ -229,8 +249,10 @@ export function App(): JSX.Element {
             svg={HEART_SVG}
             title={t('viewport.heartline')}
           />
+          {/* Fit frames the whole geometry. Home (= reset to default view)
+              lives on the ViewCube's bottom-right corner, not here — one
+              home icon only. */}
           <IconAction onClick={requestFitView} svg={FIT_SVG} title={t('viewport.fit')} />
-          <IconAction onClick={requestResetView} svg={RESET_SVG} title={t('viewport.reset')} />
         </div>
       </>
     );
@@ -258,15 +280,18 @@ export function App(): JSX.Element {
         <main
           className="grid min-h-0 flex-1"
           style={{
-            gridTemplateColumns: `${
-              sectionsCollapsed ? '32px' : 'minmax(180px, 1fr)'
-            } 3fr ${propertiesCollapsed ? '32px' : 'minmax(280px, 1.3fr)'}`,
-            gridTemplateRows: graphCollapsed ? '1fr 32px' : '1fr 35%',
+            // 5 cols: [left rail] [splitter] [centre] [splitter] [right rail]
+            // 3 rows: [viewport] [row splitter] [graph]
+            gridTemplateColumns: `${sectionsCollapsed ? '32px' : `${leftWidthPx}px`} 4px minmax(300px, 1fr) 4px ${
+              propertiesCollapsed ? '32px' : `${rightWidthPx}px`
+            }`,
+            gridTemplateRows: graphCollapsed ? '1fr 0px 32px' : `1fr 4px ${graphHeightPx}px`,
           }}
         >
           <aside
             aria-label={t('panels.sections')}
-            className="row-span-2 flex min-h-0 flex-col overflow-hidden border-r border-white/10 bg-surface-1"
+            className="flex min-h-0 flex-col overflow-hidden border-r border-white/10 bg-surface-1"
+            style={{ gridColumn: 1, gridRow: '1 / span 3' }}
           >
             <RailHeader
               collapsed={sectionsCollapsed}
@@ -282,15 +307,44 @@ export function App(): JSX.Element {
               </div>
             )}
           </aside>
+          {!sectionsCollapsed && (
+            <div style={{ gridColumn: 2, gridRow: '1 / span 3' }}>
+              <Splitter
+                direction="vertical"
+                label={t('splitter.left')}
+                onDrag={(dx) => setLeftWidthPx((w) => clamp(w + dx, LEFT_MIN, LEFT_MAX))}
+              />
+            </div>
+          )}
           <section
             aria-label="viewport"
             className="relative min-h-0 border-b border-white/10 bg-surface-0"
+            style={{ gridColumn: 3, gridRow: 1 }}
           >
             {viewportContent}
           </section>
+          {!graphCollapsed && (
+            <div style={{ gridColumn: 3, gridRow: 2 }}>
+              <Splitter
+                direction="horizontal"
+                label={t('splitter.graph')}
+                onDrag={(dy) => setGraphHeightPx((h) => clamp(h - dy, GRAPH_MIN, GRAPH_MAX))}
+              />
+            </div>
+          )}
+          {!propertiesCollapsed && (
+            <div style={{ gridColumn: 4, gridRow: '1 / span 3' }}>
+              <Splitter
+                direction="vertical"
+                label={t('splitter.right')}
+                onDrag={(dx) => setRightWidthPx((w) => clamp(w - dx, RIGHT_MIN, RIGHT_MAX))}
+              />
+            </div>
+          )}
           <aside
             aria-label={t('panels.properties')}
-            className="row-span-2 flex min-h-0 flex-col overflow-hidden border-l border-white/10 bg-surface-1"
+            className="flex min-h-0 flex-col overflow-hidden border-l border-white/10 bg-surface-1"
+            style={{ gridColumn: 5, gridRow: '1 / span 3' }}
           >
             <RailHeader
               collapsed={propertiesCollapsed}
@@ -309,6 +363,7 @@ export function App(): JSX.Element {
           <footer
             aria-label={t('panels.graphs')}
             className="flex min-h-0 flex-col overflow-hidden bg-surface-2"
+            style={{ gridColumn: 3, gridRow: 3 }}
           >
             <GraphHeader
               collapsed={graphCollapsed}
@@ -622,12 +677,11 @@ function IconToggle(props: {
 
 // Icon library — inline SVG bodies so we don't pull an icon dependency.
 // viewBox is 0..20 on both axes with a 14×14 render box; stroke is 1.6.
-const ORBIT_SVG = `<ellipse cx="10" cy="10" rx="7" ry="3"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/>`;
-const POV_SVG = `<path d="M2 10 C 5 5 15 5 18 10 C 15 15 5 15 2 10 Z"/><circle cx="10" cy="10" r="2" fill="currentColor"/>`;
+const ORBIT_SVG = `<circle cx="10" cy="10" r="3" fill="currentColor" stroke="none"/><ellipse cx="10" cy="10" rx="7" ry="3" transform="rotate(-30 10 10)"/><ellipse cx="10" cy="10" rx="7" ry="3" transform="rotate(30 10 10)"/>`;
+const POV_SVG = `<path d="M1 10 C 4 5 16 5 19 10 C 16 15 4 15 1 10 Z"/><circle cx="10" cy="10" r="2.5" fill="currentColor" stroke="none"/>`;
 const TUBULAR_SVG = `<rect x="3" y="7" width="14" height="6" rx="3"/><line x1="3" y1="10" x2="17" y2="10"/>`;
 const RIBBON_SVG = `<line x1="3" y1="10" x2="17" y2="10"/>`;
 const PERSP_SVG = `<polygon points="4,4 16,4 13,16 7,16"/>`;
 const ORTHO_SVG = `<rect x="4" y="4" width="12" height="12"/>`;
 const HEART_SVG = `<path d="M10 16 C 3 11 3 5 7 5 C 9 5 10 7 10 7 C 10 7 11 5 13 5 C 17 5 17 11 10 16 Z" fill="currentColor" stroke="none"/>`;
 const FIT_SVG = `<polyline points="3,7 3,3 7,3"/><polyline points="17,7 17,3 13,3"/><polyline points="3,13 3,17 7,17"/><polyline points="17,13 17,17 13,17"/>`;
-const RESET_SVG = `<path d="M16 10 A 6 6 0 1 1 14 5.5"/><polyline points="14,2 14,6 18,6"/>`;

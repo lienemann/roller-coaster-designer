@@ -26,7 +26,23 @@
     "loadDemo": "Demo laden",
     "preferences": "Einstellungen…",
     "prefsStub": "Ein vollständiges Einstellungs-Fenster folgt mit M8 (Einheiten, Theme, Diagrammfarben, Mesh-Qualität, Playback-Standards). Die Sprache lässt sich vorerst über den Umschalter oben rechts ändern.",
+    "scene": "Szene…",
     "more": "Mehr…"
+  },
+  "scene": {
+    "title": "Szene",
+    "sky": "Himmel / Hintergrund",
+    "floor": "Boden",
+    "import": "Importieren…",
+    "clear": "Entfernen",
+    "loaded": "Geladen",
+    "none": "Keins (dunkler Hintergrund)",
+    "colorUsed": "Farbe wird verwendet",
+    "floorColor": "Farbe",
+    "floorVisible": "Boden anzeigen",
+    "colorHiddenByImage": "Entferne das Bild, um eine Farbe zu wählen",
+    "close": "Schließen",
+    "note": "Bilder bleiben im Browser-Tab und gehen beim Neuladen verloren."
   },
   "panels": {
     "sections": "Abschnitte",
@@ -34,6 +50,11 @@
     "graphs": "Kräfte",
     "expand": "Ausklappen",
     "collapse": "Einklappen"
+  },
+  "splitter": {
+    "left": "Abschnitts-Leiste verkleinern/vergrößern",
+    "right": "Eigenschaften-Leiste verkleinern/vergrößern",
+    "graph": "Kräfte-Fenster verkleinern/vergrößern"
   },
   "sections": {
     "empty": "Noch keine Abschnitte. Starte mit „Neu“ oder „Demo laden“.",

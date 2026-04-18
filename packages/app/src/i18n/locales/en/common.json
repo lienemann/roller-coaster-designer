@@ -26,7 +26,23 @@
     "loadDemo": "Load Demo",
     "preferences": "Preferences…",
     "prefsStub": "A full preferences panel lands at M8 (units, theme, graph colours, mesh quality, playback defaults). For now, language is set via the switcher in the top-right.",
+    "scene": "Scene…",
     "more": "More…"
+  },
+  "scene": {
+    "title": "Scene",
+    "sky": "Sky / background",
+    "floor": "Floor",
+    "import": "Import…",
+    "clear": "Clear",
+    "loaded": "Loaded",
+    "none": "None (dark background)",
+    "colorUsed": "Using colour",
+    "floorColor": "Colour",
+    "floorVisible": "Show floor",
+    "colorHiddenByImage": "Clear the image to pick a colour",
+    "close": "Close",
+    "note": "Images live in the browser tab and vanish on reload."
   },
   "panels": {
     "sections": "Sections",
@@ -34,6 +50,11 @@
     "graphs": "Forces",
     "expand": "Expand",
     "collapse": "Collapse"
+  },
+  "splitter": {
+    "left": "Resize Sections panel",
+    "right": "Resize Properties panel",
+    "graph": "Resize Forces panel"
   },
   "sections": {
     "empty": "No sections yet. Start with New or Load Demo.",

@@ -274,8 +274,8 @@ function CurvedFields({
             value={totalPitchDeg}
             onChange={(v) => setTotalPitchDeg(asNumber(v))}
             suffix="°"
-            min={-360}
-            max={360}
+            min={-720}
+            max={720}
             step={1}
           />
           <Field
@@ -283,8 +283,8 @@ function CurvedFields({
             value={totalYawDeg}
             onChange={(v) => setTotalYawDeg(asNumber(v))}
             suffix="°"
-            min={-360}
-            max={360}
+            min={-720}
+            max={720}
             step={1}
           />
         </>
@@ -529,8 +529,8 @@ function BankingGroup({
         value={radToDeg(startRad)}
         onChange={(v) => setStart(asNumber(v))}
         suffix="°"
-        min={-180}
-        max={180}
+        min={-720}
+        max={720}
         step={1}
       />
       <Field
@@ -538,8 +538,8 @@ function BankingGroup({
         value={radToDeg(endRad)}
         onChange={(v) => setEnd(asNumber(v))}
         suffix="°"
-        min={-180}
-        max={180}
+        min={-720}
+        max={720}
         step={1}
       />
       <button
@@ -588,6 +588,21 @@ function Field(props: {
     : isNumber
       ? formatDisplay(Number(props.value))
       : String(props.value);
+
+  // Sync the buffer when the value changes from an EXTERNAL source (e.g.
+  // the user drags the slider next to the input). Compares numerically,
+  // so partial-typed strings like "1." don't snap back to "1" while the
+  // user is still in the middle of entering a number. External changes
+  // always win — keeps the input and slider visually in lockstep.
+  useEffect(() => {
+    if (!focused || !isNumber) return;
+    const asNum = Number(buffer);
+    if (!Number.isFinite(asNum) || Math.abs(asNum - Number(props.value)) > 1e-9) {
+      setBuffer(formatDisplay(Number(props.value)));
+    }
+    // `buffer` intentionally omitted: we only sync when props.value changes,
+    // not on every keystroke — that would overwrite the user's in-flight typing.
+  }, [props.value, focused, isNumber]);
 
   // Slider snap: Shift = 10× finer, Alt = 10× coarser. The slider element
   // can't intercept modifier state cleanly via its own onChange, so we

@@ -17,6 +17,12 @@ export function MenuBar(): JSX.Element {
   const loadDemoProject = useAppStore((s) => s.loadDemoProject);
   const markSaved = useAppStore((s) => s.markSaved);
   const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
+  const environment = useAppStore((s) => s.environment);
+  const setSkyImage = useAppStore((s) => s.setSkyImage);
+  const setFloorImage = useAppStore((s) => s.setFloorImage);
+  const setFloorColor = useAppStore((s) => s.setFloorColor);
+  const setFloorVisible = useAppStore((s) => s.setFloorVisible);
+  const [sceneOpen, setSceneOpen] = useState(false);
 
   const handleNew = useCallback(() => {
     newProject();
@@ -102,6 +108,7 @@ export function MenuBar(): JSX.Element {
           {t('common:menu.closeTrack')}
         </MenuButton>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+        <MenuButton onClick={() => setSceneOpen(true)}>{t('common:menu.scene')}</MenuButton>
         <MenuButton onClick={() => alert(t('common:menu.prefsStub'))}>
           {t('common:menu.preferences')}
         </MenuButton>
@@ -124,12 +131,27 @@ export function MenuBar(): JSX.Element {
             onClick: handleCloseTrack,
             disabled: !canCloseTrack,
           },
+          { label: t('common:menu.scene'), onClick: () => setSceneOpen(true) },
           {
             label: t('common:menu.preferences'),
             onClick: () => alert(t('common:menu.prefsStub')),
           },
         ]}
       />
+      {sceneOpen && (
+        <SceneDialog
+          skyDataUri={environment.skyDataUri}
+          floorDataUri={environment.floorDataUri}
+          floorColor={environment.floorColor}
+          floorVisible={environment.floorVisible}
+          onSetSky={setSkyImage}
+          onSetFloor={setFloorImage}
+          onSetFloorColor={setFloorColor}
+          onSetFloorVisible={setFloorVisible}
+          onClose={() => setSceneOpen(false)}
+          t={t}
+        />
+      )}
     </nav>
   );
 }
@@ -210,6 +232,160 @@ function OverflowMenu(props: { label: string; items: OverflowItem[] }): JSX.Elem
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+interface SceneDialogProps {
+  skyDataUri: string | null;
+  floorDataUri: string | null;
+  floorColor: string;
+  floorVisible: boolean;
+  onSetSky: (dataUri: string | null) => void;
+  onSetFloor: (dataUri: string | null) => void;
+  onSetFloorColor: (hex: string) => void;
+  onSetFloorVisible: (visible: boolean) => void;
+  onClose: () => void;
+  t: TFunction<['common', 'errors']>;
+}
+
+function SceneDialog({
+  skyDataUri,
+  floorDataUri,
+  floorColor,
+  floorVisible,
+  onSetSky,
+  onSetFloor,
+  onSetFloorColor,
+  onSetFloorVisible,
+  onClose,
+  t,
+}: SceneDialogProps): JSX.Element {
+  const readAsDataUri = async (file: File): Promise<string> =>
+    await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+      reader.readAsDataURL(file);
+    });
+  const handleSky = async (file: File | null): Promise<void> => {
+    if (!file) return;
+    onSetSky(await readAsDataUri(file));
+  };
+  const handleFloor = async (file: File | null): Promise<void> => {
+    if (!file) return;
+    onSetFloor(await readAsDataUri(file));
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('common:scene.title')}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="flex w-[min(92vw,420px)] flex-col gap-3 rounded-lg bg-surface-1 p-4 text-sm text-neutral-100 shadow-xl ring-1 ring-white/10"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t('common:scene.title')}</h2>
+          <button
+            type="button"
+            aria-label={t('common:scene.close')}
+            onClick={onClose}
+            className="rounded p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+          >
+            ×
+          </button>
+        </div>
+
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-neutral-400">
+            {t('common:scene.sky')}
+          </h3>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center rounded bg-surface-2 px-2 py-1 text-xs hover:bg-white/10">
+              {t('common:scene.import')}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(ev) => void handleSky(ev.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!skyDataUri}
+              onClick={() => onSetSky(null)}
+              className="rounded bg-surface-2 px-2 py-1 text-xs hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t('common:scene.clear')}
+            </button>
+            <span className="text-xs text-neutral-500">
+              {skyDataUri ? t('common:scene.loaded') : t('common:scene.none')}
+            </span>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-neutral-400">
+            {t('common:scene.floor')}
+          </h3>
+          <label className="flex items-center gap-2 text-xs text-neutral-300">
+            <input
+              type="checkbox"
+              checked={floorVisible}
+              onChange={(ev) => onSetFloorVisible(ev.target.checked)}
+              className="accent-sky-400"
+            />
+            {t('common:scene.floorVisible')}
+          </label>
+          <div className={`flex items-center gap-2 ${floorVisible ? '' : 'opacity-40'}`}>
+            <label className="inline-flex cursor-pointer items-center rounded bg-surface-2 px-2 py-1 text-xs hover:bg-white/10">
+              {t('common:scene.import')}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(ev) => void handleFloor(ev.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!floorDataUri}
+              onClick={() => onSetFloor(null)}
+              className="rounded bg-surface-2 px-2 py-1 text-xs hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t('common:scene.clear')}
+            </button>
+            <span className="text-xs text-neutral-500">
+              {floorDataUri ? t('common:scene.loaded') : t('common:scene.colorUsed')}
+            </span>
+          </div>
+          <label
+            className={`flex items-center gap-2 text-xs text-neutral-400 ${
+              floorVisible ? '' : 'opacity-40'
+            }`}
+          >
+            {t('common:scene.floorColor')}
+            <input
+              type="color"
+              value={floorColor}
+              onChange={(ev) => onSetFloorColor(ev.target.value)}
+              className="h-6 w-8 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+              disabled={Boolean(floorDataUri) || !floorVisible}
+              title={
+                floorDataUri ? t('common:scene.colorHiddenByImage') : t('common:scene.floorColor')
+              }
+            />
+            <span className="tabular-nums text-neutral-300">{floorColor}</span>
+          </label>
+        </section>
+
+        <p className="mt-1 text-xs text-neutral-500">{t('common:scene.note')}</p>
+      </div>
     </div>
   );
 }

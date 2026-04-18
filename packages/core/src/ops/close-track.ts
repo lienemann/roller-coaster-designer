@@ -44,6 +44,32 @@ export class TrackClosureError extends Error {
  * Throws `TrackClosureError` when the track has fewer than two sections or
  * does not start with an Anchor.
  */
+/**
+ * If the track's last section is a `closeTrack`-generated closure (marked
+ * `isClosure: true`), regenerates its control points from the current
+ * upstream geometry so the closure always meets the anchor tangentially.
+ * Cheap no-op when the last section isn't a closure.
+ *
+ * This is what the app calls after every edit so a user doesn't have to
+ * "Close Track" again every time they tweak a section in the middle.
+ */
+export function regenerateClosure(track: Track): Track {
+  const n = track.sections.length;
+  if (n < 2) return track;
+  const last = track.sections[n - 1];
+  if (last?.type !== SecType.Bezier || last.isClosure !== true) return track;
+  const openTrack: Track = { ...track, sections: track.sections.slice(0, n - 1) };
+  const reclosed = closeTrack(openTrack);
+  // closeTrack returns `openTrack` unchanged if already closed — in that
+  // case no closure was re-added. Our caller wants isClosure preserved
+  // either way; re-mark the last section.
+  if (reclosed === openTrack) return track;
+  const newLast = reclosed.sections[reclosed.sections.length - 1];
+  if (newLast?.type !== SecType.Bezier) return track;
+  const markedLast: BezierSection = { ...newLast, isClosure: true };
+  return { ...reclosed, sections: [...reclosed.sections.slice(0, -1), markedLast] };
+}
+
 export function closeTrack(track: Track): Track {
   if (track.sections.length < 2) {
     throw new TrackClosureError(
@@ -135,6 +161,7 @@ export function closeTrack(track: Track): Track {
     rollFunc,
     smoothStart: true,
     smoothEnd: true,
+    isClosure: true,
   };
 
   return {

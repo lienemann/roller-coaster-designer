@@ -21,8 +21,14 @@ import {
   PlaneGeometry,
   Raycaster,
   Scene,
+  EquirectangularReflectionMapping,
   MeshBasicMaterial,
+  MeshStandardMaterial,
+  RepeatWrapping,
+  SRGBColorSpace,
   ShadowMaterial,
+  TextureLoader,
+  type Texture,
   Sphere,
   SphereGeometry,
   TOUCH,
@@ -102,6 +108,17 @@ export interface ViewportProps {
    *  progress updates stay local to the sphere mesh so the worker isn't
    *  retriggered mid-drag; commit happens on release. */
   readonly onBezierHandleChange?: (index: 0 | 1 | 2 | 3, pos: [number, number, number]) => void;
+  /** Equirectangular sky image (data URI) applied to `scene.background`
+   *  / `scene.environment`. `null` keeps the default dark background. */
+  readonly skyDataUri?: string | null;
+  /** Floor image (data URI). Overrides `floorColor` when present. */
+  readonly floorDataUri?: string | null;
+  /** Fallback floor colour (hex) applied to the shadow-receiving ground
+   *  when no `floorDataUri` is set. */
+  readonly floorColor?: string;
+  /** When false, the ground plane is hidden entirely (no shadows, no
+   *  colour, no grid-catching plane). */
+  readonly floorVisible?: boolean;
 }
 
 interface CameraTween {
@@ -164,6 +181,14 @@ interface SceneRefs {
   handleMeshes: Mesh[];
   /** Index of the handle TransformControls is currently attached to. */
   activeHandleIndex: number | null;
+  /** Ground plane mesh; its material is swapped between ShadowMaterial
+   *  (transparent, with grid visible) and MeshStandardMaterial (solid
+   *  colour or textured) depending on env props. */
+  ground: Mesh;
+  /** Current background texture (if any). Disposed on swap. */
+  skyTexture: Texture | null;
+  /** Current floor texture (if any). Disposed on swap. */
+  floorTexture: Texture | null;
 }
 
 const RAIL_HALF_WIDTH = 0.3;
@@ -602,6 +627,10 @@ export function Viewport({
   onBezierHandleChange,
   showHeartline,
   heartOffset,
+  skyDataUri,
+  floorDataUri,
+  floorColor,
+  floorVisible,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
@@ -650,6 +679,7 @@ export function Viewport({
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
+    // NB: state.ground is assigned below so the env effects can mutate it.
 
     const axes = new AxesHelper(5);
     // Lift the axes slightly above the ground plane and disable depth
@@ -736,6 +766,9 @@ export function Viewport({
       transform,
       handleMeshes: [],
       activeHandleIndex: null,
+      ground,
+      skyTexture: null,
+      floorTexture: null,
       ro: new ResizeObserver(() => {
         const w = host.clientWidth;
         const h = host.clientHeight;
@@ -892,6 +925,11 @@ export function Viewport({
       }
       disposeTrackGeometry(state);
       state.cube.dispose();
+      state.skyTexture?.dispose();
+      state.floorTexture?.dispose();
+      (state.ground.material as ShadowMaterial | MeshStandardMaterial).dispose();
+      state.ground.geometry.dispose();
+      scene.remove(state.ground);
       renderer.dispose();
       renderer.domElement.remove();
       refs.current = null;
@@ -905,6 +943,96 @@ export function Viewport({
     state.cube.dispose();
     state.cube = createViewCube(cubeLabels);
   }, [cubeLabels]);
+
+  // Apply sky-background texture on change. `null` reverts to the default
+  // dark background. Equirectangular mapping so standard panoramic HDR /
+  // JPG skyboxes work out of the box.
+  useEffect(() => {
+    const state = refs.current;
+    if (!state) return;
+    // Drop any previous texture first.
+    if (state.skyTexture) {
+      state.skyTexture.dispose();
+      state.skyTexture = null;
+    }
+    if (!skyDataUri) {
+      state.scene.background = new Color(0x0b0b0b);
+      state.scene.environment = null;
+      return;
+    }
+    new TextureLoader().load(skyDataUri, (tex) => {
+      tex.mapping = EquirectangularReflectionMapping;
+      tex.colorSpace = SRGBColorSpace;
+      // The effect may have already swapped to another sky while the load
+      // was in flight — defend by checking the current ref.
+      const cur = refs.current;
+      if (!cur) {
+        tex.dispose();
+        return;
+      }
+      cur.skyTexture = tex;
+      cur.scene.background = tex;
+      cur.scene.environment = tex;
+    });
+  }, [skyDataUri]);
+
+  // Apply floor material on change. When a floor image is supplied it
+  // becomes a repeating PBR texture on the ground plane; otherwise the
+  // ground uses a solid colour (or reverts to the default shadow-only
+  // transparent material when `floorColor` is empty).
+  useEffect(() => {
+    const state = refs.current;
+    if (!state) return;
+    const g = state.ground;
+    const oldMat = g.material as ShadowMaterial | MeshStandardMaterial;
+    if (state.floorTexture) {
+      state.floorTexture.dispose();
+      state.floorTexture = null;
+    }
+    if (floorDataUri) {
+      new TextureLoader().load(floorDataUri, (tex) => {
+        tex.wrapS = RepeatWrapping;
+        tex.wrapT = RepeatWrapping;
+        tex.repeat.set(40, 40);
+        tex.colorSpace = SRGBColorSpace;
+        const cur = refs.current;
+        if (!cur) {
+          tex.dispose();
+          return;
+        }
+        cur.floorTexture = tex;
+        cur.ground.material = new MeshStandardMaterial({
+          map: tex,
+          roughness: 0.85,
+          metalness: 0.05,
+        });
+        oldMat.dispose();
+      });
+      return;
+    }
+    // No floor image → solid colour (or transparent shadow-only if empty).
+    if (floorColor && floorColor !== '') {
+      g.material = new MeshStandardMaterial({
+        color: new Color(floorColor),
+        roughness: 0.95,
+        metalness: 0.0,
+      });
+      oldMat.dispose();
+    } else if (!(oldMat instanceof ShadowMaterial)) {
+      g.material = new ShadowMaterial({ opacity: 0.35 });
+      oldMat.dispose();
+    }
+  }, [floorDataUri, floorColor]);
+
+  // Toggle ground plane visibility entirely. `floorVisible = false`
+  // hides the shadow-receiving plane so the scene looks like it's
+  // floating in open space (useful with a sky image that already
+  // supplies its own ground).
+  useEffect(() => {
+    const state = refs.current;
+    if (!state) return;
+    state.ground.visible = floorVisible !== false;
+  }, [floorVisible]);
 
   // React to camera-mode changes independently of geometry so toggling
   // POV / Orbit doesn't force a rebuild of the rails.
