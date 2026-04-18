@@ -28,6 +28,19 @@ Ships as `@roller-coaster-designer/core`.
   key); never a raw string. Translation happens in the app layer.
 - **No hot-path allocation.** `gl-matrix` out-params only inside integrators.
 
+## Current state (M3)
+
+- `src/physics/subfunc-eval.ts` — all nine EDegree branches (Linear,
+  Quadratic, Cubic, Quartic, Quintic, Sinusoidal, Plateau, ToZero,
+  Freeform) with analytical derivatives. Freeform uses Newton iteration
+  to invert `x(tau) = t`. `applyCenter` / `applyTension` are identity at
+  M3; the exact FVD++ port of the timewarp lives at M4 alongside the
+  Forced integrator.
+- `src/physics/integrate.ts` — `SecType.Curved` branch with constant
+  pitch and yaw rates, cubic-smoothstep lead-in / lead-out so rates
+  ramp smoothly at boundaries.
+- `src/ops/close-track.ts` — unchanged since M2; still appends a Bezier.
+
 ## Current state (M2)
 
 - `src/physics/subfunc-eval.ts` — `getSubFuncValue(subFunc, x)` with the

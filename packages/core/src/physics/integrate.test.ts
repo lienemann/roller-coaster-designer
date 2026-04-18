@@ -129,6 +129,98 @@ describe('integrateTrack — inclined Straight conserves energy', () => {
   });
 });
 
+describe('integrateTrack — Curved', () => {
+  function buildHorizontalTurn(yawRate: number, length: number): Track {
+    return {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [
+        {
+          type: SecType.Anchor,
+          name: 'a',
+          position: [0, 10, 0],
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          speed: 15,
+        },
+        {
+          type: SecType.Curved,
+          name: 'turn',
+          length,
+          pitchRate: 0,
+          yawRate,
+          leadIn: 0,
+          leadOut: 0,
+          rollFunc: createEmptyFunc(EFuncType.Roll),
+        },
+      ],
+      smoothers: [],
+    };
+  }
+
+  it('horizontal turn curves in the x-z plane without changing height', () => {
+    // 90° right turn over 20 m arc length ⇒ yawRate = π/2 / 20 rad/m.
+    const { arrays } = integrateTrack(buildHorizontalTurn(Math.PI / 2 / 20, 20));
+    const last = arrays.length - 1;
+    expect(arrays.posY[last]!).toBeCloseTo(10, 3);
+    // Final direction should have rotated ~90° around +Y: started +X, ends +Z (negative since yaw rotates +X toward -Z in our convention).
+    const dirEndZ = arrays.dirZ[last]!;
+    expect(Math.abs(dirEndZ)).toBeGreaterThan(0.95);
+  });
+
+  it('pitch-only turn traces an arc in the y direction', () => {
+    const track: Track = {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [
+        {
+          type: SecType.Anchor,
+          name: 'a',
+          position: [0, 20, 0],
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          speed: 20,
+        },
+        {
+          type: SecType.Curved,
+          name: 'loop-in',
+          length: 10,
+          pitchRate: Math.PI / 4 / 10, // quarter-loop up over 10 m
+          yawRate: 0,
+          leadIn: 0,
+          leadOut: 0,
+          rollFunc: createEmptyFunc(EFuncType.Roll),
+        },
+      ],
+      smoothers: [],
+    };
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    expect(arrays.posY[last]!).toBeGreaterThan(20);
+    expect(arrays.dirY[last]!).toBeGreaterThan(0.5);
+  });
+
+  it('lead-in produces a smooth onset (direction barely changes in the first handful of steps)', () => {
+    const track = buildHorizontalTurn(Math.PI / 2 / 20, 20);
+    const sec = track.sections[1]!;
+    if (sec.type !== SecType.Curved) throw new Error('unreachable');
+    sec.leadIn = 5;
+    const { arrays, sectionStartNodes } = integrateTrack(track);
+    const start = sectionStartNodes[1] ?? 1;
+    const nearZ = Math.abs(arrays.dirZ[start + 10] ?? 0);
+    const farZ = Math.abs(arrays.dirZ[start + 500] ?? 0);
+    expect(nearZ).toBeLessThan(farZ);
+  });
+});
+
 describe('integrateTrack — Straight with a Roll Func', () => {
   it('reaches the prescribed roll at the end of the section', () => {
     const rollFunc = createEmptyFunc(EFuncType.Roll);

@@ -9,6 +9,7 @@ import { allocateMNodeArrays, type MNodeArrays } from '../model/mnode.js';
 import {
   type AnchorSection,
   type BezierSection,
+  type CurvedSection,
   type Section,
   type StraightSection,
 } from '../model/section.js';
@@ -74,6 +75,11 @@ function integrateSection(
         throw new Error('Bezier section requires a prior Anchor.');
       }
       return integrateBezier(section, arrays, lastIdx, heart);
+    case SecType.Curved:
+      if (lastIdx < 0) {
+        throw new Error('Curved section requires a prior Anchor.');
+      }
+      return integrateCurved(section, arrays, lastIdx, heart);
     default:
       throw new Error(`Section type not yet implemented: ${SecType[section.type]}`);
   }
@@ -286,6 +292,113 @@ function integrateBezier(
     });
   }
   return idx;
+}
+
+// Curved section integrator (spec §5.1, port of core/seccurved.cpp).
+// Constant pitch-rate and yaw-rate in rad/m; lead-in and lead-out ramp the
+// rates from 0 through a cubic smoothstep so the rider doesn't feel a jerk
+// at section boundaries.
+//
+// Force columns follow the same gravity projection as Straight. Centripetal
+// contribution lands with M4's Forced integrator where forces drive the
+// geometry rather than the other way round.
+const curvedDir = vec3.create();
+const curvedLat = vec3.create();
+const curvedNorm = vec3.create();
+
+function integrateCurved(
+  section: CurvedSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+): number {
+  const dt = 1 / F_HZ;
+  let arcLength = 0;
+  let idx = lastIdx;
+  const length = section.length;
+  if (length <= 0) return lastIdx;
+
+  const leadIn = Math.min(section.leadIn, length * 0.5);
+  const leadOut = Math.min(section.leadOut, length * 0.5);
+  // Rates are stored in rad/m (curvature). FVD++ keeps them user-facing as
+  // total angle over section — mirror that: if a spec'd leadIn/leadOut
+  // splits off a portion, the *peak* rate in the middle needs to bend the
+  // remaining length by the full target angle. M3 takes the rates at face
+  // value; tuning lands with the properties panel in M4.
+
+  vec3.set(curvedDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
+  vec3.set(curvedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
+
+  while (arcLength < length && idx + 1 < arrays.capacity) {
+    const prevVel = arrays.vel[idx]!;
+    const step = prevVel * dt;
+    const clippedStep = Math.min(step, length - arcLength);
+    if (clippedStep <= 0) break;
+
+    idx += 1;
+    const midArc = arcLength + clippedStep * 0.5;
+    const blend = leadInOutBlend(midArc, length, leadIn, leadOut);
+    const yawRate = section.yawRate * blend;
+    const pitchRate = section.pitchRate * blend;
+
+    // Pitch rotates around the lateral axis.
+    rotateAroundAxis(curvedDir, curvedDir, curvedLat, pitchRate * clippedStep);
+    // Yaw rotates around world-up. Lat rotates too so it stays perpendicular
+    // to the new forward direction.
+    vec3.rotateY(curvedDir, curvedDir, [0, 0, 0], yawRate * clippedStep);
+    vec3.rotateY(curvedLat, curvedLat, [0, 0, 0], yawRate * clippedStep);
+
+    const posX = arrays.posX[idx - 1]! + curvedDir[0] * clippedStep;
+    const posY = arrays.posY[idx - 1]! + curvedDir[1] * clippedStep;
+    const posZ = arrays.posZ[idx - 1]! + curvedDir[2] * clippedStep;
+
+    arcLength += clippedStep;
+    const rollAbs = evalRoll(section.rollFunc, arcLength);
+    const prevRoll = arrays.roll[idx - 1]!;
+    rotateAroundAxis(curvedLat, curvedLat, curvedDir, rollAbs - prevRoll);
+    vec3.cross(curvedNorm, curvedLat, curvedDir);
+
+    const energy = arrays.energy[idx - 1]!;
+    const yH = posY + curvedNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+
+    writeNode(arrays, idx, {
+      position: [posX, posY, posZ],
+      dir: curvedDir,
+      lat: curvedLat,
+      norm: curvedNorm,
+      roll: rollAbs,
+      vel,
+      energy,
+      distFromLast: clippedStep,
+      heartDistFromLast: clippedStep,
+      totalLength: arrays.totalLength[idx - 1]! + clippedStep,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
+      forceNormal: projectGravity(curvedNorm),
+      forceLateral: projectGravity(curvedLat),
+    });
+  }
+  return idx;
+}
+
+/**
+ * Returns a blend factor ∈ [0, 1] at arc position `s` along a section of
+ * total length `L`. In the lead-in region `[0, leadIn]` it ramps 0 → 1 via a
+ * cubic smoothstep; in the lead-out region `[L − leadOut, L]` it ramps back
+ * to 0; in between it's a constant 1. Ramps guarantee zero first derivative
+ * at the boundaries so the rider doesn't feel a sudden onset of curvature.
+ */
+function leadInOutBlend(s: number, length: number, leadIn: number, leadOut: number): number {
+  if (leadIn > 0 && s < leadIn) {
+    const u = s / leadIn;
+    return u * u * (3 - 2 * u);
+  }
+  if (leadOut > 0 && s > length - leadOut) {
+    const u = (length - s) / leadOut;
+    return u * u * (3 - 2 * u);
+  }
+  return 1;
 }
 
 // -- helpers ----------------------------------------------------------------
