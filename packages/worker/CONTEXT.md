@@ -11,6 +11,12 @@ Worker. Always.").
 - Return results to the main thread as **transferable** `ArrayBuffer`s; no
   structured-clone copies of node streams.
 
+## Current state (M3)
+
+`TrackStream` now carries five Float32Arrays per track: `positions` (3·N),
+`velocity` (N), `forceNormal` (N), `forceLateral` (N), `cumulativeTime` (N).
+Every buffer transfers across postMessage without a structured-clone copy.
+
 ## Current state (M2)
 
 Two RPC methods exposed via Comlink:

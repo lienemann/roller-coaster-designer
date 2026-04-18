@@ -4,7 +4,8 @@
     "tagline": "Eine Achterbahn entwerfen, indem du die Kräfte modellierst, die deine Fahrgäste spüren sollen.",
     "noProject": "Kein Projekt",
     "untitled": "Unbenannt",
-    "currentProject": "Aktuelles Projekt"
+    "currentProject": "Aktuelles Projekt",
+    "emptyHint": "Starte mit Datei → Neu, Datei → Öffnen oder Datei → Demo laden."
   },
   "lang": {
     "switch": "Sprache",
@@ -12,7 +13,7 @@
     "de": "Deutsch"
   },
   "status": {
-    "scaffold": "Tier 1 in Arbeit. Physik noch nicht angebunden."
+    "scaffold": "Tier 1 in Arbeit."
   },
   "menu": {
     "file": "Datei",
@@ -21,6 +22,25 @@
     "save": "Speichern",
     "saveAs": "Speichern unter…",
     "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
-    "closeTrack": "Strecke schließen"
+    "closeTrack": "Strecke schließen",
+    "loadDemo": "Demo laden"
+  },
+  "panels": {
+    "sections": "Abschnitte",
+    "graphs": "Kräfte",
+    "propertiesTodo": "Eigenschaften-Panel kommt in M4."
+  },
+  "sections": {
+    "empty": "Noch keine Abschnitte. Starte mit „Neu“ oder „Demo laden“.",
+    "addStraight": "Gerade",
+    "addCurved": "Kurve",
+    "addBezier": "Bezier",
+    "remove": "Abschnitt entfernen"
+  },
+  "graphs": {
+    "forceNormal": "Normal-g",
+    "forceLateral": "Lateral-g",
+    "time": "Zeit (s)",
+    "force": "Kraft (g)"
   }
 }

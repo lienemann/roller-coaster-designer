@@ -23,6 +23,7 @@ describe('App shell', () => {
     expect(screen.getByRole('navigation', { name: /file/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /open/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /load demo/i })).toBeInTheDocument();
   });
 
   it('shows the no-project label when nothing is loaded, and flips after New', () => {
@@ -32,6 +33,7 @@ describe('App shell', () => {
         projectName: null,
         projectHandle: null,
         isDirty: false,
+        tracks: [],
       });
     });
     render(<App />);
@@ -41,5 +43,28 @@ describe('App shell', () => {
       useAppStore.getState().newProject();
     });
     expect(screen.getByLabelText(/current project/i)).toHaveTextContent(/untitled/i);
+  });
+
+  it('lists the anchor in the sections panel after a new project', () => {
+    act(() => {
+      useAppStore.setState({ project: null, tracks: [] });
+      useAppStore.getState().newProject();
+    });
+    render(<App />);
+    const panel = screen.getByLabelText(/sections/i);
+    // The panel shows name and section type; both read "Anchor".
+    expect(panel.textContent).toMatch(/Anchor/);
+  });
+
+  it('adds a Straight section when the Straight add button is clicked', () => {
+    act(() => {
+      useAppStore.setState({ project: null, tracks: [] });
+      useAppStore.getState().newProject();
+      useAppStore.getState().addStraightSection();
+    });
+    render(<App />);
+    const track = useAppStore.getState().project!.tracks[0]!;
+    expect(track.sections).toHaveLength(2);
+    expect(track.sections[1]!.type).toBe(1); // SecType.Straight
   });
 });

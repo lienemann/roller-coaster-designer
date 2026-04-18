@@ -1,17 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Project, closeTrack, createEmptyProject } from '@roller-coaster-designer/core';
+import {
+  EFuncType,
+  SecType,
+  TrackStyle,
+  closeTrack,
+  createEmptyFunc,
+  createEmptyProject,
+  createLinearSubFunc,
+  type AnchorSection,
+  type BezierSection,
+  type CurvedSection,
+  type Project,
+  type Section,
+  type StraightSection,
+  type Track,
+} from '@roller-coaster-designer/core';
 import { type TrackStream } from '@roller-coaster-designer/worker';
 import { create } from 'zustand';
 
+import { createDemoProject } from '../data/demo-project.js';
 import { type OpaqueFileHandle } from '../io/file-system.js';
 
 import { EMPTY_COMMAND_LOG, type CommandLog } from './command-log.types.js';
 
-// Root application state. M0 left this mostly empty; M1 adds the project
-// slice that hosts the current loaded document, its file handle (when the
-// browser supports the File System Access API), and a dirty flag for the
-// window-title indicator.
+// Root application state. M0 introduced it empty; M1 added the project
+// slice; M2 added the recompute output; M3 grows section editors.
 //
 // Intentionally flat. The project lives as a single reference so Zustand's
 // default referential equality does the right thing for selectors.
@@ -31,6 +45,7 @@ export interface AppState {
   readonly setTracks: (tracks: readonly TrackStream[]) => void;
 
   readonly newProject: () => void;
+  readonly loadDemoProject: () => void;
   readonly loadProject: (payload: {
     project: Project;
     name: string;
@@ -39,13 +54,14 @@ export interface AppState {
   readonly markSaved: (payload: { name: string; handle: OpaqueFileHandle | null }) => void;
   readonly markDirty: () => void;
 
-  /**
-   * Smoothly closes the first track in the loaded project by appending a
-   * tangent-continuous Bezier section from its current end pose back to the
-   * anchor. No-op when no project is loaded or the track has fewer than two
-   * sections.
-   */
+  /** Smoothly close the first track with a Bezier back to the anchor. */
   readonly closeCurrentTrack: () => void;
+
+  /** Section editing on the first track. M4 adds a properties panel for tuning. */
+  readonly addStraightSection: () => void;
+  readonly addCurvedSection: () => void;
+  readonly addBezierSection: () => void;
+  readonly removeSection: (index: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -64,10 +80,18 @@ export const useAppStore = create<AppState>((set) => ({
 
   newProject: () =>
     set({
-      project: createEmptyProject(),
+      project: withStarterTrack(createEmptyProject()),
       projectName: null,
       projectHandle: null,
       isDirty: false,
+      tracks: [],
+    }),
+  loadDemoProject: () =>
+    set({
+      project: createDemoProject(),
+      projectName: 'demo.webfvd.json',
+      projectHandle: null,
+      isDirty: true,
       tracks: [],
     }),
   loadProject: ({ project, name, handle }) =>
@@ -100,4 +124,106 @@ export const useAppStore = create<AppState>((set) => ({
         isDirty: true,
       };
     }),
+
+  addStraightSection: () => set((state) => appendSection(state, makeDefaultStraight())),
+  addCurvedSection: () => set((state) => appendSection(state, makeDefaultCurved())),
+  addBezierSection: () => set((state) => appendSection(state, makeDefaultBezier())),
+
+  removeSection: (index) =>
+    set((state) => {
+      if (!state.project || state.project.tracks.length === 0) return state;
+      if (index <= 0) return state; // the Anchor stays put; use New Project to reset.
+      const track = state.project.tracks[0]!;
+      if (index >= track.sections.length) return state;
+      const sections = [...track.sections];
+      sections.splice(index, 1);
+      return {
+        project: {
+          ...state.project,
+          tracks: [{ ...track, sections }, ...state.project.tracks.slice(1)],
+        },
+        isDirty: true,
+      };
+    }),
 }));
+
+// --- helpers ---------------------------------------------------------------
+
+function appendSection(state: AppState, section: Section): Partial<AppState> {
+  if (!state.project) return state;
+  const tracks = state.project.tracks.length === 0 ? [makeStarterTrack()] : state.project.tracks;
+  const first = tracks[0]!;
+  return {
+    project: {
+      ...state.project,
+      tracks: [{ ...first, sections: [...first.sections, section] }, ...tracks.slice(1)],
+    },
+    isDirty: true,
+  };
+}
+
+function withStarterTrack(project: Project): Project {
+  if (project.tracks.length > 0) return project;
+  return { ...project, tracks: [makeStarterTrack()] };
+}
+
+function makeStarterTrack(): Track {
+  const anchor: AnchorSection = {
+    type: SecType.Anchor,
+    name: 'Anchor',
+    position: [0, 10, 0],
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    speed: 15,
+  };
+  return {
+    name: 'Main',
+    style: TrackStyle.Generic,
+    heart: 1.1,
+    friction: 0,
+    resistance: 0,
+    sections: [anchor],
+    smoothers: [],
+  };
+}
+
+function makeDefaultStraight(): StraightSection {
+  return {
+    type: SecType.Straight,
+    name: 'Straight',
+    length: 20,
+    rollFunc: createEmptyFunc(EFuncType.Roll),
+  };
+}
+
+function makeDefaultCurved(): CurvedSection {
+  const rollFunc = createEmptyFunc(EFuncType.Roll);
+  rollFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0 }));
+  return {
+    type: SecType.Curved,
+    name: 'Curve',
+    length: 20,
+    pitchRate: 0,
+    yawRate: Math.PI / 4 / 20, // 45° over 20 m
+    leadIn: 3,
+    leadOut: 3,
+    rollFunc,
+  };
+}
+
+function makeDefaultBezier(): BezierSection {
+  return {
+    type: SecType.Bezier,
+    name: 'Bezier',
+    controlPoints: [
+      [0, 0, 0],
+      [5, 0, 0],
+      [10, 2, 0],
+      [15, 2, 0],
+    ],
+    rollFunc: createEmptyFunc(EFuncType.Roll),
+    smoothStart: true,
+    smoothEnd: true,
+  };
+}

@@ -2,6 +2,8 @@
 
 import { useTranslation } from 'react-i18next';
 
+import { ForcesGraph } from './graphs/forces-graph.js';
+import { SectionsPanel } from './panels/sections-panel.js';
 import { Viewport } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
@@ -22,6 +24,8 @@ export function App(): JSX.Element {
       ? t('app.noProject')
       : `${projectName ?? t('app.untitled')}${isDirty ? ' *' : ''}`;
 
+  const firstTrack = tracks[0] ?? null;
+
   return (
     <div className="flex h-full w-full flex-col bg-surface-0 text-neutral-100">
       <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-surface-1 px-4 py-2">
@@ -41,12 +45,12 @@ export function App(): JSX.Element {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] grid-rows-[1fr_auto]">
+      <main className="grid min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] grid-rows-[1fr_35%]">
         <aside
-          aria-label="sections-placeholder"
-          className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3 text-xs text-neutral-400"
+          aria-label={t('panels.sections')}
+          className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3"
         >
-          Sections
+          <SectionsPanel />
         </aside>
         <section
           aria-label="viewport"
@@ -57,6 +61,7 @@ export function App(): JSX.Element {
               <div className="max-w-md text-center">
                 <p className="text-sm text-neutral-400">{t('app.tagline')}</p>
                 <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
+                <p className="mt-4 text-xs text-neutral-500">{t('app.emptyHint')}</p>
               </div>
             </div>
           ) : (
@@ -67,13 +72,21 @@ export function App(): JSX.Element {
           aria-label="properties-placeholder"
           className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3 text-xs text-neutral-400"
         >
-          Properties
+          {t('panels.propertiesTodo')}
         </aside>
         <footer
-          aria-label="timeline-placeholder"
-          className="bg-surface-2 p-3 text-xs text-neutral-500"
+          aria-label={t('panels.graphs')}
+          className="min-h-0 overflow-hidden bg-surface-2 p-2"
         >
-          Timeline
+          <ForcesGraph
+            track={firstTrack}
+            label={{
+              forceNormal: t('graphs.forceNormal'),
+              forceLateral: t('graphs.forceLateral'),
+              time: t('graphs.time'),
+              force: t('graphs.force'),
+            }}
+          />
         </footer>
       </main>
     </div>

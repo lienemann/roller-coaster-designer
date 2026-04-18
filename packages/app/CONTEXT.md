@@ -12,6 +12,25 @@ for data and physics via `@roller-coaster-designer/worker`.
 - Owns the undo/redo command log (spec §9) — the executor lives here because
   commands touch UI state.
 
+## Current state (M3)
+
+- `src/panels/sections-panel.tsx` — left rail lists the current track's
+  sections with per-item remove buttons and three "Add" buttons
+  (Straight / Curved / Bezier) that call store actions with sensible
+  defaults. Parameter-level editing lands with M4's properties panel.
+- `src/graphs/forces-graph.tsx` — uPlot chart under the viewport
+  showing Normal-g and Lateral-g vs. time. Reads
+  `TrackStream.cumulativeTime` / `forceNormal` / `forceLateral`.
+- `src/data/demo-project.ts` + store `loadDemoProject` — File → Load
+  Demo drops in a handcrafted closed coaster (drop → 90° banked turn →
+  climb → closure) so new visitors see a live scene immediately.
+- Viewport gains touch gestures (one-finger orbit, two-finger pan +
+  pinch zoom) plus `touch-action: none` so page scroll doesn't steal
+  drags.
+- Worker `TrackStream` now carries `velocity`, `forceNormal`,
+  `forceLateral`, and `cumulativeTime` alongside `positions`. All new
+  buffers transfer as `ArrayBuffer`s.
+
 ## Current state (M2)
 
 - `src/scene/viewport.tsx` — Three.js `WebGLRenderer` with `OrbitControls`,

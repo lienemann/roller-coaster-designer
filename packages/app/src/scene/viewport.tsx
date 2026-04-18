@@ -13,6 +13,7 @@ import {
   LineBasicMaterial,
   PerspectiveCamera,
   Scene,
+  TOUCH,
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -76,6 +77,13 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 5, 0);
+    // Spec §6.4 tablet scheme: one-finger orbit, two-finger pan + pinch zoom.
+    // Three's DOLLY_PAN on two fingers bundles pan and pinch on the same
+    // gesture, which matches how trackpad users expect gestures to compose.
+    controls.touches = { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN };
+    // Tuned for finger input — OrbitControls' defaults are mouse-paced.
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 0.9;
 
     const state: SceneRefs = {
       renderer,
@@ -162,7 +170,12 @@ export function Viewport({ tracks }: ViewportProps): JSX.Element {
       ref={hostRef}
       role="img"
       aria-label="viewport"
-      className="relative h-full w-full bg-surface-0"
+      className="relative h-full w-full select-none bg-surface-0"
+      // Disables the browser's default touch behaviours on the canvas so
+      // one-finger drags don't scroll the page and two-finger pinches don't
+      // zoom the page. Without this OrbitControls still receives events, but
+      // the page itself rides along behind the gesture. Spec §6.4.
+      style={{ touchAction: 'none' }}
     />
   );
 }

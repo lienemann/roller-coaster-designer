@@ -14,12 +14,17 @@ export function MenuBar(): JSX.Element {
   const handle = useAppStore((s) => s.projectHandle);
   const newProject = useAppStore((s) => s.newProject);
   const loadProject = useAppStore((s) => s.loadProject);
+  const loadDemoProject = useAppStore((s) => s.loadDemoProject);
   const markSaved = useAppStore((s) => s.markSaved);
   const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
 
   const handleNew = useCallback(() => {
     newProject();
   }, [newProject]);
+
+  const handleLoadDemo = useCallback(() => {
+    loadDemoProject();
+  }, [loadDemoProject]);
 
   const handleOpen = useCallback(async () => {
     try {
@@ -81,6 +86,7 @@ export function MenuBar(): JSX.Element {
         {t('common:menu.saveAs')}
       </MenuButton>
       <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+      <MenuButton onClick={handleLoadDemo}>{t('common:menu.loadDemo')}</MenuButton>
       <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
         {t('common:menu.closeTrack')}
       </MenuButton>

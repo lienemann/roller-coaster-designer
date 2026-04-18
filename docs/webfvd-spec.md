@@ -1545,6 +1545,7 @@ Listed to make the "out of scope" list unambiguous — these _are_ planned:
 - Sync points → T3 (M19).
 - Custom train-style JSON + mesh import → T2 (M14, compat with KexEdit train packages).
 - **VR / WebXR POV mode → post-T3 (T4 candidate).** Browser WebXR support and the coaster-VR experience both need to improve before this is worth shipping, and it layers cleanly on top of the POV camera built in T1 (§6.3). Revisit once T3 ships.
+- **In-viewport section handles → T2 (M7 split).** Drag a section's end point to change length; drag a tangent gizmo to change entry/exit direction; drag a banking wheel to adjust roll. The numerical properties panel (M4) and the 3D handles share the same Zustand commands, so they stay in sync. Requires raycasting against per-section proxy geometry and a gizmo shader pass — do it alongside the viewport polish already scheduled for M7.
 
 ## 21. Pitfalls to avoid
 

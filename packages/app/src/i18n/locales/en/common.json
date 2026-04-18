@@ -4,7 +4,8 @@
     "tagline": "Design a coaster by sculpting the forces you want riders to feel.",
     "noProject": "No project",
     "untitled": "Untitled",
-    "currentProject": "Current project"
+    "currentProject": "Current project",
+    "emptyHint": "Start with File → New, File → Open, or File → Load Demo."
   },
   "lang": {
     "switch": "Language",
@@ -12,7 +13,7 @@
     "de": "Deutsch"
   },
   "status": {
-    "scaffold": "Tier 1 in progress. No physics wired yet."
+    "scaffold": "Tier 1 in progress."
   },
   "menu": {
     "file": "File",
@@ -21,6 +22,25 @@
     "save": "Save",
     "saveAs": "Save As…",
     "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead.",
-    "closeTrack": "Close Track"
+    "closeTrack": "Close Track",
+    "loadDemo": "Load Demo"
+  },
+  "panels": {
+    "sections": "Sections",
+    "graphs": "Forces",
+    "propertiesTodo": "Properties panel arrives at M4."
+  },
+  "sections": {
+    "empty": "No sections yet. Start with New or Load Demo.",
+    "addStraight": "Straight",
+    "addCurved": "Curved",
+    "addBezier": "Bezier",
+    "remove": "Remove section"
+  },
+  "graphs": {
+    "forceNormal": "Normal g",
+    "forceLateral": "Lateral g",
+    "time": "Time (s)",
+    "force": "Force (g)"
   }
 }

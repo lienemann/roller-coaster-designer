@@ -3,18 +3,18 @@
 import { type Project } from '@roller-coaster-designer/core';
 
 /**
- * Per-track result of a recompute. `positions` is a flat XYZ stream:
- * positions[3i + 0..2] is node i's world position. `nodeCount` is the number
- * of valid nodes (positions.length / 3 may be larger when the buffer was
- * preallocated).
- *
- * Buffers travel as transferable ArrayBuffers (spec §1.5), so the worker
- * relinquishes ownership when it posts the result and the main thread draws
- * straight out of the returned views.
+ * Per-track result of a recompute. Every Float32Array is `nodeCount` long
+ * except `positions`, which is `3 * nodeCount` (packed XYZ). Buffers travel
+ * as transferable `ArrayBuffer`s — the worker relinquishes ownership on
+ * postMessage and the main thread reads the views directly.
  */
 export interface TrackStream {
   readonly nodeCount: number;
   readonly positions: Float32Array;
+  readonly velocity: Float32Array;
+  readonly forceNormal: Float32Array;
+  readonly forceLateral: Float32Array;
+  readonly cumulativeTime: Float32Array;
   readonly sectionStartNodes: number[];
 }
 
