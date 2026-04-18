@@ -82,6 +82,8 @@
     "pov": "POV",
     "fit": "Einpassen",
     "reset": "Zurücksetzen",
+    "styleTubular": "Rohr",
+    "styleRibbon": "Band",
     "cube": {
       "top": "Oben",
       "bottom": "Unten",
@@ -90,7 +92,12 @@
       "left": "Links",
       "right": "Rechts",
       "rotateCw": "Ansicht im Uhrzeigersinn drehen",
-      "rotateCcw": "Ansicht gegen den Uhrzeigersinn drehen"
+      "rotateCcw": "Ansicht gegen den Uhrzeigersinn drehen",
+      "tiltUp": "Ansicht nach oben neigen",
+      "tiltDown": "Ansicht nach unten neigen",
+      "tiltLeft": "Ansicht nach links drehen",
+      "tiltRight": "Ansicht nach rechts drehen",
+      "home": "Startansicht"
     }
   },
   "graphs": {

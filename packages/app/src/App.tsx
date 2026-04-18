@@ -7,7 +7,7 @@ import { ForcesGraph } from './graphs/forces-graph.js';
 import { PropertiesPanel } from './panels/properties-panel.js';
 import { SectionsPanel } from './panels/sections-panel.js';
 import { sectionColor } from './scene/section-colors.js';
-import { Viewport, type CameraMode } from './scene/viewport.js';
+import { Viewport, type CameraMode, type RenderStyle } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
@@ -37,7 +37,10 @@ export function App(): JSX.Element {
   const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [renderStyle, setRenderStyle] = useState<RenderStyle>('tubular');
   const [graphCollapsed, setGraphCollapsed] = useState(false);
+  const [sectionsCollapsed, setSectionsCollapsed] = useState(false);
+  const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
 
   // When the user picks a section on narrow layouts, flip to the Properties
   // tab so they see the edit fields immediately. Desktop shows both at once.
@@ -108,13 +111,22 @@ export function App(): JSX.Element {
             right: t('viewport.cube.right'),
             rotateCw: t('viewport.cube.rotateCw'),
             rotateCcw: t('viewport.cube.rotateCcw'),
+            tiltUp: t('viewport.cube.tiltUp'),
+            tiltDown: t('viewport.cube.tiltDown'),
+            tiltLeft: t('viewport.cube.tiltLeft'),
+            tiltRight: t('viewport.cube.tiltRight'),
+            home: t('viewport.cube.home'),
           }}
           onSelectSection={selectSection}
+          renderStyle={renderStyle}
+          onHome={requestResetView}
         />
+        {/* Toolbar lives top-LEFT so it doesn't fight the ViewCube in the
+            top-right corner of the viewport. */}
         <div
           role="toolbar"
           aria-label={t('viewport.cameraMode')}
-          className="pointer-events-none absolute right-2 top-2 z-10 flex flex-wrap justify-end gap-1"
+          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1"
         >
           <CameraModeButton
             active={cameraMode === 'orbit'}
@@ -128,6 +140,16 @@ export function App(): JSX.Element {
           />
           <CameraModeButton active={false} onClick={requestFitView} label={t('viewport.fit')} />
           <CameraModeButton active={false} onClick={requestResetView} label={t('viewport.reset')} />
+          <CameraModeButton
+            active={renderStyle === 'tubular'}
+            onClick={() => setRenderStyle('tubular')}
+            label={t('viewport.styleTubular')}
+          />
+          <CameraModeButton
+            active={renderStyle === 'ribbon'}
+            onClick={() => setRenderStyle('ribbon')}
+            label={t('viewport.styleRibbon')}
+          />
         </div>
       </>
     );
@@ -153,15 +175,31 @@ export function App(): JSX.Element {
 
       {isDesktop ? (
         <main
-          className={`grid min-h-0 flex-1 grid-cols-[minmax(220px,1fr)_3fr_minmax(320px,1.4fr)] ${
-            graphCollapsed ? 'grid-rows-[1fr_32px]' : 'grid-rows-[1fr_35%]'
-          }`}
+          className="grid min-h-0 flex-1"
+          style={{
+            gridTemplateColumns: `${
+              sectionsCollapsed ? '32px' : 'minmax(220px, 1fr)'
+            } 3fr ${propertiesCollapsed ? '32px' : 'minmax(320px, 1.4fr)'}`,
+            gridTemplateRows: graphCollapsed ? '1fr 32px' : '1fr 35%',
+          }}
         >
           <aside
             aria-label={t('panels.sections')}
-            className="row-span-2 overflow-auto border-r border-white/10 bg-surface-1 p-3"
+            className="row-span-2 flex min-h-0 flex-col overflow-hidden border-r border-white/10 bg-surface-1"
           >
-            <SectionsPanel />
+            <RailHeader
+              collapsed={sectionsCollapsed}
+              onToggle={() => setSectionsCollapsed((v) => !v)}
+              label={t('panels.sections')}
+              expandLabel={t('panels.expand')}
+              collapseLabel={t('panels.collapse')}
+              side="left"
+            />
+            {!sectionsCollapsed && (
+              <div className="min-h-0 flex-1 overflow-auto p-3">
+                <SectionsPanel />
+              </div>
+            )}
           </aside>
           <section
             aria-label="viewport"
@@ -171,9 +209,21 @@ export function App(): JSX.Element {
           </section>
           <aside
             aria-label={t('panels.properties')}
-            className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3"
+            className="row-span-2 flex min-h-0 flex-col overflow-hidden border-l border-white/10 bg-surface-1"
           >
-            <PropertiesPanel />
+            <RailHeader
+              collapsed={propertiesCollapsed}
+              onToggle={() => setPropertiesCollapsed((v) => !v)}
+              label={t('panels.properties')}
+              expandLabel={t('panels.expand')}
+              collapseLabel={t('panels.collapse')}
+              side="right"
+            />
+            {!propertiesCollapsed && (
+              <div className="min-h-0 flex-1 overflow-auto p-3">
+                <PropertiesPanel />
+              </div>
+            )}
           </aside>
           <footer
             aria-label={t('panels.graphs')}
@@ -274,6 +324,38 @@ function MobileTabButton(props: {
       }`}
     >
       {props.label}
+    </button>
+  );
+}
+
+/** Collapse toggle header for the desktop side rails. When `collapsed` is
+ *  true, only the toggle button shows (32 px strip); otherwise the header
+ *  sits above the rail content. `side` controls which direction the glyph
+ *  points. */
+function RailHeader(props: {
+  collapsed: boolean;
+  onToggle: () => void;
+  label: string;
+  expandLabel: string;
+  collapseLabel: string;
+  side: 'left' | 'right';
+}): JSX.Element {
+  const expandGlyph = props.side === 'left' ? '▶' : '◀';
+  const collapseGlyph = props.side === 'left' ? '◀' : '▶';
+  return (
+    <button
+      type="button"
+      aria-expanded={!props.collapsed}
+      onClick={props.onToggle}
+      title={props.collapsed ? props.expandLabel : props.collapseLabel}
+      className={`flex h-8 w-full shrink-0 items-center justify-between border-b border-white/10 bg-surface-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 hover:bg-surface-2 hover:text-neutral-200 ${
+        props.collapsed ? 'overflow-hidden' : ''
+      }`}
+    >
+      {!props.collapsed && <span>{props.label}</span>}
+      <span aria-hidden="true" className={props.collapsed ? 'mx-auto' : ''}>
+        {props.collapsed ? expandGlyph : collapseGlyph}
+      </span>
     </button>
   );
 }

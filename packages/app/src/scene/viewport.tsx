@@ -14,21 +14,28 @@ import {
   Line,
   LineBasicMaterial,
   LineSegments,
+  Mesh,
+  PCFSoftShadowMap,
   PerspectiveCamera,
+  PlaneGeometry,
   Raycaster,
   Scene,
+  ShadowMaterial,
   Sphere,
   TOUCH,
   Vector2,
   Vector3,
   WebGLRenderer,
+  type Object3D,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { colorHexToInt, sectionColor } from './section-colors.js';
+import { buildTubularTrackMesh, type BuiltTrackMesh } from './track-mesh.js';
 import { createViewCube, type ViewCube, type ViewCubeLabels } from './view-cube.js';
 
 export type CameraMode = 'orbit' | 'pov';
+export type RenderStyle = 'ribbon' | 'tubular';
 
 export interface ViewportProps {
   readonly tracks: readonly TrackStream[];
@@ -56,6 +63,13 @@ export interface ViewportProps {
   /** Called when the user clicks a rail in the 3D view. `null` means the
    *  click hit empty space (and should clear selection). */
   readonly onSelectSection?: (index: number | null) => void;
+  /** 'tubular' (default) renders the M7 mesh pipeline; 'ribbon' keeps the
+   *  fast three-line debug overlay — useful for long tracks or when the
+   *  mesh profile hides banking you want to see. */
+  readonly renderStyle?: RenderStyle;
+  /** Called when the user clicks the cube's Home button. App wires this
+   *  to `requestResetView` so the camera returns to the default pose. */
+  readonly onHome?: () => void;
 }
 
 interface CameraTween {
@@ -68,10 +82,11 @@ interface CameraTween {
   readonly durationMs: number;
 }
 
-interface PickableRail {
-  /** Index into the Track.sections array this rail belongs to. */
+interface Pickable {
+  /** Index into the Track.sections array this pickable belongs to. */
   readonly sectionIndex: number;
-  readonly line: Line;
+  /** Line for ribbon mode, Mesh for tubular mode. */
+  readonly obj: Object3D;
 }
 
 interface SceneRefs {
@@ -80,9 +95,11 @@ interface SceneRefs {
   camera: PerspectiveCamera;
   controls: OrbitControls;
   lines: Line[];
-  /** Subset of `lines` that participate in click-to-select picking, tagged
-   *  with the section they represent. */
-  pickableRails: PickableRail[];
+  /** Tubular-style mesh (when active). Disposed on rebuild / style change. */
+  builtMesh: BuiltTrackMesh | null;
+  /** Section-tagged Objects for click-to-select raycasting. Populated by
+   *  whichever render style is currently active. */
+  pickables: Pickable[];
   ro: ResizeObserver;
   frame: number;
   /** Identity of the track bound last (by reference). Reset to reframe. */
@@ -127,14 +144,19 @@ function hasWebGL(): boolean {
   }
 }
 
-function disposeLines(state: SceneRefs): void {
+function disposeTrackGeometry(state: SceneRefs): void {
   for (const line of state.lines) {
     state.scene.remove(line);
     line.geometry.dispose();
     (line.material as LineBasicMaterial).dispose();
   }
   state.lines = [];
-  state.pickableRails = [];
+  if (state.builtMesh) {
+    state.scene.remove(state.builtMesh.group);
+    state.builtMesh.dispose();
+    state.builtMesh = null;
+  }
+  state.pickables = [];
 }
 
 const frameBox = new Box3();
@@ -278,6 +300,48 @@ function rotateAroundViewDir(state: SceneRefs, dir: 1 | -1): void {
   state.controls.update();
 }
 
+/** Tilts the camera `angleRad` around an axis derived from the current view:
+ *  - 'up' / 'down' → rotate around the camera-right axis (tilts vertically).
+ *  - 'left' / 'right' → rotate around the world-up axis (orbits around
+ *    target horizontally).
+ *  Distance preserved; goes through a 400 ms tween.
+ */
+function startTiltTween(
+  state: SceneRefs,
+  direction: 'up' | 'down' | 'left' | 'right',
+  angleRad: number,
+): void {
+  const target = state.controls.target;
+  const fromPos = state.camera.position.clone();
+  const offset = new Vector3().subVectors(fromPos, target);
+  const distance = offset.length();
+  if (distance < 1e-6) return;
+  const forward = offset.clone().multiplyScalar(-1 / distance);
+  const right = new Vector3().crossVectors(forward, state.camera.up).normalize();
+
+  let axis: Vector3;
+  let sign: number;
+  if (direction === 'up' || direction === 'down') {
+    axis = right;
+    sign = direction === 'up' ? -1 : 1;
+  } else {
+    // Orbit around world-up for horizontal tilts — feels more natural than
+    // orbiting around the camera-local up axis.
+    axis = new Vector3(0, 1, 0);
+    sign = direction === 'right' ? -1 : 1;
+  }
+  const rotated = offset.clone().applyAxisAngle(axis, sign * angleRad);
+  const toPos = rotated.add(target);
+  state.tween = {
+    fromPos,
+    fromUp: state.camera.up.clone(),
+    toPos,
+    toUp: state.camera.up.clone(),
+    startMs: performance.now(),
+    durationMs: CUBE_TWEEN_MS,
+  };
+}
+
 /** Runs of same-section-index node ranges as half-open [start, endExclusive]. */
 interface SectionRun {
   readonly sectionIndex: number;
@@ -310,6 +374,92 @@ function brighten(hex: number, mul: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+/** Builds the tubular mesh, adds it to the scene, and records pickables. */
+function buildTubularScene(
+  state: SceneRefs,
+  track: TrackStream,
+  sectionColors: readonly string[] | undefined,
+  selectedIndex: number | null,
+): void {
+  const built = buildTubularTrackMesh(track, sectionColors, selectedIndex);
+  state.scene.add(built.group);
+  state.builtMesh = built;
+  for (const p of built.pickables) {
+    state.pickables.push({ sectionIndex: p.sectionIndex, obj: p.mesh });
+  }
+}
+
+/** Builds the fast ribbon overlay (three lines per section) — kept as an
+ *  optional debug/overview style after the tubular mesh landed at M7. */
+function buildRibbonScene(
+  state: SceneRefs,
+  track: TrackStream,
+  sectionColors: readonly string[] | undefined,
+  selectedIndex: number | null,
+): void {
+  const n = track.nodeCount;
+  const railLeft = new Float32Array(n * 3);
+  const railRight = new Float32Array(n * 3);
+  for (let i = 0; i < n; i += 1) {
+    const px = track.positions[i * 3]!;
+    const py = track.positions[i * 3 + 1]!;
+    const pz = track.positions[i * 3 + 2]!;
+    const lx = track.lateralAxis[i * 3]!;
+    const ly = track.lateralAxis[i * 3 + 1]!;
+    const lz = track.lateralAxis[i * 3 + 2]!;
+    railLeft[i * 3] = px - lx * RAIL_HALF_WIDTH;
+    railLeft[i * 3 + 1] = py - ly * RAIL_HALF_WIDTH;
+    railLeft[i * 3 + 2] = pz - lz * RAIL_HALF_WIDTH;
+    railRight[i * 3] = px + lx * RAIL_HALF_WIDTH;
+    railRight[i * 3 + 1] = py + ly * RAIL_HALF_WIDTH;
+    railRight[i * 3 + 2] = pz + lz * RAIL_HALF_WIDTH;
+  }
+
+  const centreGeom = new BufferGeometry();
+  centreGeom.setAttribute('position', new BufferAttribute(track.positions, 3));
+  centreGeom.setDrawRange(0, n);
+  const centre = new Line(
+    centreGeom,
+    new LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.4 }),
+  );
+  state.scene.add(centre);
+  state.lines.push(centre);
+
+  const runs = computeSectionRuns(track.sectionIndex, n);
+  for (const run of runs) {
+    const baseHex = colorHexToInt(
+      sectionColors?.[run.sectionIndex] ?? sectionColor(run.sectionIndex),
+    );
+    const isSelected = run.sectionIndex === selectedIndex;
+    const hex = isSelected ? brighten(baseHex, HIGHLIGHT_MULTIPLIER) : baseHex;
+    const width = isSelected ? 2 : 1;
+
+    for (const vertices of [railLeft, railRight]) {
+      const geom = new BufferGeometry();
+      geom.setAttribute('position', new BufferAttribute(vertices, 3));
+      geom.setDrawRange(run.start, run.endExclusive - run.start);
+      const mat = new LineBasicMaterial({ color: hex, linewidth: width });
+      const line = new Line(geom, mat);
+      state.scene.add(line);
+      state.lines.push(line);
+      state.pickables.push({ sectionIndex: run.sectionIndex, obj: line });
+    }
+  }
+
+  const ties: number[] = [];
+  for (let i = 0; i < n; i += CROSSTIE_EVERY_N_NODES) {
+    ties.push(railLeft[i * 3]!, railLeft[i * 3 + 1]!, railLeft[i * 3 + 2]!);
+    ties.push(railRight[i * 3]!, railRight[i * 3 + 1]!, railRight[i * 3 + 2]!);
+  }
+  if (ties.length > 0) {
+    const tiesGeom = new BufferGeometry();
+    tiesGeom.setAttribute('position', new BufferAttribute(new Float32Array(ties), 3));
+    const tiesLine = new LineSegments(tiesGeom, new LineBasicMaterial({ color: 0x666666 }));
+    state.scene.add(tiesLine);
+    state.lines.push(tiesLine as unknown as Line);
+  }
+}
+
 export function Viewport({
   tracks,
   sectionColors,
@@ -319,6 +469,8 @@ export function Viewport({
   resetEpoch,
   cubeLabels,
   onSelectSection,
+  renderStyle,
+  onHome,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
@@ -341,6 +493,8 @@ export function Viewport({
     const renderer = new WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(host.clientWidth, host.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
     host.append(renderer.domElement);
 
     const scene = new Scene();
@@ -349,15 +503,29 @@ export function Viewport({
     const grid = new GridHelper(200, 40, 0x333333, 0x222222);
     scene.add(grid);
 
-    // World axes — R = +X (forward), G = +Y (up), B = +Z (right). 5 m long
-    // so the colours register at default zoom. Placed at the world origin.
-    // A proper draggable ViewCube/gizmo is deferred to M7 (spec §20b).
+    // A wide invisible plane that only renders cast shadows. Keeps the
+    // grid visible (no solid ground competing for attention) while giving
+    // the rail/crosstie meshes somewhere to project their shadows.
+    const ground = new Mesh(new PlaneGeometry(500, 500), new ShadowMaterial({ opacity: 0.35 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
     const axes = new AxesHelper(5);
     scene.add(axes);
 
-    scene.add(new AmbientLight(0xffffff, 0.6));
-    const dir = new DirectionalLight(0xffffff, 0.7);
-    dir.position.set(10, 20, 15);
+    scene.add(new AmbientLight(0xffffff, 0.55));
+    const dir = new DirectionalLight(0xffffff, 0.95);
+    dir.position.set(40, 80, 30);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.camera.left = -80;
+    dir.shadow.camera.right = 80;
+    dir.shadow.camera.top = 80;
+    dir.shadow.camera.bottom = -80;
+    dir.shadow.camera.near = 1;
+    dir.shadow.camera.far = 300;
+    dir.shadow.bias = -0.0005;
     scene.add(dir);
 
     const camera = new PerspectiveCamera(50, host.clientWidth / host.clientHeight, 0.1, 2000);
@@ -379,7 +547,8 @@ export function Viewport({
       camera,
       controls,
       lines: [],
-      pickableRails: [],
+      builtMesh: null,
+      pickables: [],
       frame: 0,
       framedTrack: null,
       cameraMode: 'orbit',
@@ -430,19 +599,20 @@ export function Viewport({
       }
       if (state.cube.hitTestRect(pxX, pxY, hostW, hostH)) return;
 
-      // 2. Otherwise, raycast rails in the main scene.
+      // 2. Otherwise, raycast whichever geometry is currently active
+      //    (tubular meshes or ribbon lines).
       const ndc = new Vector2((pxX / hostW) * 2 - 1, -((pxY / hostH) * 2 - 1));
       const raycaster = new Raycaster();
       raycaster.params.Line = { threshold: 0.4 };
       raycaster.setFromCamera(ndc, state.camera);
-      const railLines = state.pickableRails.map((p) => p.line);
-      const hits = raycaster.intersectObjects(railLines, false);
+      const pickObjects = state.pickables.map((p) => p.obj);
+      const hits = raycaster.intersectObjects(pickObjects, false);
       const first = hits[0];
       if (!first) {
         onSelectRef.current?.(null);
         return;
       }
-      const pickable = state.pickableRails.find((p) => p.line === first.object);
+      const pickable = state.pickables.find((p) => p.obj === first.object);
       if (pickable) onSelectRef.current?.(pickable.sectionIndex);
     };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -484,7 +654,7 @@ export function Viewport({
       state.controls.dispose();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
-      disposeLines(state);
+      disposeTrackGeometry(state);
       state.cube.dispose();
       renderer.dispose();
       renderer.domElement.remove();
@@ -535,7 +705,7 @@ export function Viewport({
     const state = refs.current;
     if (!state) return;
 
-    disposeLines(state);
+    disposeTrackGeometry(state);
 
     if (tracks.length === 0) {
       state.framedTrack = null;
@@ -557,76 +727,13 @@ export function Viewport({
     }
     state.framedTrack = first;
 
-    const n = first.nodeCount;
-
-    // Pre-compute rail vertex streams once; per-section runs each take a
-    // slice of these buffers via setDrawRange.
-    const railLeft = new Float32Array(n * 3);
-    const railRight = new Float32Array(n * 3);
-    for (let i = 0; i < n; i += 1) {
-      const px = first.positions[i * 3]!;
-      const py = first.positions[i * 3 + 1]!;
-      const pz = first.positions[i * 3 + 2]!;
-      const lx = first.lateralAxis[i * 3]!;
-      const ly = first.lateralAxis[i * 3 + 1]!;
-      const lz = first.lateralAxis[i * 3 + 2]!;
-      railLeft[i * 3] = px - lx * RAIL_HALF_WIDTH;
-      railLeft[i * 3 + 1] = py - ly * RAIL_HALF_WIDTH;
-      railLeft[i * 3 + 2] = pz - lz * RAIL_HALF_WIDTH;
-      railRight[i * 3] = px + lx * RAIL_HALF_WIDTH;
-      railRight[i * 3 + 1] = py + ly * RAIL_HALF_WIDTH;
-      railRight[i * 3 + 2] = pz + lz * RAIL_HALF_WIDTH;
+    const style: RenderStyle = renderStyle ?? 'tubular';
+    if (style === 'tubular') {
+      buildTubularScene(state, first, sectionColors, selectedSectionIndex ?? null);
+    } else {
+      buildRibbonScene(state, first, sectionColors, selectedSectionIndex ?? null);
     }
-
-    // Centreline: translucent grey so it doesn't fight with colored rails.
-    const centreGeom = new BufferGeometry();
-    centreGeom.setAttribute('position', new BufferAttribute(first.positions, 3));
-    centreGeom.setDrawRange(0, n);
-    const centre = new Line(
-      centreGeom,
-      new LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.4 }),
-    );
-    state.scene.add(centre);
-    state.lines.push(centre);
-
-    // One pair of rail lines per section run. Using shared BufferGeometries
-    // and setDrawRange on copies would require per-material reuse — simpler
-    // to clone per run; 50-section tracks are still cheap.
-    const runs = computeSectionRuns(first.sectionIndex, n);
-    for (const run of runs) {
-      const baseHex = colorHexToInt(
-        sectionColors?.[run.sectionIndex] ?? sectionColor(run.sectionIndex),
-      );
-      const isSelected = run.sectionIndex === selectedSectionIndex;
-      const hex = isSelected ? brighten(baseHex, HIGHLIGHT_MULTIPLIER) : baseHex;
-      const width = isSelected ? 2 : 1;
-
-      for (const vertices of [railLeft, railRight]) {
-        const geom = new BufferGeometry();
-        geom.setAttribute('position', new BufferAttribute(vertices, 3));
-        geom.setDrawRange(run.start, run.endExclusive - run.start);
-        const mat = new LineBasicMaterial({ color: hex, linewidth: width });
-        const line = new Line(geom, mat);
-        state.scene.add(line);
-        state.lines.push(line);
-        state.pickableRails.push({ sectionIndex: run.sectionIndex, line });
-      }
-    }
-
-    // Cross-ties.
-    const ties: number[] = [];
-    for (let i = 0; i < n; i += CROSSTIE_EVERY_N_NODES) {
-      ties.push(railLeft[i * 3]!, railLeft[i * 3 + 1]!, railLeft[i * 3 + 2]!);
-      ties.push(railRight[i * 3]!, railRight[i * 3 + 1]!, railRight[i * 3 + 2]!);
-    }
-    if (ties.length > 0) {
-      const tiesGeom = new BufferGeometry();
-      tiesGeom.setAttribute('position', new BufferAttribute(new Float32Array(ties), 3));
-      const tiesLine = new LineSegments(tiesGeom, new LineBasicMaterial({ color: 0x666666 }));
-      state.scene.add(tiesLine);
-      state.lines.push(tiesLine as unknown as Line);
-    }
-  }, [tracks, sectionColors, selectedSectionIndex]);
+  }, [tracks, sectionColors, selectedSectionIndex, renderStyle]);
 
   if (!webglSupported) {
     return (
@@ -644,9 +751,21 @@ export function Viewport({
     const state = refs.current;
     if (state) rotateAroundViewDir(state, dir);
   };
+  const tilt = (direction: 'up' | 'down' | 'left' | 'right'): void => {
+    const state = refs.current;
+    if (state) startTiltTween(state, direction, Math.PI / 4);
+  };
+  const goHome = (): void => onHome?.();
 
   const cubeHidden = cameraMode === 'pov';
   const labels = cubeLabels ?? DEFAULT_CUBE_LABELS;
+
+  // The cube occupies 120×120 at right:12 top:12. We reserve a 200×200
+  // transparent overlay around it for the arrow ring + home button.
+  const RING_SIZE = 200;
+  const CUBE_SIZE = 120;
+  const CUBE_MARGIN = 12; // matches SIZE_PX / MARGIN_PX in view-cube.ts
+  const RING_OFFSET = (RING_SIZE - CUBE_SIZE) / 2; // 40 px gutter on each side
 
   return (
     <div
@@ -656,33 +775,93 @@ export function Viewport({
       className="relative h-full w-full select-none bg-surface-0"
       style={{ touchAction: 'none' }}
     >
-      {/* Rotation-arrow buttons anchored to the ViewCube's overlay rectangle.
-          The cube itself is drawn by WebGL in the scissored region; these
-          arrows sit just outside it so they don't occlude the cube. */}
+      {/* FreeCAD-style cube widget: the WebGL-drawn cube lives inside this
+          rect (via scissor in the render loop); the DOM buttons here sit
+          on top of the canvas, outside the cube, and don't block cube
+          clicks because they're positioned beyond its 120×120 region. */}
       {!cubeHidden && (
         <div
           aria-hidden="false"
-          className="pointer-events-none absolute right-[12px] top-[12px] z-10"
-          style={{ width: 110, height: 110 }}
+          className="pointer-events-none absolute z-10"
+          style={{
+            width: RING_SIZE,
+            height: RING_SIZE,
+            top: CUBE_MARGIN - RING_OFFSET,
+            right: CUBE_MARGIN - RING_OFFSET,
+          }}
         >
-          <button
-            type="button"
-            aria-label={labels.rotateCcw ?? 'Rotate counter-clockwise'}
+          {/* Four tilt-triangle arrows on each side of the cube, pointing
+              outward from the cube centre. Each tilts the camera 45° toward
+              the adjacent face. */}
+          <ArrowButton
+            glyph="▲"
+            label={labels.tiltUp ?? 'Tilt up'}
+            style={{ top: 2, left: '50%', transform: 'translate(-50%, 0)' }}
+            onClick={() => tilt('up')}
+          />
+          <ArrowButton
+            glyph="▼"
+            label={labels.tiltDown ?? 'Tilt down'}
+            style={{ bottom: 2, left: '50%', transform: 'translate(-50%, 0)' }}
+            onClick={() => tilt('down')}
+          />
+          <ArrowButton
+            glyph="◀"
+            label={labels.tiltLeft ?? 'Tilt left'}
+            style={{ left: 2, top: '50%', transform: 'translate(0, -50%)' }}
+            onClick={() => tilt('left')}
+          />
+          <ArrowButton
+            glyph="▶"
+            label={labels.tiltRight ?? 'Tilt right'}
+            style={{ right: 2, top: '50%', transform: 'translate(0, -50%)' }}
+            onClick={() => tilt('right')}
+          />
+          {/* Curved rotation arrows in the top-left and top-right of the
+              ring — rotate the current view 90° around the forward axis,
+              FreeCAD-style. */}
+          <ArrowButton
+            glyph="↺"
+            label={labels.rotateCcw ?? 'Rotate counter-clockwise'}
+            style={{ top: 14, left: 14 }}
             onClick={() => rotate(-1)}
-            className="pointer-events-auto absolute left-[-18px] top-[42px] flex h-6 w-5 items-center justify-center rounded bg-surface-2/90 text-xs text-neutral-200 shadow hover:bg-surface-2 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
-          >
-            ⟲
-          </button>
-          <button
-            type="button"
-            aria-label={labels.rotateCw ?? 'Rotate clockwise'}
+          />
+          <ArrowButton
+            glyph="↻"
+            label={labels.rotateCw ?? 'Rotate clockwise'}
+            style={{ top: 14, right: 14 }}
             onClick={() => rotate(1)}
-            className="pointer-events-auto absolute right-[-18px] top-[42px] flex h-6 w-5 items-center justify-center rounded bg-surface-2/90 text-xs text-neutral-200 shadow hover:bg-surface-2 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
-          >
-            ⟳
-          </button>
+          />
+          {/* Home button in the bottom-right corner of the ring. Returns
+              the camera to the default orbit pose. */}
+          <ArrowButton
+            glyph="⌂"
+            label={labels.home ?? 'Home view'}
+            style={{ bottom: 14, right: 14 }}
+            onClick={goHome}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+interface ArrowButtonProps {
+  readonly glyph: string;
+  readonly label: string;
+  readonly style: React.CSSProperties;
+  readonly onClick: () => void;
+}
+function ArrowButton({ glyph, label, style, onClick }: ArrowButtonProps): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="pointer-events-auto absolute flex h-6 w-6 items-center justify-center rounded text-sm text-neutral-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
+      style={style}
+    >
+      {glyph}
+    </button>
   );
 }

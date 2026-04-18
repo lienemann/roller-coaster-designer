@@ -82,6 +82,8 @@
     "pov": "POV",
     "fit": "Fit",
     "reset": "Reset",
+    "styleTubular": "Tubular",
+    "styleRibbon": "Ribbon",
     "cube": {
       "top": "Top",
       "bottom": "Bottom",
@@ -90,7 +92,12 @@
       "left": "Left",
       "right": "Right",
       "rotateCw": "Rotate view clockwise",
-      "rotateCcw": "Rotate view counter-clockwise"
+      "rotateCcw": "Rotate view counter-clockwise",
+      "tiltUp": "Tilt view up",
+      "tiltDown": "Tilt view down",
+      "tiltLeft": "Rotate view left",
+      "tiltRight": "Rotate view right",
+      "home": "Home view"
     }
   },
   "graphs": {
