@@ -84,6 +84,8 @@
     "reset": "Reset",
     "styleTubular": "Tubular",
     "styleRibbon": "Ribbon",
+    "persp": "Perspective",
+    "ortho": "Ortho",
     "cube": {
       "top": "Top",
       "bottom": "Bottom",

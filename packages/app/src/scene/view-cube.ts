@@ -14,6 +14,7 @@ import {
   Scene,
   Vector2,
   Vector3,
+  type OrthographicCamera,
   type WebGLRenderer,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -81,7 +82,7 @@ export interface ViewCube {
   readonly scene: Scene;
   readonly camera: PerspectiveCamera;
   /** Sync cube orientation to reflect the main camera's view direction. */
-  syncToMainCamera(mainCam: PerspectiveCamera, target: Vector3): void;
+  syncToMainCamera(mainCam: PerspectiveCamera | OrthographicCamera, target: Vector3): void;
   /** Render the cube into the top-right corner of the main canvas. */
   render(renderer: WebGLRenderer, hostW: number, hostH: number): void;
   /**
@@ -172,7 +173,10 @@ export function createViewCube(labels: ViewCubeLabels): ViewCube {
   const pickCube = new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial({ visible: false }));
   scene.add(pickCube);
 
-  function syncToMainCamera(mainCam: PerspectiveCamera, target: Vector3): void {
+  function syncToMainCamera(
+    mainCam: PerspectiveCamera | OrthographicCamera,
+    target: Vector3,
+  ): void {
     const dir = new Vector3().subVectors(mainCam.position, target);
     const len = dir.length();
     if (len < 1e-6) return;

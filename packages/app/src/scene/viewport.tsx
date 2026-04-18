@@ -15,6 +15,7 @@ import {
   LineBasicMaterial,
   LineSegments,
   Mesh,
+  OrthographicCamera,
   PCFSoftShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
@@ -36,6 +37,7 @@ import { createViewCube, type ViewCube, type ViewCubeLabels } from './view-cube.
 
 export type CameraMode = 'orbit' | 'pov';
 export type RenderStyle = 'ribbon' | 'tubular';
+export type Projection = 'perspective' | 'ortho';
 
 export interface ViewportProps {
   readonly tracks: readonly TrackStream[];
@@ -70,6 +72,10 @@ export interface ViewportProps {
   /** Called when the user clicks the cube's Home button. App wires this
    *  to `requestResetView` so the camera returns to the default pose. */
   readonly onHome?: () => void;
+  /** 'perspective' (default) keeps the current FOV-driven view; 'ortho'
+   *  switches to a blueprint-style parallel projection. POV mode always
+   *  stays perspective regardless of this prop. */
+  readonly projection?: Projection;
 }
 
 interface CameraTween {
@@ -92,7 +98,14 @@ interface Pickable {
 interface SceneRefs {
   renderer: WebGLRenderer;
   scene: Scene;
-  camera: PerspectiveCamera;
+  /** Active orbit-mode camera (perspective OR ortho depending on prop). */
+  camera: PerspectiveCamera | OrthographicCamera;
+  /** Persistent perspective camera. Always used in POV mode; used in orbit
+   *  mode when projection === 'perspective'. */
+  perspCamera: PerspectiveCamera;
+  /** Persistent orthographic camera. Used in orbit mode when projection
+   *  === 'ortho'. */
+  orthoCamera: OrthographicCamera;
   controls: OrbitControls;
   lines: Line[];
   /** Tubular-style mesh (when active). Disposed on rebuild / style change. */
@@ -165,9 +178,9 @@ const frameCentre = new Vector3();
 
 /**
  * Positions the orbit camera so the whole track is visible, then centres
- * OrbitControls on the track's bounding-sphere centre. The camera sits on
- * the +X+Y+Z octant at distance `radius / sin(fov/2) * 1.3` — the 1.3×
- * padding keeps the rails off the viewport edges.
+ * OrbitControls on the track's bounding-sphere centre. For perspective
+ * the distance is derived from the FOV; for ortho the frustum is sized
+ * directly to the bounding-sphere diameter.
  */
 function frameCamera(state: SceneRefs, track: TrackStream): void {
   const positions = track.positions;
@@ -184,19 +197,66 @@ function frameCamera(state: SceneRefs, track: TrackStream): void {
   const centre = frameSphere.center;
   const radius = Math.max(5, frameSphere.radius);
 
-  const fovRad = (state.camera.fov * Math.PI) / 180;
-  const distance = (radius / Math.sin(fovRad / 2)) * 1.3;
-
-  // Camera at 45° off the forward axis, slightly above, looking at the
-  // bounding-sphere centre. Matches the M2 default but scaled to fit.
+  // Pick the 45°/35° octant for a three-quarters home view.
   const dir = new Vector3(1, 0.55, 1).normalize();
-  state.camera.position.copy(centre).addScaledVector(dir, distance);
-  state.camera.lookAt(centre);
+
+  if (state.camera instanceof PerspectiveCamera) {
+    const fovRad = (state.camera.fov * Math.PI) / 180;
+    const distance = (radius / Math.sin(fovRad / 2)) * 1.3;
+    state.camera.position.copy(centre).addScaledVector(dir, distance);
+    state.camera.lookAt(centre);
+    state.controls.minDistance = radius * 0.05;
+    state.controls.maxDistance = distance * 4;
+  } else {
+    // Ortho: place the camera far enough that the track is never behind
+    // the near plane, and size the frustum to the bounding-sphere
+    // diameter with a 1.3× pad. OrbitControls zoom adjusts .zoom, which
+    // we initialise to 1.
+    const distance = radius * 10;
+    state.camera.position.copy(centre).addScaledVector(dir, distance);
+    state.camera.lookAt(centre);
+    const halfH = radius * 1.3;
+    const rect = state.renderer.domElement;
+    const aspect = rect.clientWidth / Math.max(1, rect.clientHeight);
+    state.camera.top = halfH;
+    state.camera.bottom = -halfH;
+    state.camera.left = -halfH * aspect;
+    state.camera.right = halfH * aspect;
+    state.camera.zoom = 1;
+    state.camera.updateProjectionMatrix();
+    state.controls.minDistance = distance * 0.1;
+    state.controls.maxDistance = distance * 4;
+  }
   state.controls.target.copy(centre);
-  // Give OrbitControls enough zoom range to frame both close-ups and
-  // the whole track.
-  state.controls.minDistance = radius * 0.05;
-  state.controls.maxDistance = distance * 4;
+  state.controls.update();
+}
+
+/** Swaps the active orbit camera between perspective and ortho. Copies
+ *  position/up from the outgoing camera so the viewpoint stays put, then
+ *  re-binds OrbitControls to the new camera. */
+function switchProjection(state: SceneRefs, target: Projection): void {
+  const next: PerspectiveCamera | OrthographicCamera =
+    target === 'ortho' ? state.orthoCamera : state.perspCamera;
+  if (state.camera === next) return;
+  next.position.copy(state.camera.position);
+  next.up.copy(state.camera.up);
+  next.lookAt(state.controls.target);
+  if (next instanceof OrthographicCamera) {
+    // Match the visible area at the target plane: halfH ≈ distance *
+    // tan(perspFov/2). Use state.perspCamera's fov as the reference.
+    const dist = next.position.distanceTo(state.controls.target);
+    const halfH = dist * Math.tan((state.perspCamera.fov * Math.PI) / 360);
+    const rect = state.renderer.domElement;
+    const aspect = rect.clientWidth / Math.max(1, rect.clientHeight);
+    next.top = halfH;
+    next.bottom = -halfH;
+    next.left = -halfH * aspect;
+    next.right = halfH * aspect;
+    next.zoom = 1;
+    next.updateProjectionMatrix();
+  }
+  state.camera = next;
+  state.controls.object = next;
   state.controls.update();
 }
 
@@ -471,6 +531,7 @@ export function Viewport({
   onSelectSection,
   renderStyle,
   onHome,
+  projection,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
@@ -528,9 +589,27 @@ export function Viewport({
     dir.shadow.bias = -0.0005;
     scene.add(dir);
 
-    const camera = new PerspectiveCamera(50, host.clientWidth / host.clientHeight, 0.1, 2000);
-    camera.position.set(30, 20, 30);
-    camera.lookAt(0, 5, 0);
+    const perspCamera = new PerspectiveCamera(50, host.clientWidth / host.clientHeight, 0.1, 2000);
+    perspCamera.position.set(30, 20, 30);
+    perspCamera.lookAt(0, 5, 0);
+    // Initial ortho frustum matches the perspective view at z ≈ target
+    // plane; ResizeObserver and frameCamera re-derive exact bounds from
+    // the current track size.
+    const orthoAspect = host.clientWidth / Math.max(1, host.clientHeight);
+    const orthoHalf = 25; // default visible half-height in world units
+    const orthoCamera = new OrthographicCamera(
+      -orthoHalf * orthoAspect,
+      orthoHalf * orthoAspect,
+      orthoHalf,
+      -orthoHalf,
+      0.1,
+      2000,
+    );
+    orthoCamera.position.copy(perspCamera.position);
+    orthoCamera.up.copy(perspCamera.up);
+    orthoCamera.lookAt(0, 5, 0);
+
+    const camera: PerspectiveCamera | OrthographicCamera = perspCamera;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -545,6 +624,8 @@ export function Viewport({
       renderer,
       scene,
       camera,
+      perspCamera,
+      orthoCamera,
       controls,
       lines: [],
       builtMesh: null,
@@ -561,8 +642,15 @@ export function Viewport({
         const w = host.clientWidth;
         const h = host.clientHeight;
         renderer.setSize(w, h, false);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
+        perspCamera.aspect = w / Math.max(1, h);
+        perspCamera.updateProjectionMatrix();
+        // Preserve the ortho's current vertical half-size (top - bottom)
+        // while reshaping horizontally to match the new aspect.
+        const halfH = (orthoCamera.top - orthoCamera.bottom) / 2;
+        const aspect = w / Math.max(1, h);
+        orthoCamera.left = -halfH * aspect;
+        orthoCamera.right = halfH * aspect;
+        orthoCamera.updateProjectionMatrix();
       }),
     };
     state.ro.observe(host);
@@ -680,13 +768,25 @@ export function Viewport({
     state.cameraMode = next;
     state.controls.enabled = next === 'orbit';
     if (next === 'pov') {
+      // POV is always perspective — parallel projection first-person is
+      // confusing. Switch active camera for the duration of POV mode.
+      state.camera = state.perspCamera;
+      state.controls.object = state.perspCamera;
       state.povTime = 0;
-    } else if (tracks[0]) {
-      // Back to orbit: re-frame the track so the user isn't stuck at the last
-      // POV position.
-      frameCamera(state, tracks[0]);
+    } else {
+      // Return to whichever projection the user has selected in orbit.
+      switchProjection(state, projection === 'ortho' ? 'ortho' : 'perspective');
+      if (tracks[0]) frameCamera(state, tracks[0]);
     }
-  }, [cameraMode, tracks]);
+  }, [cameraMode, tracks, projection]);
+
+  // Switch projection on prop change (only meaningful in orbit mode).
+  useEffect(() => {
+    const state = refs.current;
+    if (!state) return;
+    if (state.cameraMode === 'pov') return; // POV stays perspective
+    switchProjection(state, projection === 'ortho' ? 'ortho' : 'perspective');
+  }, [projection]);
 
   // Imperative "reset view" — bumped by the App's Reset button. Re-runs the
   // full framing math so the user can bail out of a weird orbit.

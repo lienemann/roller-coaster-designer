@@ -7,7 +7,7 @@ import { ForcesGraph } from './graphs/forces-graph.js';
 import { PropertiesPanel } from './panels/properties-panel.js';
 import { SectionsPanel } from './panels/sections-panel.js';
 import { sectionColor } from './scene/section-colors.js';
-import { Viewport, type CameraMode, type RenderStyle } from './scene/viewport.js';
+import { Viewport, type CameraMode, type Projection, type RenderStyle } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
@@ -38,6 +38,7 @@ export function App(): JSX.Element {
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
   const [renderStyle, setRenderStyle] = useState<RenderStyle>('tubular');
+  const [projection, setProjection] = useState<Projection>('perspective');
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [sectionsCollapsed, setSectionsCollapsed] = useState(false);
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
@@ -120,6 +121,7 @@ export function App(): JSX.Element {
           onSelectSection={selectSection}
           renderStyle={renderStyle}
           onHome={requestResetView}
+          projection={projection}
         />
         {/* Toolbar lives top-LEFT so it doesn't fight the ViewCube in the
             top-right corner of the viewport. */}
@@ -149,6 +151,16 @@ export function App(): JSX.Element {
             active={renderStyle === 'ribbon'}
             onClick={() => setRenderStyle('ribbon')}
             label={t('viewport.styleRibbon')}
+          />
+          <CameraModeButton
+            active={projection === 'perspective'}
+            onClick={() => setProjection('perspective')}
+            label={t('viewport.persp')}
+          />
+          <CameraModeButton
+            active={projection === 'ortho'}
+            onClick={() => setProjection('ortho')}
+            label={t('viewport.ortho')}
           />
         </div>
       </>
