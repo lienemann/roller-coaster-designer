@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { type TrackStyle } from './enums.js';
 import { type Section } from './section.js';

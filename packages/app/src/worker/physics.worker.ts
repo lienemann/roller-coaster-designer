@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Worker entry point — Vite picks this up via the ?worker import suffix in
 // physics-client.ts and compiles it as a dedicated-worker module. The

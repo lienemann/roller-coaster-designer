@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { WebFvdError } from '@roller-coaster-designer/core';
 import { type TFunction } from 'i18next';
@@ -15,6 +15,7 @@ export function MenuBar(): JSX.Element {
   const newProject = useAppStore((s) => s.newProject);
   const loadProject = useAppStore((s) => s.loadProject);
   const markSaved = useAppStore((s) => s.markSaved);
+  const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
 
   const handleNew = useCallback(() => {
     newProject();
@@ -52,8 +53,18 @@ export function MenuBar(): JSX.Element {
     }
   }, [project, markSaved, t]);
 
+  const handleCloseTrack = useCallback(() => {
+    try {
+      closeCurrentTrack();
+    } catch (err) {
+      alert(translateError(err, t));
+    }
+  }, [closeCurrentTrack, t]);
+
   const fsaSupported = hasFileSystemAccess();
   const canSave = project !== null && (fsaSupported ? handle !== null : false);
+  const canCloseTrack =
+    project !== null && project.tracks.length > 0 && (project.tracks[0]?.sections.length ?? 0) >= 2;
 
   return (
     <nav aria-label={t('common:menu.file')} className="flex items-center gap-1 text-sm">
@@ -68,6 +79,10 @@ export function MenuBar(): JSX.Element {
       </MenuButton>
       <MenuButton onClick={handleSaveAs} disabled={project === null}>
         {t('common:menu.saveAs')}
+      </MenuButton>
+      <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+      <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
+        {t('common:menu.closeTrack')}
       </MenuButton>
     </nav>
   );

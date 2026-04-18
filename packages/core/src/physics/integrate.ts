@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { vec3 } from 'gl-matrix';
 
@@ -6,14 +6,26 @@ import { F_G, F_HZ, HEART_ENERGY_FACTOR } from '../model/constants.js';
 import { SecType } from '../model/enums.js';
 import { type Func } from '../model/function.js';
 import { allocateMNodeArrays, type MNodeArrays } from '../model/mnode.js';
-import { type AnchorSection, type Section, type StraightSection } from '../model/section.js';
+import {
+  type AnchorSection,
+  type BezierSection,
+  type Section,
+  type StraightSection,
+} from '../model/section.js';
 import { type Track } from '../model/track.js';
 
+import {
+  arcLengthToParameter,
+  cubicBezier,
+  cubicBezierDerivative,
+  sampleArcLengthTable,
+} from './bezier-math.js';
 import { getSubFuncValue } from './subfunc-eval.js';
 
-// M2 ships only Anchor + Straight. The other section types throw loudly so
-// an integrator bug can't hide behind "no output". Curved, Forced, Geometric,
-// Bezier land at M3–M5 (spec §5.1).
+// M2 ships Anchor, Straight, and a minimal Bezier. Curved, Forced, Geometric,
+// and the proper arc-length-reparameterized Bezier from spec §5 land at
+// M3–M5. Unimplemented section types throw loudly so integrator bugs can't
+// hide behind silent empty output.
 
 const DEFAULT_CAPACITY = 200_000;
 
@@ -57,6 +69,11 @@ function integrateSection(
         throw new Error('Straight section requires a prior Anchor.');
       }
       return integrateStraight(section, arrays, lastIdx, heart);
+    case SecType.Bezier:
+      if (lastIdx < 0) {
+        throw new Error('Bezier section requires a prior Anchor.');
+      }
+      return integrateBezier(section, arrays, lastIdx, heart);
     default:
       throw new Error(`Section type not yet implemented: ${SecType[section.type]}`);
   }
@@ -176,6 +193,96 @@ function integrateStraight(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
       forceNormal: projectGravity(norm),
       forceLateral: projectGravity(lat),
+    });
+  }
+  return idx;
+}
+
+// M2-quality Bezier integrator. Enough for the "close the track" visualisation:
+// tangent-continuous polyline following the curve, parallel-transported lat
+// axis plus the Roll function, energy conservation along y. NOT the FVD++
+// arc-length Newton reparameterisation from spec §5 — that port lands at M5.
+// Force columns are projected from gravity only; centripetal contribution is
+// the M4 integrator's job.
+const BEZIER_ARC_SAMPLES = 200;
+const bezierPos = vec3.create();
+const bezierTangent = vec3.create();
+const bezierLat = vec3.create();
+const bezierNorm = vec3.create();
+
+function integrateBezier(
+  section: BezierSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+): number {
+  const [p0, p1, p2, p3] = section.controlPoints;
+  const table = sampleArcLengthTable(p0, p1, p2, p3, BEZIER_ARC_SAMPLES);
+  const totalArc = table[table.length - 1]!;
+  if (totalArc <= 0) return lastIdx;
+
+  const dt = 1 / F_HZ;
+  let idx = lastIdx;
+  let sectionArc = 0;
+
+  while (sectionArc < totalArc && idx + 1 < arrays.capacity) {
+    const prevVel = arrays.vel[idx]!;
+    const step = prevVel * dt;
+    const clippedStep = Math.min(step, totalArc - sectionArc);
+    if (clippedStep <= 0) break;
+
+    idx += 1;
+    sectionArc += clippedStep;
+
+    const t = arcLengthToParameter(table, sectionArc);
+    cubicBezier(bezierPos, t, p0, p1, p2, p3);
+    cubicBezierDerivative(bezierTangent, t, p0, p1, p2, p3);
+    vec3.normalize(bezierTangent, bezierTangent);
+
+    // Parallel-transport the previous lat onto the plane perpendicular to the
+    // new tangent, then apply the roll function's delta. Spec §5 does the
+    // equivalent with a proper quaternion rotation between successive tangents;
+    // projection is good enough for the M2 viewport.
+    vec3.set(bezierLat, arrays.latX[idx - 1]!, arrays.latY[idx - 1]!, arrays.latZ[idx - 1]!);
+    const latDotDir = vec3.dot(bezierLat, bezierTangent);
+    bezierLat[0] -= latDotDir * bezierTangent[0];
+    bezierLat[1] -= latDotDir * bezierTangent[1];
+    bezierLat[2] -= latDotDir * bezierTangent[2];
+    if (vec3.squaredLength(bezierLat) < 1e-8) {
+      // Degenerate: old lat was nearly parallel to new tangent. Fall back to
+      // world-up-cross-tangent so the frame stays sane.
+      vec3.set(bezierLat, 0, 1, 0);
+      const k = vec3.dot(bezierLat, bezierTangent);
+      bezierLat[0] -= k * bezierTangent[0];
+      bezierLat[1] -= k * bezierTangent[1];
+      bezierLat[2] -= k * bezierTangent[2];
+    }
+    vec3.normalize(bezierLat, bezierLat);
+
+    const rollAbs = evalRoll(section.rollFunc, sectionArc);
+    const prevRoll = arrays.roll[idx - 1]!;
+    rotateAroundAxis(bezierLat, bezierLat, bezierTangent, rollAbs - prevRoll);
+    vec3.cross(bezierNorm, bezierLat, bezierTangent);
+
+    const energy = arrays.energy[idx - 1]!;
+    const yH = bezierPos[1] + bezierNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+
+    writeNode(arrays, idx, {
+      position: [bezierPos[0], bezierPos[1], bezierPos[2]],
+      dir: bezierTangent,
+      lat: bezierLat,
+      norm: bezierNorm,
+      roll: rollAbs,
+      vel,
+      energy,
+      distFromLast: clippedStep,
+      heartDistFromLast: clippedStep,
+      totalLength: arrays.totalLength[idx - 1]! + clippedStep,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
+      forceNormal: projectGravity(bezierNorm),
+      forceLateral: projectGravity(bezierLat),
     });
   }
   return idx;

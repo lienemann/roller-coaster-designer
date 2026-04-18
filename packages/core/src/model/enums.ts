@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Numeric values are the FVD++ 0.79 on-disk values. Keeping them exact means
 // the legacy .fvd reader/writer (M9) can write the integer tag straight

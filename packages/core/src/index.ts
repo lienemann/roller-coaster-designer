@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Package version surfaced to consumers (kept in sync with package.json by release tooling at M10).
 export const CORE_VERSION = '0.0.0';
@@ -14,4 +14,5 @@ export const PACKAGE_BOUNDARY = Object.freeze({
 export * from './errors.js';
 export * from './io/index.js';
 export * from './model/index.js';
+export * from './ops/index.js';
 export * from './physics/index.js';

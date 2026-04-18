@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Project, createEmptyProject } from '@roller-coaster-designer/core';
+import { type Project, closeTrack, createEmptyProject } from '@roller-coaster-designer/core';
 import { type TrackStream } from '@roller-coaster-designer/worker';
 import { create } from 'zustand';
 
@@ -38,6 +38,14 @@ export interface AppState {
   }) => void;
   readonly markSaved: (payload: { name: string; handle: OpaqueFileHandle | null }) => void;
   readonly markDirty: () => void;
+
+  /**
+   * Smoothly closes the first track in the loaded project by appending a
+   * tangent-continuous Bezier section from its current end pose back to the
+   * anchor. No-op when no project is loaded or the track has fewer than two
+   * sections.
+   */
+  readonly closeCurrentTrack: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -77,4 +85,19 @@ export const useAppStore = create<AppState>((set) => ({
       isDirty: false,
     }),
   markDirty: () => set({ isDirty: true }),
+
+  closeCurrentTrack: () =>
+    set((state) => {
+      if (!state.project || state.project.tracks.length === 0) return state;
+      const firstTrack = state.project.tracks[0]!;
+      const closedTrack = closeTrack(firstTrack);
+      if (closedTrack === firstTrack) return state;
+      return {
+        project: {
+          ...state.project,
+          tracks: [closedTrack, ...state.project.tracks.slice(1)],
+        },
+        isDirty: true,
+      };
+    }),
 }));

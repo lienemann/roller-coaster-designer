@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { type PhysicsWorkerApi } from '@roller-coaster-designer/worker';
 import { wrap, type Remote } from 'comlink';

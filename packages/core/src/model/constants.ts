@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Physical constants ported from FVD++ core. Changing any of these changes the
 // node stream bit-for-bit, which means goldens break and NL2 export diverges.

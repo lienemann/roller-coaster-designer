@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Core never throws raw strings. Every error it emits is a WebFvdError whose
 // `code` is a translation key the app layer looks up in the errors namespace

@@ -20,6 +20,7 @@
     "open": "Öffnen…",
     "save": "Speichern",
     "saveAs": "Speichern unter…",
-    "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“."
+    "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
+    "closeTrack": "Strecke schließen"
   }
 }

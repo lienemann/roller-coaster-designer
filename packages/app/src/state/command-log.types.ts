@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Skeleton for the undo/redo log per docs/webfvd-spec.md §9. M0 only declares

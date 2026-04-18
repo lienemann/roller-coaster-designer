@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Struct-of-arrays layout for the 1000 Hz node stream. Spec §4.2 is explicit:
 // one MNode per integration tick, ~60k nodes on a two-minute coaster. An

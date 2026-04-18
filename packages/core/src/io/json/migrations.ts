@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // File-format version. Bumped whenever a breaking change lands in the JSON
 // shape. Every older version needs a migration function below that rewrites
