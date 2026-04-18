@@ -27,8 +27,8 @@
   },
   "panels": {
     "sections": "Abschnitte",
-    "graphs": "Kräfte",
-    "propertiesTodo": "Eigenschaften-Panel kommt in M4."
+    "properties": "Eigenschaften",
+    "graphs": "Kräfte"
   },
   "sections": {
     "empty": "Noch keine Abschnitte. Starte mit „Neu“ oder „Demo laden“.",
@@ -37,10 +37,31 @@
     "addBezier": "Bezier",
     "remove": "Abschnitt entfernen"
   },
+  "properties": {
+    "empty": "Wähle einen Abschnitt aus, um seine Parameter zu bearbeiten.",
+    "name": "Name",
+    "position": "Position (m)",
+    "pitch": "Pitch",
+    "yaw": "Yaw",
+    "roll": "Roll",
+    "speed": "Geschwindigkeit",
+    "length": "Länge",
+    "pitchRate": "Pitch-Rate",
+    "yawRate": "Yaw-Rate",
+    "leadIn": "Einlauf",
+    "leadOut": "Auslauf",
+    "smoothStart": "Weicher Start-Tangens",
+    "smoothEnd": "Weicher End-Tangens",
+    "start": "(Start)",
+    "end": "(Ende)",
+    "nlCsvReadonly": "NoLimits-CSV-Abschnitte sind in M3 schreibgeschützt."
+  },
   "graphs": {
     "forceNormal": "Normal-g",
     "forceLateral": "Lateral-g",
+    "velocity": "Geschwindigkeit",
     "time": "Zeit (s)",
-    "force": "Kraft (g)"
+    "force": "Kraft (g)",
+    "velocityAxis": "Geschw. (m/s)"
   }
 }

@@ -7,7 +7,14 @@ import 'uplot/dist/uPlot.min.css';
 
 export interface ForcesGraphProps {
   readonly track: TrackStream | null;
-  readonly label: { forceNormal: string; forceLateral: string; time: string; force: string };
+  readonly label: {
+    forceNormal: string;
+    forceLateral: string;
+    velocity: string;
+    time: string;
+    force: string;
+    velocityAxis: string;
+  };
 }
 
 /**
@@ -34,27 +41,46 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
 
     if (!track || track.nodeCount < 2) return undefined;
 
+    // Two y-axes: forces on the left (g-units), velocity on the right (m/s).
+    // uPlot calls them "scales"; each series picks one by name.
     const opts: UPlotOptions = {
       width: host.clientWidth || 600,
       height: host.clientHeight || 160,
-      scales: { x: { time: false } },
+      scales: { x: { time: false }, g: {}, v: {} },
       axes: [
         { stroke: '#a3a3a3', grid: { stroke: '#262626' }, label: label.time },
-        { stroke: '#a3a3a3', grid: { stroke: '#262626' }, label: label.force },
+        { scale: 'g', stroke: '#a3a3a3', grid: { stroke: '#262626' }, label: label.force },
+        {
+          scale: 'v',
+          side: 1,
+          stroke: '#a3a3a3',
+          grid: { show: false },
+          label: label.velocityAxis,
+        },
       ],
       series: [
         { label: label.time, value: (_u, v) => (v == null ? '' : v.toFixed(2) + ' s') },
         {
           label: label.forceNormal,
+          scale: 'g',
           stroke: '#5cc8ff',
           width: 1.25,
           value: (_u, v) => (v == null ? '' : v.toFixed(2) + ' g'),
         },
         {
           label: label.forceLateral,
+          scale: 'g',
           stroke: '#ff9f5c',
           width: 1.25,
           value: (_u, v) => (v == null ? '' : v.toFixed(2) + ' g'),
+        },
+        {
+          label: label.velocity,
+          scale: 'v',
+          stroke: '#9ef1b9',
+          width: 1.25,
+          dash: [4, 3],
+          value: (_u, v) => (v == null ? '' : v.toFixed(1) + ' m/s'),
         },
       ],
       legend: { show: true, live: true },
@@ -65,7 +91,8 @@ export function ForcesGraph({ track, label }: ForcesGraphProps): JSX.Element {
     const x = Array.from(track.cumulativeTime);
     const n = Array.from(track.forceNormal);
     const l = Array.from(track.forceLateral);
-    const plot = new uPlot(opts, [x, n, l], host);
+    const v = Array.from(track.velocity);
+    const plot = new uPlot(opts, [x, n, l, v], host);
     plotRef.current = plot;
 
     const ro = new ResizeObserver(() => {

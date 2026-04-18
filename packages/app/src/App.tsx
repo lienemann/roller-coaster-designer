@@ -3,6 +3,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { ForcesGraph } from './graphs/forces-graph.js';
+import { PropertiesPanel } from './panels/properties-panel.js';
 import { SectionsPanel } from './panels/sections-panel.js';
 import { Viewport } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
@@ -69,10 +70,10 @@ export function App(): JSX.Element {
           )}
         </section>
         <aside
-          aria-label="properties-placeholder"
-          className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3 text-xs text-neutral-400"
+          aria-label={t('panels.properties')}
+          className="row-span-2 overflow-auto border-l border-white/10 bg-surface-1 p-3"
         >
-          {t('panels.propertiesTodo')}
+          <PropertiesPanel />
         </aside>
         <footer
           aria-label={t('panels.graphs')}
@@ -83,8 +84,10 @@ export function App(): JSX.Element {
             label={{
               forceNormal: t('graphs.forceNormal'),
               forceLateral: t('graphs.forceLateral'),
+              velocity: t('graphs.velocity'),
               time: t('graphs.time'),
               force: t('graphs.force'),
+              velocityAxis: t('graphs.velocityAxis'),
             }}
           />
         </footer>

@@ -27,8 +27,8 @@
   },
   "panels": {
     "sections": "Sections",
-    "graphs": "Forces",
-    "propertiesTodo": "Properties panel arrives at M4."
+    "properties": "Properties",
+    "graphs": "Forces"
   },
   "sections": {
     "empty": "No sections yet. Start with New or Load Demo.",
@@ -37,10 +37,31 @@
     "addBezier": "Bezier",
     "remove": "Remove section"
   },
+  "properties": {
+    "empty": "Select a section to edit its parameters.",
+    "name": "Name",
+    "position": "Position (m)",
+    "pitch": "Pitch",
+    "yaw": "Yaw",
+    "roll": "Roll",
+    "speed": "Speed",
+    "length": "Length",
+    "pitchRate": "Pitch rate",
+    "yawRate": "Yaw rate",
+    "leadIn": "Lead-in",
+    "leadOut": "Lead-out",
+    "smoothStart": "Smooth start tangent",
+    "smoothEnd": "Smooth end tangent",
+    "start": "(start)",
+    "end": "(end)",
+    "nlCsvReadonly": "NoLimits CSV sections are read-only in M3."
+  },
   "graphs": {
     "forceNormal": "Normal g",
     "forceLateral": "Lateral g",
+    "velocity": "Velocity",
     "time": "Time (s)",
-    "force": "Force (g)"
+    "force": "Force (g)",
+    "velocityAxis": "Velocity (m/s)"
   }
 }

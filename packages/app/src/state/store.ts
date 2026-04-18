@@ -57,11 +57,18 @@ export interface AppState {
   /** Smoothly close the first track with a Bezier back to the anchor. */
   readonly closeCurrentTrack: () => void;
 
-  /** Section editing on the first track. M4 adds a properties panel for tuning. */
+  /** Section editing on the first track. */
   readonly addStraightSection: () => void;
   readonly addCurvedSection: () => void;
   readonly addBezierSection: () => void;
   readonly removeSection: (index: number) => void;
+
+  /** Selection drives the properties panel. M4+ also drives viewport handles. */
+  readonly selectedSectionIndex: number | null;
+  readonly selectSection: (index: number | null) => void;
+
+  /** Shallow merge patch onto the selected section. */
+  readonly patchSelectedSection: (patch: Partial<Section>) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -85,6 +92,7 @@ export const useAppStore = create<AppState>((set) => ({
       projectHandle: null,
       isDirty: false,
       tracks: [],
+      selectedSectionIndex: null,
     }),
   loadDemoProject: () =>
     set({
@@ -93,6 +101,7 @@ export const useAppStore = create<AppState>((set) => ({
       projectHandle: null,
       isDirty: true,
       tracks: [],
+      selectedSectionIndex: null,
     }),
   loadProject: ({ project, name, handle }) =>
     set({
@@ -101,6 +110,7 @@ export const useAppStore = create<AppState>((set) => ({
       projectHandle: handle,
       isDirty: false,
       tracks: [],
+      selectedSectionIndex: null,
     }),
   markSaved: ({ name, handle }) =>
     set({
@@ -137,6 +147,37 @@ export const useAppStore = create<AppState>((set) => ({
       if (index >= track.sections.length) return state;
       const sections = [...track.sections];
       sections.splice(index, 1);
+      const nextSelected =
+        state.selectedSectionIndex === index
+          ? null
+          : state.selectedSectionIndex !== null && state.selectedSectionIndex > index
+            ? state.selectedSectionIndex - 1
+            : state.selectedSectionIndex;
+      return {
+        project: {
+          ...state.project,
+          tracks: [{ ...track, sections }, ...state.project.tracks.slice(1)],
+        },
+        isDirty: true,
+        selectedSectionIndex: nextSelected,
+      };
+    }),
+
+  selectedSectionIndex: null,
+  selectSection: (index) => set({ selectedSectionIndex: index }),
+  patchSelectedSection: (patch) =>
+    set((state) => {
+      if (!state.project || state.project.tracks.length === 0) return state;
+      const idx = state.selectedSectionIndex;
+      if (idx === null) return state;
+      const track = state.project.tracks[0]!;
+      const current = track.sections[idx];
+      if (!current) return state;
+      // The patch must preserve the discriminant; Partial<Section> wouldn't
+      // permit a type swap anyway because it's still a discriminated union.
+      const merged = { ...current, ...patch } as Section;
+      const sections = [...track.sections];
+      sections[idx] = merged;
       return {
         project: {
           ...state.project,
@@ -153,12 +194,15 @@ function appendSection(state: AppState, section: Section): Partial<AppState> {
   if (!state.project) return state;
   const tracks = state.project.tracks.length === 0 ? [makeStarterTrack()] : state.project.tracks;
   const first = tracks[0]!;
+  const nextSections = [...first.sections, section];
   return {
     project: {
       ...state.project,
-      tracks: [{ ...first, sections: [...first.sections, section] }, ...tracks.slice(1)],
+      tracks: [{ ...first, sections: nextSections }, ...tracks.slice(1)],
     },
     isDirty: true,
+    // Autofocus the new section so the properties panel opens on it.
+    selectedSectionIndex: nextSections.length - 1,
   };
 }
 
