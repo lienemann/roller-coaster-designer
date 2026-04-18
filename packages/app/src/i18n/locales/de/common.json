@@ -81,7 +81,17 @@
     "orbit": "Orbit",
     "pov": "POV",
     "fit": "Einpassen",
-    "reset": "Zurücksetzen"
+    "reset": "Zurücksetzen",
+    "cube": {
+      "top": "Oben",
+      "bottom": "Unten",
+      "front": "Vorne",
+      "back": "Hinten",
+      "left": "Links",
+      "right": "Rechts",
+      "rotateCw": "Ansicht im Uhrzeigersinn drehen",
+      "rotateCcw": "Ansicht gegen den Uhrzeigersinn drehen"
+    }
   },
   "graphs": {
     "forceNormal": "Normal-g",

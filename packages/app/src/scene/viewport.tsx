@@ -15,15 +15,18 @@ import {
   LineBasicMaterial,
   LineSegments,
   PerspectiveCamera,
+  Raycaster,
   Scene,
   Sphere,
   TOUCH,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { colorHexToInt, sectionColor } from './section-colors.js';
+import { createViewCube, type ViewCube, type ViewCubeLabels } from './view-cube.js';
 
 export type CameraMode = 'orbit' | 'pov';
 
@@ -48,6 +51,27 @@ export interface ViewportProps {
   readonly fitEpoch?: number;
   /** Incrementing epoch — resets camera to the default angle on change. */
   readonly resetEpoch?: number;
+  /** Localized labels for the ViewCube faces. */
+  readonly cubeLabels?: ViewCubeLabels;
+  /** Called when the user clicks a rail in the 3D view. `null` means the
+   *  click hit empty space (and should clear selection). */
+  readonly onSelectSection?: (index: number | null) => void;
+}
+
+interface CameraTween {
+  readonly fromPos: Vector3;
+  readonly fromUp: Vector3;
+  readonly toPos: Vector3;
+  readonly toUp: Vector3;
+  /** Performance-clock start (ms) and duration (ms). */
+  readonly startMs: number;
+  readonly durationMs: number;
+}
+
+interface PickableRail {
+  /** Index into the Track.sections array this rail belongs to. */
+  readonly sectionIndex: number;
+  readonly line: Line;
 }
 
 interface SceneRefs {
@@ -56,6 +80,9 @@ interface SceneRefs {
   camera: PerspectiveCamera;
   controls: OrbitControls;
   lines: Line[];
+  /** Subset of `lines` that participate in click-to-select picking, tagged
+   *  with the section they represent. */
+  pickableRails: PickableRail[];
   ro: ResizeObserver;
   frame: number;
   /** Identity of the track bound last (by reference). Reset to reframe. */
@@ -66,11 +93,29 @@ interface SceneRefs {
   povTime: number;
   /** Last animation-frame timestamp, for dt. */
   lastFrameMs: number;
+  cube: ViewCube;
+  /** Active tween (if any) for ViewCube-driven camera snapping. */
+  tween: CameraTween | null;
+  /** Where pointerdown started, for distinguishing click from orbit-drag. */
+  pointerDown: { x: number; y: number; time: number } | null;
 }
 
 const RAIL_HALF_WIDTH = 0.3;
 const CROSSTIE_EVERY_N_NODES = 120;
 const HIGHLIGHT_MULTIPLIER = 1.6; // brighten the selected section's rails
+const CUBE_TWEEN_MS = 400;
+const CLICK_MOVE_PX = 4; // max pointer movement to still count as "click"
+const CLICK_MAX_MS = 300;
+const DEFAULT_CUBE_LABELS: ViewCubeLabels = {
+  top: 'Top',
+  bottom: 'Bottom',
+  front: 'Front',
+  back: 'Back',
+  left: 'Left',
+  right: 'Right',
+  rotateCw: 'Rotate clockwise',
+  rotateCcw: 'Rotate counter-clockwise',
+};
 
 function hasWebGL(): boolean {
   if (typeof document === 'undefined') return false;
@@ -89,6 +134,7 @@ function disposeLines(state: SceneRefs): void {
     (line.material as LineBasicMaterial).dispose();
   }
   state.lines = [];
+  state.pickableRails = [];
 }
 
 const frameBox = new Box3();
@@ -193,6 +239,45 @@ function binarySearchTime(times: Float32Array, n: number, t: number): number {
   return lo > 0 ? lo - 1 : 0;
 }
 
+function easeInOut(u: number): number {
+  return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+}
+
+/** Starts a tween of the main camera toward `viewDir` (unit, world-space,
+ *  pointing FROM target TO the desired camera position). Distance is kept. */
+function startCubeTween(state: SceneRefs, viewDir: Vector3): void {
+  const target = state.controls.target;
+  const distance = state.camera.position.distanceTo(target);
+  const toPos = new Vector3().copy(viewDir).multiplyScalar(distance).add(target);
+  // Pick a sensible up: if the target view is (nearly) top-down or
+  // bottom-up, use world +Z as up so we don't gimbal-lock; otherwise +Y.
+  const upCandidate = Math.abs(viewDir.y) > 0.95 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0);
+  state.tween = {
+    fromPos: state.camera.position.clone(),
+    fromUp: state.camera.up.clone(),
+    toPos,
+    toUp: upCandidate,
+    startMs: performance.now(),
+    durationMs: CUBE_TWEEN_MS,
+  };
+}
+
+/** Rotates the current view by 90° clockwise (dir=+1) or counter-clockwise
+ *  (dir=-1) around the current view direction. Used by the cube's rotation
+ *  arrow buttons. Rodrigues-simplified: with θ=±π/2, cos=0, sin=±1, so
+ *  u' = (k × u) sin + k (k·u). */
+function rotateAroundViewDir(state: SceneRefs, dir: 1 | -1): void {
+  const k = new Vector3().subVectors(state.controls.target, state.camera.position).normalize();
+  const u = state.camera.up;
+  const kxu = new Vector3().crossVectors(k, u);
+  const kdotu = k.dot(u);
+  const out = new Vector3().addScaledVector(kxu, dir).addScaledVector(k, kdotu);
+  if (out.lengthSq() < 1e-8) return;
+  state.camera.up.copy(out.normalize());
+  state.camera.lookAt(state.controls.target);
+  state.controls.update();
+}
+
 /** Runs of same-section-index node ranges as half-open [start, endExclusive]. */
 interface SectionRun {
   readonly sectionIndex: number;
@@ -232,10 +317,16 @@ export function Viewport({
   cameraMode,
   fitEpoch,
   resetEpoch,
+  cubeLabels,
+  onSelectSection,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
   const [webglSupported] = useState(hasWebGL);
+  // Snapshot the latest onSelectSection in a ref so pointer handlers don't
+  // need to re-bind every render.
+  const onSelectRef = useRef<typeof onSelectSection>(onSelectSection);
+  onSelectRef.current = onSelectSection;
   // Remember what epoch we last framed at so the same epoch doesn't refire
   // on every re-render. `null` means "haven't fit yet"; the first non-empty
   // tracks render forces a fit regardless of epoch.
@@ -280,17 +371,23 @@ export function Viewport({
     controls.rotateSpeed = 0.8;
     controls.zoomSpeed = 0.9;
 
+    const cube = createViewCube(DEFAULT_CUBE_LABELS);
+
     const state: SceneRefs = {
       renderer,
       scene,
       camera,
       controls,
       lines: [],
+      pickableRails: [],
       frame: 0,
       framedTrack: null,
       cameraMode: 'orbit',
       povTime: 0,
       lastFrameMs: performance.now(),
+      cube,
+      tween: null,
+      pointerDown: null,
       ro: new ResizeObserver(() => {
         const w = host.clientWidth;
         const h = host.clientHeight;
@@ -302,16 +399,81 @@ export function Viewport({
     state.ro.observe(host);
     refs.current = state;
 
+    // Pointer handlers: distinguish click-to-pick vs. orbit-drag by total
+    // pointer travel and elapsed time.
+    const onPointerDown = (ev: PointerEvent): void => {
+      state.pointerDown = { x: ev.clientX, y: ev.clientY, time: performance.now() };
+    };
+    const onPointerUp = (ev: PointerEvent): void => {
+      const down = state.pointerDown;
+      state.pointerDown = null;
+      if (!down) return;
+      const dx = ev.clientX - down.x;
+      const dy = ev.clientY - down.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > CLICK_MOVE_PX) return;
+      if (performance.now() - down.time > CLICK_MAX_MS) return;
+      handleClick(ev);
+    };
+    const handleClick = (ev: PointerEvent): void => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const pxX = ev.clientX - rect.left;
+      const pxY = ev.clientY - rect.top;
+      const hostW = renderer.domElement.clientWidth;
+      const hostH = renderer.domElement.clientHeight;
+
+      // 1. Cube pick has priority — it sits in the top-right rect.
+      const cubeHit = state.cube.pick(pxX, pxY, hostW, hostH);
+      if (cubeHit) {
+        startCubeTween(state, cubeHit.viewDir);
+        return;
+      }
+      if (state.cube.hitTestRect(pxX, pxY, hostW, hostH)) return;
+
+      // 2. Otherwise, raycast rails in the main scene.
+      const ndc = new Vector2((pxX / hostW) * 2 - 1, -((pxY / hostH) * 2 - 1));
+      const raycaster = new Raycaster();
+      raycaster.params.Line = { threshold: 0.4 };
+      raycaster.setFromCamera(ndc, state.camera);
+      const railLines = state.pickableRails.map((p) => p.line);
+      const hits = raycaster.intersectObjects(railLines, false);
+      const first = hits[0];
+      if (!first) {
+        onSelectRef.current?.(null);
+        return;
+      }
+      const pickable = state.pickableRails.find((p) => p.line === first.object);
+      if (pickable) onSelectRef.current?.(pickable.sectionIndex);
+    };
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointerup', onPointerUp);
+
     const loop = (now: number): void => {
       const dt = Math.max(0, (now - state.lastFrameMs) / 1000);
       state.lastFrameMs = now;
 
-      if (state.cameraMode === 'pov') {
+      // Camera tween (from ViewCube click) takes priority over manual orbit.
+      if (state.tween) {
+        const u = Math.min(1, (now - state.tween.startMs) / state.tween.durationMs);
+        const e = easeInOut(u);
+        state.camera.position.lerpVectors(state.tween.fromPos, state.tween.toPos, e);
+        state.camera.up.lerpVectors(state.tween.fromUp, state.tween.toUp, e).normalize();
+        state.camera.lookAt(state.controls.target);
+        if (u >= 1) state.tween = null;
+      } else if (state.cameraMode === 'pov') {
         advancePov(state, dt);
       } else {
         state.controls.update();
       }
       state.renderer.render(state.scene, state.camera);
+      // Overlay cube on top. Only visible in orbit mode — in POV the cube
+      // would fight for attention with the ride-through view.
+      if (state.cameraMode !== 'pov') {
+        const w = renderer.domElement.clientWidth;
+        const h = renderer.domElement.clientHeight;
+        state.cube.syncToMainCamera(state.camera, state.controls.target);
+        state.cube.render(state.renderer, w, h);
+      }
       state.frame = requestAnimationFrame(loop);
     };
     state.frame = requestAnimationFrame(loop);
@@ -320,12 +482,23 @@ export function Viewport({
       cancelAnimationFrame(state.frame);
       state.ro.disconnect();
       state.controls.dispose();
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointerup', onPointerUp);
       disposeLines(state);
+      state.cube.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       refs.current = null;
     };
   }, [webglSupported]);
+
+  // Rebuild the cube when localized labels change (language switch).
+  useEffect(() => {
+    const state = refs.current;
+    if (!state || !cubeLabels) return;
+    state.cube.dispose();
+    state.cube = createViewCube(cubeLabels);
+  }, [cubeLabels]);
 
   // React to camera-mode changes independently of geometry so toggling
   // POV / Orbit doesn't force a rebuild of the rails.
@@ -436,6 +609,7 @@ export function Viewport({
         const line = new Line(geom, mat);
         state.scene.add(line);
         state.lines.push(line);
+        state.pickableRails.push({ sectionIndex: run.sectionIndex, line });
       }
     }
 
@@ -466,6 +640,14 @@ export function Viewport({
     );
   }
 
+  const rotate = (dir: 1 | -1): void => {
+    const state = refs.current;
+    if (state) rotateAroundViewDir(state, dir);
+  };
+
+  const cubeHidden = cameraMode === 'pov';
+  const labels = cubeLabels ?? DEFAULT_CUBE_LABELS;
+
   return (
     <div
       ref={hostRef}
@@ -473,6 +655,34 @@ export function Viewport({
       aria-label="viewport"
       className="relative h-full w-full select-none bg-surface-0"
       style={{ touchAction: 'none' }}
-    />
+    >
+      {/* Rotation-arrow buttons anchored to the ViewCube's overlay rectangle.
+          The cube itself is drawn by WebGL in the scissored region; these
+          arrows sit just outside it so they don't occlude the cube. */}
+      {!cubeHidden && (
+        <div
+          aria-hidden="false"
+          className="pointer-events-none absolute right-[12px] top-[12px] z-10"
+          style={{ width: 110, height: 110 }}
+        >
+          <button
+            type="button"
+            aria-label={labels.rotateCcw ?? 'Rotate counter-clockwise'}
+            onClick={() => rotate(-1)}
+            className="pointer-events-auto absolute left-[-18px] top-[42px] flex h-6 w-5 items-center justify-center rounded bg-surface-2/90 text-xs text-neutral-200 shadow hover:bg-surface-2 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
+          >
+            ⟲
+          </button>
+          <button
+            type="button"
+            aria-label={labels.rotateCw ?? 'Rotate clockwise'}
+            onClick={() => rotate(1)}
+            className="pointer-events-auto absolute right-[-18px] top-[42px] flex h-6 w-5 items-center justify-center rounded bg-surface-2/90 text-xs text-neutral-200 shadow hover:bg-surface-2 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
+          >
+            ⟳
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

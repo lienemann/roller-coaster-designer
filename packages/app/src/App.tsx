@@ -25,6 +25,7 @@ export function App(): JSX.Element {
   const isDirty = useAppStore((s) => s.isDirty);
   const tracks = useAppStore((s) => s.tracks);
   const selectedSectionIndex = useAppStore((s) => s.selectedSectionIndex);
+  const selectSection = useAppStore((s) => s.selectSection);
 
   useRecomputeOnProjectChange();
 
@@ -98,6 +99,17 @@ export function App(): JSX.Element {
           cameraMode={cameraMode}
           fitEpoch={fitViewEpoch}
           resetEpoch={resetViewEpoch}
+          cubeLabels={{
+            top: t('viewport.cube.top'),
+            bottom: t('viewport.cube.bottom'),
+            front: t('viewport.cube.front'),
+            back: t('viewport.cube.back'),
+            left: t('viewport.cube.left'),
+            right: t('viewport.cube.right'),
+            rotateCw: t('viewport.cube.rotateCw'),
+            rotateCcw: t('viewport.cube.rotateCcw'),
+          }}
+          onSelectSection={selectSection}
         />
         <div
           role="toolbar"
