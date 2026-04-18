@@ -221,6 +221,88 @@ describe('integrateTrack — Curved', () => {
   });
 });
 
+describe('integrateTrack — Forced', () => {
+  function makeForcedTrack(options: {
+    duration: number;
+    normalG: number;
+    lateralG: number;
+    argument?: 0 | 1;
+  }): Track {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    const normalFunc = createEmptyFunc(EFuncType.Normal);
+    // Hold the g-value constant across the section by using a flat linear
+    // subfunc (startValue === endValue).
+    normalFunc.subfuncs.push(
+      createLinearSubFunc({
+        length: options.duration,
+        startValue: options.normalG,
+        endValue: options.normalG,
+      }),
+    );
+    const lateralFunc = createEmptyFunc(EFuncType.Lateral);
+    lateralFunc.subfuncs.push(
+      createLinearSubFunc({
+        length: options.duration,
+        startValue: options.lateralG,
+        endValue: options.lateralG,
+      }),
+    );
+    return {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [
+        {
+          type: SecType.Anchor,
+          name: 'a',
+          position: [0, 30, 0],
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          speed: 20,
+        },
+        {
+          type: SecType.Forced,
+          name: 'f',
+          argument: options.argument ?? 0,
+          orientation: 0,
+          extent: options.duration,
+          rollFunc,
+          normalFunc,
+          lateralFunc,
+        },
+      ],
+      smoothers: [],
+    };
+  }
+
+  it('1g normal with zero lateral keeps the train flying horizontally at constant velocity', () => {
+    // Normal = 1g exactly cancels gravity on a level track; net vertical
+    // force is zero, so the train should hold its height and speed.
+    const track = makeForcedTrack({ duration: 2, normalG: 1, lateralG: 0 });
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    expect(arrays.posY[last]!).toBeCloseTo(30, 1);
+    expect(arrays.vel[last]!).toBeCloseTo(20, 1);
+  });
+
+  it('positive normal g produces a pitch-up arc (y increases along the path)', () => {
+    const track = makeForcedTrack({ duration: 2, normalG: 2, lateralG: 0 });
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    expect(arrays.posY[last]!).toBeGreaterThan(30);
+  });
+
+  it('lateral g bends the path in the horizontal plane', () => {
+    const track = makeForcedTrack({ duration: 2, normalG: 1, lateralG: 1 });
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    expect(Math.abs(arrays.posZ[last]!)).toBeGreaterThan(0.1);
+  });
+});
+
 describe('integrateTrack — Straight with a Roll Func', () => {
   it('reaches the prescribed roll at the end of the section', () => {
     const rollFunc = createEmptyFunc(EFuncType.Roll);

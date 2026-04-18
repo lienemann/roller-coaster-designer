@@ -3,13 +3,14 @@
 import { vec3 } from 'gl-matrix';
 
 import { F_G, F_HZ, HEART_ENERGY_FACTOR } from '../model/constants.js';
-import { SecType } from '../model/enums.js';
+import { Argument, SecType } from '../model/enums.js';
 import { type Func } from '../model/function.js';
 import { allocateMNodeArrays, type MNodeArrays } from '../model/mnode.js';
 import {
   type AnchorSection,
   type BezierSection,
   type CurvedSection,
+  type ForcedSection,
   type Section,
   type StraightSection,
 } from '../model/section.js';
@@ -80,6 +81,11 @@ function integrateSection(
         throw new Error('Curved section requires a prior Anchor.');
       }
       return integrateCurved(section, arrays, lastIdx, heart);
+    case SecType.Forced:
+      if (lastIdx < 0) {
+        throw new Error('Forced section requires a prior Anchor.');
+      }
+      return integrateForced(section, arrays, lastIdx, heart);
     default:
       throw new Error(`Section type not yet implemented: ${SecType[section.type]}`);
   }
@@ -399,6 +405,118 @@ function leadInOutBlend(s: number, length: number, leadIn: number, leadOut: numb
     return u * u * (3 - 2 * u);
   }
   return 1;
+}
+
+// Forced section integrator — the heart of FVD++ (spec §5, port of
+// core/secforced.cpp lines 110–135). Normal and Lateral Funcs define the
+// g-forces the rider experiences; pitch and yaw rates fall out of the
+// equations of motion so the path traces a curve that feels like the
+// requested force profile.
+//
+// M4 scope note: implements the core equations from the spec template with
+// energy conservation. The exact FVD++ 0.79 bit-for-bit match (applyCenter,
+// applyTension, resistance, friction) lands once the golden-file harness
+// (M9) has real .fvd goldens to diff against.
+const forcedDir = vec3.create();
+const forcedLat = vec3.create();
+const forcedNorm = vec3.create();
+const forcedPrevLat = vec3.create();
+const forcedPrevNorm = vec3.create();
+
+function integrateForced(
+  section: ForcedSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+): number {
+  const dt = 1 / F_HZ;
+  const extent = section.extent;
+  if (extent <= 0) return lastIdx;
+
+  let idx = lastIdx;
+  let arg = 0; // section argument — seconds for Time-arg, meters for Distance-arg.
+
+  vec3.set(forcedDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
+  vec3.set(forcedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
+  vec3.cross(forcedNorm, forcedLat, forcedDir);
+
+  while (arg < extent && idx + 1 < arrays.capacity) {
+    const prevVel = arrays.vel[idx]!;
+    if (prevVel <= 1e-6) break;
+
+    // Snapshot previous basis — used both to rotate the current basis and
+    // to compute the gravity contribution before the orientation changes.
+    vec3.copy(forcedPrevLat, forcedLat);
+    vec3.copy(forcedPrevNorm, forcedNorm);
+
+    // Sample the force functions at the current argument value.
+    const normalG = evalRoll(section.normalFunc, arg);
+    const lateralG = evalRoll(section.lateralFunc, arg);
+    const normalF = normalG * F_G;
+    const lateralF = lateralG * F_G;
+
+    // Spec §5 template: angular rates come from net acceleration perpendicular
+    // to the path. `normalG = 1` on a level track should cancel gravity
+    // exactly (zero centripetal acceleration, straight line), so the net
+    // along norm is `normalF + (gravity · norm)`. Gravity = (0, −F_G, 0),
+    // hence `gravity · norm = −F_G · norm_y`; net = normalF − F_G · norm_y.
+    const netNormal = normalF - F_G * forcedPrevNorm[1];
+    const netLateral = lateralF - F_G * forcedPrevLat[1];
+
+    const pitchRate = netNormal / (prevVel * F_HZ);
+    const yawRate = -netLateral / (prevVel * F_HZ);
+
+    // Apply pitch around prev lat, yaw around prev (negative) norm; lat
+    // follows the yaw rotation so it stays perpendicular to the new dir.
+    rotateAroundAxis(forcedDir, forcedDir, forcedPrevLat, pitchRate);
+    rotateAroundAxis(forcedDir, forcedDir, forcedPrevNorm, -yawRate);
+    rotateAroundAxis(forcedLat, forcedLat, forcedPrevNorm, -yawRate);
+
+    // Roll from the Roll function at the same argument.
+    const rollAbs = evalRoll(section.rollFunc, arg);
+    const prevRoll = arrays.roll[idx]!;
+    rotateAroundAxis(forcedLat, forcedLat, forcedDir, rollAbs - prevRoll);
+    vec3.cross(forcedNorm, forcedLat, forcedDir);
+
+    idx += 1;
+
+    // Position advances along the average of old and new dir for a better
+    // second-order step. FVD++ uses this midpoint rule implicitly via its
+    // `prev.dir + curr.dir` term.
+    const avgX = (arrays.dirX[idx - 1]! + forcedDir[0]) * 0.5;
+    const avgY = (arrays.dirY[idx - 1]! + forcedDir[1]) * 0.5;
+    const avgZ = (arrays.dirZ[idx - 1]! + forcedDir[2]) * 0.5;
+    const step = prevVel * dt;
+    const posX = arrays.posX[idx - 1]! + avgX * step;
+    const posY = arrays.posY[idx - 1]! + avgY * step;
+    const posZ = arrays.posZ[idx - 1]! + avgZ * step;
+
+    const energy = arrays.energy[idx - 1]!;
+    const yH = posY + forcedNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+
+    // Advance the argument. TIME-arg sections step `dt` per node; DISTANCE
+    // -arg sections step by the actual distance travelled.
+    arg += section.argument === Argument.Time ? dt : step;
+
+    writeNode(arrays, idx, {
+      position: [posX, posY, posZ],
+      dir: forcedDir,
+      lat: forcedLat,
+      norm: forcedNorm,
+      roll: rollAbs,
+      vel,
+      energy,
+      distFromLast: step,
+      heartDistFromLast: step,
+      totalLength: arrays.totalLength[idx - 1]! + step,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
+      forceNormal: normalG,
+      forceLateral: lateralG,
+    });
+  }
+  return idx;
 }
 
 // -- helpers ----------------------------------------------------------------
