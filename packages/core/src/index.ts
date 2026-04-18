@@ -16,3 +16,4 @@ export * from './io/index.js';
 export * from './model/index.js';
 export * from './ops/index.js';
 export * from './physics/index.js';
+export * from './smoothing/index.js';

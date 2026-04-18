@@ -100,9 +100,8 @@ export function closeTrack(track: Track): Track {
   //
   // Minimum absolute length keeps degenerate near-zero gaps from producing
   // zero-length handles that collapse the curve to a line.
-  const dotET =
-    endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2];
-  const angleScale = 1 + 2.5 * (1 - Math.max(-1, Math.min(1, dotET))) / 2;
+  const dotET = endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2];
+  const angleScale = 1 + (2.5 * (1 - Math.max(-1, Math.min(1, dotET)))) / 2;
   const handleLen = Math.max((gap / 3) * angleScale, 0.5);
   const p1: [number, number, number] = [
     endPos[0] + endDir[0] * handleLen,

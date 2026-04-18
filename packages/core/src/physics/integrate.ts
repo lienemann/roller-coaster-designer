@@ -16,6 +16,7 @@ import {
   type StraightSection,
 } from '../model/section.js';
 import { type Track } from '../model/track.js';
+import { applySmoothers } from '../smoothing/index.js';
 
 import {
   arcLengthToParameter,
@@ -48,6 +49,13 @@ export function integrateTrack(track: Track, capacity = DEFAULT_CAPACITY): Track
     idx = integrateSection(section, arrays, idx, track.heart);
   }
   arrays.length = idx + 1;
+
+  // Apply the track's registered smoothers to the force columns. Always
+  // runs — when smoothers is empty the helper copies raw into smoothed so
+  // downstream consumers read one source of truth. `track.smoothers` may be
+  // undefined on hand-assembled test tracks; treat absence as empty.
+  applySmoothers(arrays, track.smoothers ?? [], sectionStartNodes);
+
   return { arrays, sectionStartNodes };
 }
 
@@ -163,6 +171,13 @@ function integrateStraight(
   // once from the last written node.
   const dir = vec3.set(tmp0, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
 
+  // Rollfuncs are evaluated from 0 each section, but the rider carries roll
+  // continuously across boundaries. Offset the evaluated roll by whatever
+  // it takes to match the previous section's end roll exactly, so edits
+  // that leave a section's rollFunc startValue out of sync no longer
+  // produce a 1 ms snap. (User-reported Curved→Straight bug.)
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+
   while (arcLength < section.length && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
     const step = prevVel * dt;
@@ -181,7 +196,7 @@ function integrateStraight(
 
     // Roll at this point of the section.
     arcLength += clippedStep;
-    const rollAbs = evalRoll(section.rollFunc, arcLength);
+    const rollAbs = evalRoll(section.rollFunc, arcLength) + rollOffset;
     const prevRoll = arrays.roll[idx - 1]!;
     const dRoll = rollAbs - prevRoll;
 
@@ -240,6 +255,7 @@ function integrateBezier(
   if (totalArc <= 0) return lastIdx;
 
   const dt = 1 / F_HZ;
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
   let idx = lastIdx;
   let sectionArc = 0;
 
@@ -277,7 +293,7 @@ function integrateBezier(
     }
     vec3.normalize(bezierLat, bezierLat);
 
-    const rollAbs = evalRoll(section.rollFunc, sectionArc);
+    const rollAbs = evalRoll(section.rollFunc, sectionArc) + rollOffset;
     const prevRoll = arrays.roll[idx - 1]!;
     rotateAroundAxis(bezierLat, bezierLat, bezierTangent, rollAbs - prevRoll);
     vec3.cross(bezierNorm, bezierLat, bezierTangent);
@@ -341,6 +357,8 @@ function integrateCurved(
   vec3.set(curvedDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
   vec3.set(curvedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
 
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+
   while (arcLength < length && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
     const step = prevVel * dt;
@@ -365,7 +383,7 @@ function integrateCurved(
     const posZ = arrays.posZ[idx - 1]! + curvedDir[2] * clippedStep;
 
     arcLength += clippedStep;
-    const rollAbs = evalRoll(section.rollFunc, arcLength);
+    const rollAbs = evalRoll(section.rollFunc, arcLength) + rollOffset;
     const prevRoll = arrays.roll[idx - 1]!;
     rotateAroundAxis(curvedLat, curvedLat, curvedDir, rollAbs - prevRoll);
     vec3.cross(curvedNorm, curvedLat, curvedDir);
@@ -446,6 +464,8 @@ function integrateForced(
   vec3.set(forcedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
   vec3.cross(forcedNorm, forcedLat, forcedDir);
 
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+
   while (arg < extent && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
     if (prevVel <= 1e-6) break;
@@ -479,7 +499,7 @@ function integrateForced(
     rotateAroundAxis(forcedLat, forcedLat, forcedPrevNorm, -yawRate);
 
     // Roll from the Roll function at the same argument.
-    const rollAbs = evalRoll(section.rollFunc, arg);
+    const rollAbs = evalRoll(section.rollFunc, arg) + rollOffset;
     const prevRoll = arrays.roll[idx]!;
     rotateAroundAxis(forcedLat, forcedLat, forcedDir, rollAbs - prevRoll);
     vec3.cross(forcedNorm, forcedLat, forcedDir);
@@ -550,6 +570,8 @@ function integrateGeometric(
   vec3.set(geomDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
   vec3.set(geomLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
 
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+
   while (arg < extent && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
     if (prevVel <= 1e-6) break;
@@ -585,7 +607,7 @@ function integrateGeometric(
     vec3.rotateY(geomLat, geomLat, [0, 0, 0], yawRate * dArg);
 
     // Roll.
-    const rollAbs = evalRoll(section.rollFunc, arg);
+    const rollAbs = evalRoll(section.rollFunc, arg) + rollOffset;
     const prevRoll = arrays.roll[idx]!;
     rotateAroundAxis(geomLat, geomLat, geomDir, rollAbs - prevRoll);
     vec3.cross(geomNorm, geomLat, geomDir);
