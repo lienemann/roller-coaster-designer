@@ -18,11 +18,13 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
     // Split vendor chunks so the app shell stays small.
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         manualChunks: {
           react: ['react', 'react-dom'],
           i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+          three: ['three'],
         },
       },
     },

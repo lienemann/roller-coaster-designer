@@ -19,11 +19,13 @@
   "dependencies": {
     "@roller-coaster-designer/core": "workspace:*",
     "@roller-coaster-designer/worker": "workspace:*",
+    "comlink": "^4.4.1",
     "i18next": "^23.15.2",
     "i18next-browser-languagedetector": "^8.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.0.3",
+    "three": "^0.184.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -31,6 +33,7 @@
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.184.0",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",

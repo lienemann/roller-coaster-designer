@@ -1,13 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { type Project } from '@roller-coaster-designer/core';
+
 /**
- * RPC surface exposed by the physics worker.
+ * Per-track result of a recompute. `positions` is a flat XYZ stream:
+ * positions[3i + 0..2] is node i's world position. `nodeCount` is the number
+ * of valid nodes (positions.length / 3 may be larger when the buffer was
+ * preallocated).
  *
- * Kept as a type-only module so the main thread can import the shape without
- * bundling the worker implementation. The real methods arrive at M2 (integrator
- * wiring) and grow from there.
+ * Buffers travel as transferable ArrayBuffers (spec §1.5), so the worker
+ * relinquishes ownership when it posts the result and the main thread draws
+ * straight out of the returned views.
  */
+export interface TrackStream {
+  readonly nodeCount: number;
+  readonly positions: Float32Array;
+  readonly sectionStartNodes: number[];
+}
+
+export interface RecomputeResult {
+  readonly tracks: TrackStream[];
+}
+
 export interface PhysicsWorkerApi {
-  /** Identity check; returns the input. Used to verify the Comlink round-trip. */
+  /** Identity check; returns the input. Kept from M0 for sanity. */
   ping(value: number): Promise<number>;
+
+  /** Runs the integrator on every track in the project. */
+  recompute(project: Project): Promise<RecomputeResult>;
 }

@@ -12,6 +12,22 @@ for data and physics via `@roller-coaster-designer/worker`.
 - Owns the undo/redo command log (spec §9) — the executor lives here because
   commands touch UI state.
 
+## Current state (M2)
+
+- `src/scene/viewport.tsx` — Three.js `WebGLRenderer` with `OrbitControls`,
+  a grid helper, ambient + directional lights, and one `Line` primitive that
+  rebuilds from the worker's `TrackStream.positions` whenever tracks change.
+  Falls back to a text placeholder when WebGL is unavailable (jsdom tests,
+  old browsers).
+- `src/worker/physics.worker.ts` + `physics-client.ts` + `use-recompute.ts`
+  — Vite worker entry, lazy Comlink singleton, and a hook that triggers
+  recompute on project changes. The worker owns node memory; positions
+  travel to the main thread as transferable `ArrayBuffer`s.
+- Store gains `tracks` + `setTracks`. `newProject` / `loadProject` reset
+  tracks to `[]` until the next recompute lands.
+- `rollupOptions.output.manualChunks` now splits Three.js into its own
+  chunk so the viewport doesn't bloat the critical-path bundle.
+
 ## Current state (M1)
 
 - App shell: top bar with title + File menu + project-name indicator with

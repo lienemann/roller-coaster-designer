@@ -2,15 +2,20 @@
 
 import { useTranslation } from 'react-i18next';
 
+import { Viewport } from './scene/viewport.js';
 import { useAppStore } from './state/store.js';
 import { LanguageSwitcher } from './ui/language-switcher.js';
 import { MenuBar } from './ui/menu-bar.js';
+import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 
 export function App(): JSX.Element {
   const { t } = useTranslation('common');
   const project = useAppStore((s) => s.project);
   const projectName = useAppStore((s) => s.projectName);
   const isDirty = useAppStore((s) => s.isDirty);
+  const tracks = useAppStore((s) => s.tracks);
+
+  useRecomputeOnProjectChange();
 
   const documentLabel =
     project === null
@@ -44,13 +49,19 @@ export function App(): JSX.Element {
           Sections
         </aside>
         <section
-          aria-label="viewport-placeholder"
-          className="flex items-center justify-center border-b border-white/10 bg-surface-0 p-6 text-neutral-400"
+          aria-label="viewport"
+          className="relative min-h-0 border-b border-white/10 bg-surface-0"
         >
-          <div className="max-w-md text-center">
-            <p className="text-sm">{t('app.tagline')}</p>
-            <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
-          </div>
+          {tracks.length === 0 ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="max-w-md text-center">
+                <p className="text-sm text-neutral-400">{t('app.tagline')}</p>
+                <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
+              </div>
+            </div>
+          ) : (
+            <Viewport tracks={tracks} />
+          )}
         </section>
         <aside
           aria-label="properties-placeholder"

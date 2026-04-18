@@ -4,7 +4,6 @@
   "description": "Web Worker wrapping @roller-coaster-designer/core via Comlink RPC.",
   "license": "GPL-3.0-only",
   "type": "module",
-  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

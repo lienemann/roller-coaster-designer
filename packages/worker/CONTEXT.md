@@ -11,11 +11,21 @@ Worker. Always.").
 - Return results to the main thread as **transferable** `ArrayBuffer`s; no
   structured-clone copies of node streams.
 
-## Current state (M0)
+## Current state (M2)
 
-One stub method: `ping(value) => value`. Just enough to prove the build target
-and the Comlink wiring in later milestones. Real API surface lands at M2 with
-the first integrator.
+Two RPC methods exposed via Comlink:
+
+- `ping(value)` — sanity round-trip, kept from M0.
+- `recompute(project): Promise<RecomputeResult>` — runs `integrateProject`
+  from `@roller-coaster-designer/core` and returns one `TrackStream` per
+  track. Each stream carries a `Float32Array` of packed XYZ positions plus
+  the section-start node indices. The positions buffer transfers to the
+  main thread via Comlink's `transfer()` helper so the main thread ends up
+  with a view on the same `ArrayBuffer`, no copy.
+
+The `sideEffects: false` flag is intentionally absent on this package: the
+`expose(api)` call at module scope is the side effect that matters, and
+bundlers must preserve it.
 
 ## Build
 

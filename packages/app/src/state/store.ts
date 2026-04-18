@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { type Project, createEmptyProject } from '@roller-coaster-designer/core';
+import { type TrackStream } from '@roller-coaster-designer/worker';
 import { create } from 'zustand';
 
 import { type OpaqueFileHandle } from '../io/file-system.js';
@@ -25,6 +26,10 @@ export interface AppState {
   readonly projectHandle: OpaqueFileHandle | null;
   readonly isDirty: boolean;
 
+  /** Latest recompute output per track. Empty when no project is loaded. */
+  readonly tracks: readonly TrackStream[];
+  readonly setTracks: (tracks: readonly TrackStream[]) => void;
+
   readonly newProject: () => void;
   readonly loadProject: (payload: {
     project: Project;
@@ -46,12 +51,16 @@ export const useAppStore = create<AppState>((set) => ({
   projectHandle: null,
   isDirty: false,
 
+  tracks: [],
+  setTracks: (tracks) => set({ tracks }),
+
   newProject: () =>
     set({
       project: createEmptyProject(),
       projectName: null,
       projectHandle: null,
       isDirty: false,
+      tracks: [],
     }),
   loadProject: ({ project, name, handle }) =>
     set({
@@ -59,6 +68,7 @@ export const useAppStore = create<AppState>((set) => ({
       projectName: name,
       projectHandle: handle,
       isDirty: false,
+      tracks: [],
     }),
   markSaved: ({ name, handle }) =>
     set({
