@@ -3,6 +3,7 @@
 **Goal:** A modern browser-based coaster design tool combining the best ideas from FVD++ (altlenny/openFVD) and KexEdit (IndividualKex/KexEdit) into a single web application. This is not a straight port of either — it's a new tool that uses both as reference implementations, with modern coaster features that go beyond what either supports.
 
 **Status:** Greenfield. Two reference implementations to clone and study:
+
 - `altlenny/openFVD` (C++/Qt5, GPL-3.0) — the original FVD tool; ground truth for physics and file format.
 - `IndividualKex/KexEdit` (Unity/C#, MIT) — modern FVD editor with node graph, multi-car trains, optimizer.
 
@@ -139,18 +140,19 @@ From `core/track.h`:
 
 ```typescript
 export enum TrackStyle {
-  Generic = 0,       // 0.5m
-  GenericFlat = 1,   // 0.7m
-  Vekoma = 2,        // 0.6m
-  BM = 3,            // 0.6m
-  Triangle = 4,      // 0.5m
-  Box = 5,           // 0.5m
-  SmallFlat = 6,     // 0.5m
+  Generic = 0, // 0.5m
+  GenericFlat = 1, // 0.7m
+  Vekoma = 2, // 0.6m
+  BM = 3, // 0.6m
+  Triangle = 4, // 0.5m
+  Box = 5, // 0.5m
+  SmallFlat = 6, // 0.5m
   DoubleSpine = 7,
 }
 ```
 
 Booleans in `section.h` encoded as magic constants:
+
 - `EULER = true`, `QUATERNION = false` → use a proper enum `Orientation.Euler | Orientation.Quaternion`.
 - `TIME = false`, `DISTANCE = true` → use a proper enum `Argument.Time | Argument.Distance`.
 
@@ -162,18 +164,18 @@ The `.fvd` writer must still emit the legacy bool values.
 // Per-node state at 1000 Hz. Keep flat and allocation-free in hot paths.
 export interface MNode {
   // Pose
-  pos: vec3;            // heart-relative path position (gl-matrix)
-  dir: vec3;            // unit forward
-  lat: vec3;            // unit lateral (right)
-  norm: vec3;           // cross(dir, lat), recomputed after changes
-  roll: number;         // radians? — check fvd++: it's radians internally, degrees in UI
+  pos: vec3; // heart-relative path position (gl-matrix)
+  dir: vec3; // unit forward
+  lat: vec3; // unit lateral (right)
+  norm: vec3; // cross(dir, lat), recomputed after changes
+  roll: number; // radians? — check fvd++: it's radians internally, degrees in UI
 
   // Kinematics
-  vel: number;          // m/s along heart path
-  energy: number;       // 0.5*v^2 + g*y(0.9*heart), see track.cpp:50
+  vel: number; // m/s along heart path
+  energy: number; // 0.5*v^2 + g*y(0.9*heart), see track.cpp:50
 
   // Forces (the functions' outputs, sampled per node)
-  forceNormal: number;  // g
+  forceNormal: number; // g
   forceLateral: number; // g
   smoothNormal: number; // after smoothhandler
   smoothLateral: number;
@@ -206,6 +208,7 @@ Each section subclass (`secstraight`, `seccurved`, `secforced`, `secgeometric`, 
 ### 4.4 Physical constants **[T1]**
 
 From the C++:
+
 - `F_HZ = 1000.0` — integration rate. Keep exactly.
 - `F_G = 9.80665` — check C++ for exact value; must match for NL2 compatibility.
 - `F_PI = Math.PI` — use the language's.
@@ -223,12 +226,12 @@ type MeasurementSystem = 'metric-mps' | 'metric-kph' | 'imperial';
 interface Units {
   system: MeasurementSystem;
   // derived:
-  length:    'm' | 'ft';
-  speed:     'm/s' | 'km/h' | 'mph';
-  force:     'g';            // always g in all systems — it's dimensionless
-  angle:     'deg';          // always degrees in UI (internal: radians)
+  length: 'm' | 'ft';
+  speed: 'm/s' | 'km/h' | 'mph';
+  force: 'g'; // always g in all systems — it's dimensionless
+  angle: 'deg'; // always degrees in UI (internal: radians)
   angularVel: '°/s';
-  time:      's' | 'ms';     // auto-choose by magnitude
+  time: 's' | 'ms'; // auto-choose by magnitude
 }
 ```
 
@@ -274,14 +277,14 @@ Port this exactly. Quaternion multiplication order matters — in `gl-matrix`, `
 
 One per variant. Each is a function that, given a `Section` and a starting node index, writes to the section's node array and returns the new length in nodes.
 
-| Section | File to port | LOC | Complexity |
-|---|---|---|---|
-| Straight | `core/secstraight.cpp` | 222 | Trivial — constant direction, apply roll function |
-| Curved | `core/seccurved.cpp` | 306 | Constant pitch+yaw rates, with lead-in/out blending |
-| Forced | `core/secforced.cpp` | 463 | The template — time-domain and distance-domain variants |
+| Section   | File to port            | LOC | Complexity                                                          |
+| --------- | ----------------------- | --- | ------------------------------------------------------------------- |
+| Straight  | `core/secstraight.cpp`  | 222 | Trivial — constant direction, apply roll function                   |
+| Curved    | `core/seccurved.cpp`    | 306 | Constant pitch+yaw rates, with lead-in/out blending                 |
+| Forced    | `core/secforced.cpp`    | 463 | The template — time-domain and distance-domain variants             |
 | Geometric | `core/secgeometric.cpp` | 526 | Same skeleton as Forced but pitch/yaw direct instead of from forces |
-| Bezier | `core/secbezier.cpp` | 430 | Heaviest — reparameterizes a cubic Bezier to arc length |
-| NL CSV | `core/secnlcsv.cpp` | 276 | Reads pre-sampled nodes from imported NL2 track |
+| Bezier    | `core/secbezier.cpp`    | 430 | Heaviest — reparameterizes a cubic Bezier to arc length             |
+| NL CSV    | `core/secnlcsv.cpp`     | 276 | Reads pre-sampled nodes from imported NL2 track                     |
 
 **Do each section in its own PR.** After each, the golden-file test suite (see §10) must pass for that section type.
 
@@ -306,15 +309,15 @@ One per variant. Each is a function that, given a `Section` and a starting node 
 
 ### 5.4 Cumulative time and distance arrays — the playhead integrator **[T1]**
 
-The integrator produces a node stream at fixed 1000 Hz *of track integration*, not of wall-clock time. A node at index `i` corresponds to a specific point in the ride, but the wall-clock time to reach it depends on the speed profile — fast through a drop, slow up a lift hill. To scrub the playhead in real time (§6.3), and to let the user enter and display property values in either time or distance, we maintain **cumulative** arrays alongside the node stream, one pair per track:
+The integrator produces a node stream at fixed 1000 Hz _of track integration_, not of wall-clock time. A node at index `i` corresponds to a specific point in the ride, but the wall-clock time to reach it depends on the speed profile — fast through a drop, slow up a lift hill. To scrub the playhead in real time (§6.3), and to let the user enter and display property values in either time or distance, we maintain **cumulative** arrays alongside the node stream, one pair per track:
 
 ```typescript
 interface CumulativeArrays {
-  cumulativeTime: Float64Array;      // [i] = seconds from anchor to node i, in chronological order.
-                                      // Always monotonically non-decreasing (time only moves forward).
-  cumulativeDistance: Float64Array;  // [i] = signed heart-distance from anchor to node i.
-                                      // Monotonic on forward-only tracks. NON-monotonic when reversals exist.
-                                      // See §6.6 for reversal semantics.
+  cumulativeTime: Float64Array; // [i] = seconds from anchor to node i, in chronological order.
+  // Always monotonically non-decreasing (time only moves forward).
+  cumulativeDistance: Float64Array; // [i] = signed heart-distance from anchor to node i.
+  // Monotonic on forward-only tracks. NON-monotonic when reversals exist.
+  // See §6.6 for reversal semantics.
 }
 ```
 
@@ -353,7 +356,7 @@ The worker owns both arrays and transfers them to the main thread along with the
 Per §4.5, internal storage is SI. UI inputs and displays pass through format/parse helpers. But some values have a **native** unit that's not the one the user wants to edit in, and converting requires integration results:
 
 - **`Forced` / `Geometric` section `iTime`**: native = milliseconds (`F_HZ`-ticks). User may want "how long in seconds at 1× playback" (trivial: `iTime / F_HZ`) or "how long in meters of heart distance" (non-trivial: `cumulativeDistance[nodeAtSectionEnd] - cumulativeDistance[nodeAtSectionStart]`).
-- **Section argument type (`TIME` vs `DISTANCE`)**: FVD++ stores subfunction arguments in *either* time or distance per-section, not both. Switching argument type is destructive: the physics changes (same keyframes at new positions produce a different track).
+- **Section argument type (`TIME` vs `DISTANCE`)**: FVD++ stores subfunction arguments in _either_ time or distance per-section, not both. Switching argument type is destructive: the physics changes (same keyframes at new positions produce a different track).
 
 Per user decision (§0 tier): **editing a derived-unit value always switches the argument type** to match what the user is editing in. The flow:
 
@@ -386,16 +389,16 @@ Given the 1000 Hz node stream, build a tube mesh per `TrackStyle`. `core/rendere
 
 #### Per-style constants (port verbatim from `renderer/trackmesh.cpp:1200–1255`)
 
-| Style | `numRails` | `railSpacing` (m) | `crosstieSpacing` (m) | `spineHeight` (m) | `spineSize` (m) |
-|---|---|---|---|---|---|
-| `Generic` | 3 | 0.50 | 1.50 | 0.30 × sign(heart) | 0.22 |
-| `GenericFlat` | 2 | 0.70 | 1.40 | — | — |
-| `Vekoma` | 3 | 0.60 | 1.50 | 0.85 × sign(heart) | 0.22 |
-| `BM` | 3 | 0.60 | 1.45 | 0.50 × sign(heart) | 0.366 (0.26 × 1.4101) |
-| `Triangle` | 3 | 0.50 | 1.00 | 0.75 × sign(heart) | `railWidth` (0.065) |
-| `Box` | 4 | 0.50 | 1.00 | 1.00 × sign(heart) | `railWidth` |
-| `SmallFlat` | 2 | 0.50 | 0.80 | — | — |
-| `DoubleSpine` | 4 | 0.50 | 0.30 | 0.30 × sign(heart) | 0.18 |
+| Style         | `numRails` | `railSpacing` (m) | `crosstieSpacing` (m) | `spineHeight` (m)  | `spineSize` (m)       |
+| ------------- | ---------- | ----------------- | --------------------- | ------------------ | --------------------- |
+| `Generic`     | 3          | 0.50              | 1.50                  | 0.30 × sign(heart) | 0.22                  |
+| `GenericFlat` | 2          | 0.70              | 1.40                  | —                  | —                     |
+| `Vekoma`      | 3          | 0.60              | 1.50                  | 0.85 × sign(heart) | 0.22                  |
+| `BM`          | 3          | 0.60              | 1.45                  | 0.50 × sign(heart) | 0.366 (0.26 × 1.4101) |
+| `Triangle`    | 3          | 0.50              | 1.00                  | 0.75 × sign(heart) | `railWidth` (0.065)   |
+| `Box`         | 4          | 0.50              | 1.00                  | 1.00 × sign(heart) | `railWidth`           |
+| `SmallFlat`   | 2          | 0.50              | 0.80                  | —                  | —                     |
+| `DoubleSpine` | 4          | 0.50              | 0.30                  | 0.30 × sign(heart) | 0.18                  |
 
 `railWidth = 0.065 m` for all styles.
 
@@ -414,6 +417,7 @@ Port the specific cross-section functions from `trackmesh.cpp:1487–2225` (the 
 #### Sweep
 
 For each pipe in the cross-section, sweep along sampled nodes:
+
 1. At each sample node, take `(pos, dir, lat, norm)` from the integrated node.
 2. Emit a ring of `edges` vertices (default 12) by rotating the pipe's local `(lat, norm)` offset into world space.
 3. Connect consecutive rings with triangle strips.
@@ -457,6 +461,7 @@ FVD++ can color the track by force magnitude, roll speed, or flexion. Implementa
 FVD++ exposes user-customizable gradient endpoints for each metric (`rollColor[4]`, `normColor[4]`, `latColor[4]` — a 4-stop gradient per metric). Port as preferences.
 
 Gradient modes:
+
 - **Normal force**: green for 1G (neutral), red for > threshold positive, blue for < threshold negative (airtime). Thresholds user-configurable.
 - **Lateral force**: green for 0G, magenta for high lateral both ways.
 - **Roll speed**: green to orange.
@@ -477,18 +482,18 @@ This means the user can:
 
 ```typescript
 interface PlaybackState {
-  playheadDistance: number;   // SIGNED heart-distance from anchor. Positive = forward from anchor,
-                              // negative = the train has traversed backwards past the anchor.
-                              // For shuttle/swing sections, this can decrease over time.
-  activeTrackId: TrackId;     // which track the playhead is on (projects can have multiple)
+  playheadDistance: number; // SIGNED heart-distance from anchor. Positive = forward from anchor,
+  // negative = the train has traversed backwards past the anchor.
+  // For shuttle/swing sections, this can decrease over time.
+  activeTrackId: TrackId; // which track the playhead is on (projects can have multiple)
   playing: boolean;
-  playDirection: 1 | -1;      // scrub direction: forward or reverse. Independent of the
-                              // train's own direction of travel — lets the user "rewind"
-                              // for review even on a forward-only track.
-  speedMultiplier: number;    // 0.25 · 0.5 · 1 · 2 · 4 · 8
+  playDirection: 1 | -1; // scrub direction: forward or reverse. Independent of the
+  // train's own direction of travel — lets the user "rewind"
+  // for review even on a forward-only track.
+  speedMultiplier: number; // 0.25 · 0.5 · 1 · 2 · 4 · 8
   loopMode: 'off' | 'track' | 'section';
-  cameraMode: CameraMode;     // see below
-  povOffset: vec3;            // camera offset from the heart point (lat, normal, dir)
+  cameraMode: CameraMode; // see below
+  povOffset: vec3; // camera offset from the heart point (lat, normal, dir)
 }
 ```
 
@@ -549,7 +554,7 @@ Multi-car forces at T2/T3 require sampling the node stream at `N` pivot offsets 
 
 #### Interaction with editing
 
-Edits can happen during playback. Recompute runs in the worker; when new node data arrives, the playhead stays at the same *signed heart-distance* (since it's distance-based, not index-based), so the train doesn't jump. If the new track is shorter than the previous playhead position, clamp to track end and pause.
+Edits can happen during playback. Recompute runs in the worker; when new node data arrives, the playhead stays at the same _signed heart-distance_ (since it's distance-based, not index-based), so the train doesn't jump. If the new track is shorter than the previous playhead position, clamp to track end and pause.
 
 #### UI controls
 
@@ -564,7 +569,7 @@ A compact playback bar, always visible at the bottom of the 3D viewport (both ed
 - Loop toggle cycles through the three modes on click.
 - Camera dropdown reflects `cameraMode`, also changeable via keyboard (see §13).
 - Time display: current time / total ride time, both at 1× speed. Click to toggle time ↔ distance units as described above.
-- Below the bar: a thin scrubber representing the whole track, with section boundaries as tick marks, the playhead as a draggable handle. Grab and scrub to jump anywhere. For backwards-traveling sections (§6.6), the scrubber shows the *chronological* order, not the spatial order — so a shuttle out-and-back fills the full scrubber even though it reuses the same track.
+- Below the bar: a thin scrubber representing the whole track, with section boundaries as tick marks, the playhead as a draggable handle. Grab and scrub to jump anywhere. For backwards-traveling sections (§6.6), the scrubber shows the _chronological_ order, not the spatial order — so a shuttle out-and-back fills the full scrubber even though it reuses the same track.
 
 The timeline (§7.4) has its own playhead indicator on the time axis, synchronized to the same playback state. Dragging either the timeline playhead or the bottom scrubber moves both — they are one value.
 
@@ -573,6 +578,7 @@ The timeline (§7.4) has its own playhead indicator on the time axis, synchroniz
 The 3D viewport must feel correct in three distinct input contexts: **3-button mouse** (desktop users), **Mac trackpad** (MacBook users, no middle button), and **2-button laptop trackpad** (Windows/Linux laptop users). Each has conventions users expect. One scheme fits all is a lie; we ship three defaults and let users switch.
 
 The system defaults to the right scheme based on the detected platform and input device:
+
 - `navigator.platform` starts with `"Mac"` → default to Mac trackpad scheme.
 - `navigator.maxTouchPoints > 0` and no obvious mouse signals → default to trackpad scheme.
 - Otherwise → desktop 3-button scheme.
@@ -583,40 +589,41 @@ All schemes are user-overridable via preferences. All schemes support all operat
 
 Default on Windows/Linux desktop. Based on Fusion 360's default preset.
 
-| Input | Action |
-|---|---|
-| Middle mouse button drag | **Pan** |
-| Shift + middle mouse drag | **Orbit** around the current pivot |
-| Shift + middle mouse *click* on a point | Set orbit pivot to clicked point, then orbit |
-| Mouse wheel | **Zoom** toward cursor |
-| Left-click a track section | Select (no camera interaction) |
-| Right-click on empty space | Context menu |
-| Right-click + hold | Fly mode (see below) |
-| `F` | Frame selected section |
-| `A` (or Home) | Frame all |
-| `Numpad 1/3/7 + Ctrl` | Front / Side / Top view |
-| Click ViewCube face | Snap to that view |
+| Input                                   | Action                                       |
+| --------------------------------------- | -------------------------------------------- |
+| Middle mouse button drag                | **Pan**                                      |
+| Shift + middle mouse drag               | **Orbit** around the current pivot           |
+| Shift + middle mouse _click_ on a point | Set orbit pivot to clicked point, then orbit |
+| Mouse wheel                             | **Zoom** toward cursor                       |
+| Left-click a track section              | Select (no camera interaction)               |
+| Right-click on empty space              | Context menu                                 |
+| Right-click + hold                      | Fly mode (see below)                         |
+| `F`                                     | Frame selected section                       |
+| `A` (or Home)                           | Frame all                                    |
+| `Numpad 1/3/7 + Ctrl`                   | Front / Side / Top view                      |
+| Click ViewCube face                     | Snap to that view                            |
 
 #### Scheme B: Mac trackpad (gesture-first)
 
 Default on macOS, and what MacBook users will reach for on muscle memory. No middle mouse button exists. No right-click-hold convention on trackpads (it conflicts with two-finger-tap = right-click). Apple's system-wide convention is that gestures on the trackpad mean pan/zoom/rotate without modal clicks.
 
-| Input | Action |
-|---|---|
-| Two-finger swipe | **Pan** (matches macOS system-wide behavior) |
-| Shift + two-finger swipe | **Orbit** around the current pivot |
-| Pinch (two fingers in/out) | **Zoom** toward cursor |
-| Two-finger tap on a point, then Shift + swipe | Set orbit pivot, then orbit |
-| One-finger tap (click) on a track section | Select |
-| Two-finger tap on empty space | Context menu |
-| `Option` (Alt) + two-finger swipe | **Orbit** (alternative, for users coming from Fusion's Alias preset) |
-| `F` | Frame selected section |
-| `A` (or `Fn+Left` / Home) | Frame all |
-| Click ViewCube face | Snap to that view |
+| Input                                         | Action                                                               |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| Two-finger swipe                              | **Pan** (matches macOS system-wide behavior)                         |
+| Shift + two-finger swipe                      | **Orbit** around the current pivot                                   |
+| Pinch (two fingers in/out)                    | **Zoom** toward cursor                                               |
+| Two-finger tap on a point, then Shift + swipe | Set orbit pivot, then orbit                                          |
+| One-finger tap (click) on a track section     | Select                                                               |
+| Two-finger tap on empty space                 | Context menu                                                         |
+| `Option` (Alt) + two-finger swipe             | **Orbit** (alternative, for users coming from Fusion's Alias preset) |
+| `F`                                           | Frame selected section                                               |
+| `A` (or `Fn+Left` / Home)                     | Frame all                                                            |
+| Click ViewCube face                           | Snap to that view                                                    |
 
 No "right-click-hold to fly" on Mac trackpad — it doesn't work, and users don't expect it. Fly mode on Mac is opt-in via a keyboard shortcut (see below).
 
 Notes on the implementation:
+
 - Browsers expose trackpad gestures as `WheelEvent` with `ctrlKey` auto-set on pinch (macOS convention; also detected by `event.deltaY` with small fractional values typical of trackpad). Handle these as zoom.
 - Two-finger swipe comes through as `wheel` events with `deltaX`/`deltaY`; treat as pan.
 - `WheelEvent` with Shift held → repurpose as orbit.
@@ -626,29 +633,29 @@ Notes on the implementation:
 
 Many Windows/Linux laptop trackpads support multi-finger gestures, but the gestures are less consistent across manufacturers. Offer the same gesture bindings as Scheme B with Ctrl instead of ⌘ where applicable, but provide a **keyboard-first fallback** for trackpads that don't pass through multi-finger events reliably:
 
-| Input | Action |
-|---|---|
-| Two-finger swipe (if supported) | Pan |
-| Shift + two-finger swipe (if supported) | Orbit |
-| `G` then drag (à la Blender) | Pan (fallback) |
-| `R` then drag | Orbit (fallback) |
-| Mouse wheel / two-finger scroll | Zoom toward cursor |
+| Input                                   | Action             |
+| --------------------------------------- | ------------------ |
+| Two-finger swipe (if supported)         | Pan                |
+| Shift + two-finger swipe (if supported) | Orbit              |
+| `G` then drag (à la Blender)            | Pan (fallback)     |
+| `R` then drag                           | Orbit (fallback)   |
+| Mouse wheel / two-finger scroll         | Zoom toward cursor |
 
 #### Fly mode (all schemes)
 
 Accessible via **`Tab`** from any scheme (not right-click, because that collides on Mac). While Fly mode is active:
 
-| Input | Action |
-|---|---|
-| Mouse / trackpad move | Look around |
-| `W` / `S` | Forward / back |
-| `A` / `D` | Strafe left / right |
-| `Q` / `E` | Move down / up |
-| `Shift` | 3× speed |
-| Mouse wheel / pinch | Adjust fly speed |
-| `Tab` or `Esc` | Exit Fly mode |
+| Input                 | Action              |
+| --------------------- | ------------------- |
+| Mouse / trackpad move | Look around         |
+| `W` / `S`             | Forward / back      |
+| `A` / `D`             | Strafe left / right |
+| `Q` / `E`             | Move down / up      |
+| `Shift`               | 3× speed            |
+| Mouse wheel / pinch   | Adjust fly speed    |
+| `Tab` or `Esc`        | Exit Fly mode       |
 
-Fly mode is a *free* camera — disconnected from the track. Distinct from POV mode (§6.3), which locks the camera to the playhead on the track.
+Fly mode is a _free_ camera — disconnected from the track. Distinct from POV mode (§6.3), which locks the camera to the playhead on the track.
 
 #### Alternative presets (all platforms)
 
@@ -676,11 +683,11 @@ Click a track section to select it. Selection is shared with the Sections list, 
 
 **Decision point.** FVD++ has no automatic support generator. Its `supList` (per-bezier-section) only contains supports imported from NL1 tracks — it's passive, not generative. We have three options, listed with their cost:
 
-| Option | Effort | User value |
-|---|---|---|
-| **A: Port as-is (passive supports only)** | Low — just render the `supList` points as vertical columns when present | Low — matches FVD++ exactly but the feature is near-useless for new designs |
-| **B: Manual support placement** | Medium — add a "supports" panel with click-to-add, drag-to-position columns | Medium — lets designers sketch structure but tedious for full coasters |
-| **C: Automatic support generator** | High — algorithm needs to cast vertical rays from track nodes to ground, place columns at spacing based on track style, handle overhangs and terrain | High — makes the 3D preview actually look like a coaster |
+| Option                                    | Effort                                                                                                                                               | User value                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **A: Port as-is (passive supports only)** | Low — just render the `supList` points as vertical columns when present                                                                              | Low — matches FVD++ exactly but the feature is near-useless for new designs |
+| **B: Manual support placement**           | Medium — add a "supports" panel with click-to-add, drag-to-position columns                                                                          | Medium — lets designers sketch structure but tedious for full coasters      |
+| **C: Automatic support generator**        | High — algorithm needs to cast vertical rays from track nodes to ground, place columns at spacing based on track style, handle overhangs and terrain | High — makes the 3D preview actually look like a coaster                    |
 
 **Recommendation for v1: Option A.** Document it as "imported supports only" and leave the generator as a future enhancement. Rationale: the core value of a FVD tool is the track, not the structure. Designers who need structural preview export to NoLimits anyway. Generator algorithms that look good are non-trivial (B&M vs wooden vs launched-coaster structure is wildly different) — doing it half-assed is worse than not doing it.
 
@@ -693,14 +700,16 @@ Click a track section to select it. Selection is shared with the Sections list, 
 #### Physics changes
 
 1. **Signed velocity.** `MNode.vel` becomes signed (type unchanged, semantics extended). Recovery from energy:
+
    ```
    v_magnitude = sqrt(2 × max(0, energy - g × y_heart - friction_loss))
    v_signed    = direction_of_travel × v_magnitude
    ```
+
    where `direction_of_travel ∈ {+1, -1}` is tracked as a per-node boolean field `traveling_forward`.
 
 2. **Direction reversals.** A reversal happens when `v_magnitude` passes through zero. Detect per step:
-   - If `v_signed(prev) > 0` and `v_magnitude(curr)` hits the floor without energy being added, the train has stalled — flip `traveling_forward`, add a small epsilon to avoid sticking, continue integrating with the forward-pointing tangent *reversed* in position updates but not in roll/pitch (the train is rolling backward down the hill, not flipping upside down).
+   - If `v_signed(prev) > 0` and `v_magnitude(curr)` hits the floor without energy being added, the train has stalled — flip `traveling_forward`, add a small epsilon to avoid sticking, continue integrating with the forward-pointing tangent _reversed_ in position updates but not in roll/pitch (the train is rolling backward down the hill, not flipping upside down).
    - Position update uses `curr.pos += v_signed × dir × dt` (so negative velocity moves the train backward along the same tangent).
    - The quaternion integration for `dir`/`lat` continues to use the signed `v` — curvature bends the train less per unit distance at lower speed regardless of sign, which is correct.
 
@@ -708,9 +717,9 @@ Click a track section to select it. Selection is shared with the Sections list, 
 
 #### Section-type semantics
 
-The existing section types (`Straight`, `Curved`, `Forced`, `Geometric`, `Bezier`) integrate forward from the anchor. None of them can *cause* a reversal on their own; they can only respond to one if the train arrives going backward.
+The existing section types (`Straight`, `Curved`, `Forced`, `Geometric`, `Bezier`) integrate forward from the anchor. None of them can _cause_ a reversal on their own; they can only respond to one if the train arrives going backward.
 
-To *cause* a reversal, introduce two new section types:
+To _cause_ a reversal, introduce two new section types:
 
 - **`ReverseSection`** (new): an instantaneous flip at a specific point. The train's velocity is reflected (`v → -v`), position is continuous, orientation is continuous. Useful for: shuttle bumpers, launch-end rollback points, pendulum reversal points. Has no length of its own; it's a zero-length "event" section.
 - **`ShuttleSection`** (new): a convenience wrapper — a `Forced` or `Geometric` section followed by a `ReverseSection` followed by the same sub-section traversed in reverse. For the common "out-and-back shuttle" use case where the train leaves the station, reverses at the end of a track arm, and returns through the same geometry experiencing mirrored forces.
@@ -752,7 +761,7 @@ FVD++ models a track as a strictly linear sequence of sections. KexEdit uses a f
 
 **Recommended v1 (T1 only):** ship the linear chain, which covers everything FVD++ does and leaves clean architectural room for T2/T3 additions. Explicitly document that `CopyPathSection` and `BridgeSection` are T2, switch tracks T3. **Do not** implement a UI node graph at T1 — the linear list view + table view (§7) cover T1 needs perfectly.
 
-**UI implication for T2:** a simplified node graph appears alongside the linear list as an *alternative view* (not a replacement). Users can toggle which view is active. Those who grok node graphs get the flexibility; those who don't can continue with the list + table for anything that fits the linear model.
+**UI implication for T2:** a simplified node graph appears alongside the linear list as an _alternative view_ (not a replacement). Users can toggle which view is active. Those who grok node graphs get the flexibility; those who don't can continue with the list + table for anything that fits the linear model.
 
 ### 6.8 Modern coaster features beyond FVD++/KexEdit **[T3]**
 
@@ -769,7 +778,7 @@ A launch section applies a specified acceleration profile over a specified track
 
 #### 6.8.2 Magnetic brakes with force curves (`BrakeSection`)
 
-A brake section applies a *deceleration* profile defined by a force curve (typically decreasing-magnitude as velocity drops, matching eddy-current brake physics). Unlike friction (`track.fFriction` and `track.fResistance`), which is global and always present, brake sections are localized and can have any shape.
+A brake section applies a _deceleration_ profile defined by a force curve (typically decreasing-magnitude as velocity drops, matching eddy-current brake physics). Unlike friction (`track.fFriction` and `track.fResistance`), which is global and always present, brake sections are localized and can have any shape.
 
 - **Braking profile:** user-editable force curve, defaulting to a realistic magnetic-brake shape `F_brake = k * v²` or `F_brake = k * v` depending on brake type.
 - **Target exit velocity:** user-specified. If the brake force is insufficient to achieve target over the section length, warn during integration.
@@ -791,6 +800,7 @@ Typical use: a ride with a station, a mid-course switch to either "main lap" or 
 The current mesh sweep (§6.1) builds the track cross-section perpendicular to `dir`. For beyond-vertical drops (pitch > 90°), the existing heart-based geometry still works mathematically, but the track-style constants (spine below/above heart line) need revision: "below" becomes ambiguous when "down" inverts.
 
 Required changes:
+
 - Spine-position computation switches to "always on the outside of the curve" for beyond-vertical sections, based on `sign(lat dotProduct worldUp)` or similar.
 - Overhang visualization: render a visible beam structure above beyond-vertical track, showing track is supported from above (the real engineering). This is mostly cosmetic but distinctive.
 - Shadow map needs to not self-shadow the track into black (common rendering issue on beyond-vertical geometry).
@@ -936,13 +946,15 @@ Schema-driven. Each section variant declares its properties; the panel renders t
 ```typescript
 type PropSchema = {
   key: string;
-  labelKey: string;       // i18n key, never a literal
+  labelKey: string; // i18n key, never a literal
   type: 'number' | 'enum' | 'bool' | 'vec3';
   unit?: 'm' | 'deg' | 'm/s' | 'g' | 's' | 'rad/s';
-  min?: number; max?: number; step?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   enumOptions?: { valueKey: string; labelKey: string }[];
-  help?: string;          // i18n key for tooltip
-  advanced?: boolean;     // hidden behind a "Show advanced" toggle
+  help?: string; // i18n key for tooltip
+  advanced?: boolean; // hidden behind a "Show advanced" toggle
 };
 ```
 
@@ -1076,6 +1088,7 @@ The physics is the risky part. Build the test harness **before** porting the int
 ### 10.3 Property-based tests
 
 For each section type, generate random valid parameters (via `fast-check`). Verify:
+
 - Integration doesn't NaN.
 - Energy conservation holds to within friction losses.
 - `node.norm == cross(node.dir, node.lat)` to float precision after every step.
@@ -1138,80 +1151,80 @@ Defined once, in `packages/app/src/keybindings.ts`. Discoverable via `?` (shortc
 
 ### Global
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+S` | Save project |
-| `Ctrl+Shift+S` | Save as |
-| `Ctrl+O` | Open project |
-| `Ctrl+E` | Export (opens export dialog) |
-| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / Redo |
-| `Ctrl+Y` | Redo (alt) |
-| `1` / `2` / `3` | Switch to Editor / Table / Graph view |
-| `F3` | Toggle stats overlay |
-| `F11` | Toggle fullscreen 3D viewport |
-| `?` | Shortcut cheat sheet |
-| `Esc` | Close dialog / cancel current interaction |
+| Shortcut                  | Action                                    |
+| ------------------------- | ----------------------------------------- |
+| `Ctrl+S`                  | Save project                              |
+| `Ctrl+Shift+S`            | Save as                                   |
+| `Ctrl+O`                  | Open project                              |
+| `Ctrl+E`                  | Export (opens export dialog)              |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / Redo                               |
+| `Ctrl+Y`                  | Redo (alt)                                |
+| `1` / `2` / `3`           | Switch to Editor / Table / Graph view     |
+| `F3`                      | Toggle stats overlay                      |
+| `F11`                     | Toggle fullscreen 3D viewport             |
+| `?`                       | Shortcut cheat sheet                      |
+| `Esc`                     | Close dialog / cancel current interaction |
 
 ### Playback (active in any view that shows the 3D viewport)
 
-| Shortcut | Action |
-|---|---|
-| `Space` | Play / pause |
-| `K` | Play / pause (alt, video-editor muscle memory) |
-| `J` / `L` | Step back / forward 1 second |
-| `Shift+J` / `Shift+L` | Step back / forward 0.1 second |
-| `,` / `.` | Previous / next section boundary |
-| `Home` / `End` | Playhead to track start / end |
-| `[` / `]` | Decrease / increase playback speed (cycles 0.25·0.5·1·2·4·8) |
-| `0` | Reset playback speed to 1× |
-| `V` | Cycle camera mode (Orbit → Follow → POV → Locked → Orbit) |
-| `Shift+V` | Reverse cycle camera mode |
-| `L` | Cycle loop mode (off → track → section → off). **Note:** conflicts with step-forward above; in practice `L` steps forward and `Shift+Alt+L` toggles loop — final binding to be confirmed by first-use testing |
+| Shortcut              | Action                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Space`               | Play / pause                                                                                                                                                                                                  |
+| `K`                   | Play / pause (alt, video-editor muscle memory)                                                                                                                                                                |
+| `J` / `L`             | Step back / forward 1 second                                                                                                                                                                                  |
+| `Shift+J` / `Shift+L` | Step back / forward 0.1 second                                                                                                                                                                                |
+| `,` / `.`             | Previous / next section boundary                                                                                                                                                                              |
+| `Home` / `End`        | Playhead to track start / end                                                                                                                                                                                 |
+| `[` / `]`             | Decrease / increase playback speed (cycles 0.25·0.5·1·2·4·8)                                                                                                                                                  |
+| `0`                   | Reset playback speed to 1×                                                                                                                                                                                    |
+| `V`                   | Cycle camera mode (Orbit → Follow → POV → Locked → Orbit)                                                                                                                                                     |
+| `Shift+V`             | Reverse cycle camera mode                                                                                                                                                                                     |
+| `L`                   | Cycle loop mode (off → track → section → off). **Note:** conflicts with step-forward above; in practice `L` steps forward and `Shift+Alt+L` toggles loop — final binding to be confirmed by first-use testing |
 
 ### POV camera (active when `cameraMode === 'POV'`)
 
-| Shortcut | Action |
-|---|---|
-| `↑` / `↓` | Shift POV offset along forward axis |
-| `←` / `→` | Shift POV offset along lateral axis |
-| `PageUp` / `PageDown` | Shift POV offset along normal axis |
-| `R` | Reset POV offset to default |
-| `Shift+drag` (mouse) | Look around (decouple view from track orientation briefly) — release to resnap |
+| Shortcut              | Action                                                                         |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `↑` / `↓`             | Shift POV offset along forward axis                                            |
+| `←` / `→`             | Shift POV offset along lateral axis                                            |
+| `PageUp` / `PageDown` | Shift POV offset along normal axis                                             |
+| `R`                   | Reset POV offset to default                                                    |
+| `Shift+drag` (mouse)  | Look around (decouple view from track orientation briefly) — release to resnap |
 
 ### Editor view
 
-| Shortcut | Action |
-|---|---|
-| `` ` `` | Cycle panel visibility (three-panel / two-panel / viewport-only) |
-| `Ctrl+N` | New section (opens type picker) |
-| `Delete` | Delete selected section |
-| `Ctrl+D` | Duplicate selected section |
-| `↑` / `↓` | Select previous / next section (when sections list focused) |
-| `Alt+↑` / `Alt+↓` | Move selected section up / down |
-| `Tab` | Timeline: toggle dope sheet / curve view |
+| Shortcut          | Action                                                           |
+| ----------------- | ---------------------------------------------------------------- |
+| `` ` ``           | Cycle panel visibility (three-panel / two-panel / viewport-only) |
+| `Ctrl+N`          | New section (opens type picker)                                  |
+| `Delete`          | Delete selected section                                          |
+| `Ctrl+D`          | Duplicate selected section                                       |
+| `↑` / `↓`         | Select previous / next section (when sections list focused)      |
+| `Alt+↑` / `Alt+↓` | Move selected section up / down                                  |
+| `Tab`             | Timeline: toggle dope sheet / curve view                         |
 
 ### Timeline
 
-| Shortcut | Action |
-|---|---|
-| `I` | Insert keyframe at playhead |
-| `E` | Quick value editor on selected keyframe (`V` is camera cycle) |
-| `Delete` | Delete selected keyframes |
-| `Ctrl+C` / `Ctrl+V` | Copy / paste keyframes |
-| `←` / `→` | Nudge keyframe by 10 ms (when timeline focused) |
-| `Shift+←` / `Shift+→` | Nudge keyframe by 100 ms |
-| `Shift+drag` | Constrain drag to horizontal / vertical |
+| Shortcut              | Action                                                        |
+| --------------------- | ------------------------------------------------------------- |
+| `I`                   | Insert keyframe at playhead                                   |
+| `E`                   | Quick value editor on selected keyframe (`V` is camera cycle) |
+| `Delete`              | Delete selected keyframes                                     |
+| `Ctrl+C` / `Ctrl+V`   | Copy / paste keyframes                                        |
+| `←` / `→`             | Nudge keyframe by 10 ms (when timeline focused)               |
+| `Shift+←` / `Shift+→` | Nudge keyframe by 100 ms                                      |
+| `Shift+drag`          | Constrain drag to horizontal / vertical                       |
 
 ### 3D viewport (mouse + orbit/follow modes)
 
-| Shortcut | Action |
-|---|---|
-| `F` | Frame selected section |
-| `A` | Frame all |
-| `B` | Toggle NL1 building border (FVD++ parity) |
-| Middle-drag | Pan |
-| Right-drag | Orbit |
-| Scroll | Zoom |
+| Shortcut    | Action                                    |
+| ----------- | ----------------------------------------- |
+| `F`         | Frame selected section                    |
+| `A`         | Frame all                                 |
+| `B`         | Toggle NL1 building border (FVD++ parity) |
+| Middle-drag | Pan                                       |
+| Right-drag  | Orbit                                     |
+| Scroll      | Zoom                                      |
 
 ### Shortcut conflicts — to resolve during M7
 
@@ -1244,6 +1257,7 @@ IndexedDB, last 10 opened, per-browser. Shown on welcome screen and in `Ctrl+O` 
 User preferences live in `localStorage` under a single `webfvd:prefs` key with a Zod-validated schema. Migrations handled like project format migrations.
 
 Contents:
+
 - **Appearance:** theme (light/dark/auto), panel sizes, background color, grid visibility + color.
 - **Language:** `en` | `de` (§12).
 - **Units:** measurement system (§4.5), time-ms threshold (when to auto-switch from s to ms), dual-unit label visibility.
@@ -1279,6 +1293,7 @@ State this explicitly in the app's About dialog, the README, and the website foo
 **Target browsers:** latest stable and one previous major of Chrome/Edge, Firefox, Safari.
 
 Concretely, as of 2026:
+
 - Chrome / Edge 120+
 - Firefox 115+ ESR, 125+
 - Safari 17+
@@ -1309,6 +1324,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 **Ship target:** a usable replacement for FVD++ 0.79 that runs in Chrome/Firefox/Safari, reads existing `.fvd` files, supports all the section types FVD++ has, and exports to NoLimits 1/2. No modern features, no node graph, no multi-car trains.
 
 #### M0 — Scaffold **[T1]**
+
 - Monorepo, packages, TypeScript strict, Vite dev server, basic app shell.
 - i18next wired, EN + DE stubs, language switcher in top bar.
 - Zustand store, empty command log.
@@ -1317,6 +1333,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - No physics, no 3D.
 
 #### M1 — Data model + JSON I/O **[T1]**
+
 - All types per §4 (`Project`, `Track`, `Section*`, `Func`, `SubFunc`, `MNode` SoA).
 - JSON save/load with Zod schema validation, versioned with explicit migration function (§8.1).
 - File System Access API with `<input type="file">` + download fallback.
@@ -1324,6 +1341,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - Golden test: create a tiny project in code, save, load, compare structurally.
 
 #### M2 — First integrator: Straight + Anchor **[T1]**
+
 - Worker wrapper, Comlink RPC surface.
 - `MNode` SoA with `Float32Array` fields, transferable buffers between worker and main.
 - Straight section integration.
@@ -1333,6 +1351,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - Golden test: hand-built straight-section projects verify position/velocity/distance against expected values.
 
 #### M3 — Functions, SubFunctions, Curved **[T1]**
+
 - Full `SubFunc.getValue` port with all 9 degree types (§5.2). The 9 degrees are the exotic bit — tested individually.
 - `Func` container with locking logic.
 - `Curved` integrator.
@@ -1340,6 +1359,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **Timeline v1**: dope sheet mode, keyframe shapes (square/diamond/circle), interpolation dropdown. No curve view yet, no Bezier handles.
 
 #### M4 — Forced + Timeline v2 **[T1]**
+
 - `Forced` integrator, time-domain and distance-domain variants (`bArgument`).
 - Euler vs Quaternion orientation (`bOrientation`).
 - **Timeline v2**: curve view mode (Tab toggle), Bezier handle dragging, easing presets with auto-detect (Sine/Quadratic/Cubic/Quartic/Quintic/Exponential), keyframe detail dialog.
@@ -1348,12 +1368,14 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **Unit conversion flow** (§5.5): editing derived-unit values offers to switch argument type.
 
 #### M5 — Geometric + Bezier sections **[T1]**
+
 - `Geometric` integrator (pitch/yaw rates instead of forces).
 - `Bezier` section type with arc-length reparameterization.
 - NL2 CSV import into `NoLimitsCSV` section.
 - All FVD++ section types now functional.
 
 #### M6 — Smoothing + pivot + stats overlay **[T1]**
+
 - Port `smoothhandler.cpp`.
 - Smooth force overlay in graph (original vs smoothed, toggleable).
 - Pivot setting (Track → Pivot…) — governs read-only overlay curves and stats panel.
@@ -1361,6 +1383,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **F3 stats overlay** in 3D viewport with dual-unit display.
 
 #### M7 — Track mesh + color modes + playback **[T1]**
+
 - **Full track mesh** per §6.1: adaptive tessellation, all 8 track styles with their exact cross-sections, mesh quality levels.
 - **Force/flexion/roll-speed color modes** (§6.2) with user-customizable gradient endpoints.
 - **Shadow maps** (Three.js built-in PCF).
@@ -1375,18 +1398,21 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - Timeline playhead synced bidirectionally.
 
 #### M8 — Table view + welcome + autosave **[T1]**
+
 - **Table view** per §7.3 (TanStack Table, no sorting, filter row, highlight/jump-to-extreme, bulk edit, column presets, CSV export).
 - **Welcome screen** with templates, recent projects list, "what's new".
 - **Autosave** to IndexedDB (30s interval, rolling 5 per project).
 - **Preferences** panel (§14.4) — theme, language, units, playback defaults, 3D quality, graph colors.
 
 #### M9 — Legacy `.fvd` I/O **[T1]**
+
 - Binary reader (§8.2) with `DataView`, reversed byte order, full structure.
 - Binary writer, producing byte-identical output to FVD++ for golden files.
 - Round-trip test against ~15 golden `.fvd` files covering all section types.
 - Retro-fit M2–M6 golden physics tests to use real `.fvd` inputs now that we can read them.
 
 #### M10 — NoLimits exporters + T1 ship **[T1]**
+
 - NL1 `.nlelem` writer (4 exporter variants from `track.cpp`).
 - NL2 binary export (`exportNL2Track`).
 - Byte-match test against FVD++ 0.79 outputs for the golden set. Any mismatch is a bug; document or fix.
@@ -1403,6 +1429,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 **Ship target:** the tool KexEdit users would recognize as a peer. Closed-loop circuits, shuttle coasters with rollbacks, multi-car train visualization, the optimizer. Still targets NoLimits export; still uses the underlying physics from T1.
 
 #### M11 — Backwards motion & shuttle support **[T2]**
+
 - **Signed velocity** per §6.6: `MNode.vel` semantics extended, energy recovery preserves direction, position updates use signed velocity.
 - **`ReverseSection`**: new section type, zero-length velocity reflection event.
 - **Direction tracking**: reversal detection at near-zero velocity.
@@ -1413,24 +1440,28 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - Golden tests with hand-built shuttle projects (JSON-only; no FVD++ reference exists for signed-velocity behavior).
 
 #### M12 — Bridges & complete circuits **[T2]**
+
 - **`BridgeSection`**: takes two anchor endpoints, generates a Catmull-Rom spline connector (per KexEdit `docs/user-guide/complete-circuits.md`).
 - **Closed-loop detection**: project validation flags unclosed intentional-loop tracks.
 - **Recompute across bridges**: velocity and forces at bridge exit come from the bridge integration, so the circuit is physically consistent.
 - Bridge UI: drop a bridge into the sections list, select source anchor and target anchor.
 
 #### M13 — Copy-path + optimizer + mesh assets **[T2]**
+
 - **`CopyPathSection`** (§6.7 T2): references another section, reuses its node geometry while recomputing forces from the new anchor. Enables KexEdit-style shuttle composition (`docs/user-guide/shuttle-coasters.md`).
 - **Reverse-path operation**: a CopyPath variant that traverses the source section backward.
 - **Optimizer** per §6.9: gradient descent for roll/pitch/yaw targets. Right-click keyframe → Optimize submenu.
 - **Mesh reference assets** (KexEdit Mesh nodes): import `.gltf` / `.glb` files as visual-only reference geometry (terrain, nearby buildings). No physics interaction.
 
 #### M14 — Multi-car train rendering **[T2]**
+
 - **Multi-car visual** per §6.3 T2: JSON train-style configuration (front/middle/back car meshes, wheel assembly, 1–20 cars).
 - **KexEdit train-style compat**: drop KexEdit's `trains/*.json` + meshes into WebFVD's trains folder (IndexedDB), use them directly.
 - **Pivot selector** gains "car front / car N / car back" options in addition to the existing numeric offset.
 - **Force display** gains a "car position" indicator alongside force values.
 
 #### M15 — Node graph view (simplified) **[T2]**
+
 - **Alternative view** to the linear sections list. Toggle in the left panel.
 - **Node types** (minimal): Anchor, ForceSection, GeometricSection, CurvedSection, BezierSection, CopyPathSection, BridgeSection, ReverseSection.
 - **Connections** are data flow: Anchor → Section → Anchor → Section. Not spatial layout.
@@ -1438,6 +1469,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **Drag-to-reorder in list = drag-to-reconnect in graph**: both views represent the same underlying linear/extended-linear data model.
 
 #### M16 — T2 ship **[T2]**
+
 - Polish: UX review of all M11–M15 additions, fix rough edges.
 - Updated DE translation for new features.
 - Tutorial series: "Build a shuttle coaster," "Close a circuit with a bridge," "Use the optimizer to perfect a roll."
@@ -1448,6 +1480,7 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 **Ship target:** the tool modern designers actually want. Switch tracks, launch sections, magnetic brakes, overhang geometry. Rigid-body multi-car simulation. Non-exportable to NoLimits (by construction).
 
 #### M17 — Launch + brake sections **[T3]**
+
 - **`LaunchSection`** per §6.8.1: velocity override with prescribed profile. Launch-type presets (LSM/LIM/tire/hydraulic).
 - **`BrakeSection`** per §6.8.2: deceleration profile from force curve.
 - Force-curve editor in timeline for both.
@@ -1455,21 +1488,25 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - UI warnings: "projects with launch/brake sections cannot be exported to NL1/NL2."
 
 #### M18 — Switch tracks + full DAG **[T3]**
+
 - **`SwitchSection`** per §6.8.3: multiple outputs, runtime switch state.
 - **Full DAG topology**: sections are no longer strictly linear. Integration becomes per-path.
 - **Node graph view upgraded**: multi-output sections, runtime switch state controls.
 - **Validation**: cycle detection, path-completeness check.
 
 #### M19 — Beyond-vertical + sync points **[T3]**
+
 - **Overhang geometry** per §6.8.4: revised spine placement for beyond-vertical sections.
 - **Sync points** per §6.8.5: timing constraints, optimizer integration.
 
 #### M20 — Rigid-body multi-car physics **[T3]**
+
 - **Full rigid-body sim** per §6.3 T3: cars as coupled rigid bodies, constraint solver, inter-car dynamics.
 - **Design-forces vs simulated-forces** distinction in UI.
 - **Not for export**: sim output is analysis-only.
 
 #### M21 — T3 ship **[T3]**
+
 - Comprehensive documentation of all modern features.
 - "Design a Voltron-style launch coaster" tutorial.
 - **Ship.**
@@ -1490,13 +1527,12 @@ These are **not** deferred to a later tier — they're out of the plan entirely.
 - **Touch-first / mobile editing.** Target desktop. Tablet degraded-mode is OK but not tested, phone is explicitly unsupported (§17).
 - **User-customizable keyboard shortcuts.** Ship defaults through all tiers. Customization is a preferences-subsystem addition that should happen once the default set is proven stable.
 - **Plugin / scripting API.** Someone will ask. Say no; the alternative is exposing an internal API we don't want to commit to maintaining.
-- **VR / WebXR POV mode.** Browsers' WebXR support is uneven and the coaster-VR experience has diminishing returns vs the POV camera on a screen. Revisit in 2028+.
 - **Realistic visuals** — cinematic lighting, photo materials, procedural scenery, weather. Out of scope for a design tool; if you want pretty pictures, export to NoLimits 2 and render there.
 - **Simulation of ride dispatch operations, throughput, line management.** We design a ride, we don't operate a park.
 
 ## 20b. Deferred to later tiers (will happen)
 
-Listed to make the "out of scope" list unambiguous — these *are* planned:
+Listed to make the "out of scope" list unambiguous — these _are_ planned:
 
 - Multi-car train visualization → T2 (M14).
 - Rigid-body train physics → T3 (M20).
@@ -1508,11 +1544,12 @@ Listed to make the "out of scope" list unambiguous — these *are* planned:
 - Beyond-vertical geometry → T3 (M19).
 - Sync points → T3 (M19).
 - Custom train-style JSON + mesh import → T2 (M14, compat with KexEdit train packages).
+- **VR / WebXR POV mode → post-T3 (T4 candidate).** Browser WebXR support and the coaster-VR experience both need to improve before this is worth shipping, and it layers cleanly on top of the POV camera built in T1 (§6.3). Revisit once T3 ships.
 
 ## 21. Pitfalls to avoid
 
 - **Don't port `qcustomplot`.** It's 25k lines of Qt charting. uPlot covers speed/force graphs; custom SVG covers the timeline. Together, maybe 1200 lines.
-- **Don't port the Qt undo system blindly.** It's entangled with Qt's signal/slot model. The *pattern* transfers; the code doesn't.
+- **Don't port the Qt undo system blindly.** It's entangled with Qt's signal/slot model. The _pattern_ transfers; the code doesn't.
 - **Don't try to make the physics deterministic across float32/float64.** The C++ uses float32 (glm's default). You'll use float64 in JS. Expected ULP-level differences are fine; the test tolerances account for it.
 - **Don't block the main thread on recompute, ever.** The moment you do, a ~30-second track with force sections will jank the UI for hundreds of ms.
 - **Don't "modernize" the physics.** No RK4, no adaptive stepsize. FVD++ uses fixed 1000 Hz Euler for a reason: it's deterministic, and NL2 expects this sample rate for export compatibility.

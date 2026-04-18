@@ -1,0 +1,44 @@
+roller-coaster-designer
+Copyright (C) 2026 the roller-coaster-designer contributors.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License version 3 as published by the Free
+Software Foundation. See the LICENSE file for the full text.
+
+================================================================================
+Upstream attributions
+================================================================================
+
+This project is a from-scratch reimplementation in TypeScript of ideas,
+algorithms, file formats, and UX patterns that originate in two upstream
+projects. It would not exist without their work.
+
+FVD++ (openFVD)
+    Source:  https://github.com/altlenny/openFVD
+    License: GNU General Public License v3.0
+    Role:    Physics ground truth and legacy .fvd binary file format.
+             The integrators in packages/core/src/physics/ trace directly to
+             openFVD's core/ C++ sources (secforced.cpp, section.cpp,
+             subfunction.cpp, smoothhandler.cpp, track.cpp, exportfuncs.cpp).
+             For T1, we match FVD++ 0.79 output byte-for-byte so that projects
+             interchange cleanly with existing FVD++ workflows and NoLimits
+             exports.
+
+    Because FVD++ is licensed GPL-3.0, this project is also licensed GPL-3.0.
+
+KexEdit
+    Source:  https://github.com/IndividualKex/KexEdit
+    License: MIT License
+    Role:    UI and advanced-feature reference. Timeline editor, node graph,
+             table view, shuttle coaster model, bridges, and optimizer are
+             designed after KexEdit's implementation and documentation. None of
+             KexEdit's C# code is copied or translated; only its visible
+             behavior and docs inform the design.
+
+================================================================================
+Third-party runtime dependencies
+================================================================================
+
+Runtime dependencies are listed in each package's package.json. Their licenses
+are reproduced in packages/app/dist/THIRD_PARTY_NOTICES.txt when the app is
+built for distribution (generated at M10).

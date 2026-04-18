@@ -30,7 +30,7 @@ Everything in this project is tagged with a tier. Respect them.
 
 3. **Recompute runs in the Web Worker. Always.** The main thread reads results via Comlink and transferable `ArrayBuffer`s. If you're about to call an integrator from a React component, stop.
 
-4. **No literal user-facing strings in the app.** Every label goes through `t()`. Every new string lands in `packages/app/src/i18n/locales/en/*.json` *and* `de/*.json`. If the DE translation is uncertain, add the key with a `// TODO(i18n-de): verify` comment — don't leave the DE file short.
+4. **No literal user-facing strings in the app.** Every label goes through `t()`. Every new string lands in `packages/app/src/i18n/locales/en/*.json` _and_ `de/*.json`. If the DE translation is uncertain, add the key with a `// TODO(i18n-de): verify` comment — don't leave the DE file short.
 
 5. **For T1 physics: match FVD++ 0.79 behavior, even when it looks wrong.** Port the math from `reference/openfvd/core/` verbatim. The `0.9 * heartLine` in energy calc is intentional. The off-by-one at section boundaries is intentional. Add `// NOTE: matches FVD++ 0.79` and move on. Byte-for-byte compatibility with FVD++ matters because NL1/NL2 expect it.
 
@@ -108,7 +108,7 @@ Fly mode is `Tab` (works on any input device), not right-click-hold. ViewCube is
 - **Don't port `qcustomplot`.** It's 25k lines of Qt charting. uPlot + custom SVG cover it in ~1200 lines.
 - **Don't modernize the physics.** Fixed 1000 Hz Euler is intentional (NL2 export compatibility). No RK4, no adaptive stepsize.
 - **Don't assume velocity is positive.** T2 introduces signed velocity (§6.6). When porting or touching integrators, ask: "does this handle v < 0?"
-- **Don't confuse spatial and chronological position.** For forward-only coasters they're identical; shuttles make them diverge. The playhead is *chronological*.
+- **Don't confuse spatial and chronological position.** For forward-only coasters they're identical; shuttles make them diverge. The playhead is _chronological_.
 - **Don't pre-optimize scrubbing.** `cumulativeTime`/`cumulativeDistance` arrays (§5.4) give O(log n) scrubs. 60k nodes × binary search per frame is free; skip the indexing cleverness.
 - **Don't show a loading spinner for recompute.** At target perf it's <100 ms. A spinner that flashes briefly looks like jank. Show progress only if >500 ms.
 
