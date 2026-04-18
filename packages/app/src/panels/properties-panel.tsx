@@ -9,7 +9,7 @@ import {
   type Section,
   type SubFunc,
 } from '@roller-coaster-designer/core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAppStore } from '../state/store.js';
@@ -576,6 +576,37 @@ function Field(props: {
 }): JSX.Element {
   const isNumber = typeof props.value === 'number';
   const hasSlider = isNumber && props.min !== undefined && props.max !== undefined;
+  const baseStep = props.step ?? 1;
+
+  // Input buffer: while focused, show exactly what the user is typing;
+  // while blurred, show the store's number rounded to ≤4 significant
+  // digits so `0.09999999999` doesn't leak through floating-point math.
+  const [focused, setFocused] = useState(false);
+  const [buffer, setBuffer] = useState<string>('');
+  const displayValue = focused
+    ? buffer
+    : isNumber
+      ? formatDisplay(Number(props.value))
+      : String(props.value);
+
+  // Slider snap: Shift = 10× finer, Alt = 10× coarser. The slider element
+  // can't intercept modifier state cleanly via its own onChange, so we
+  // listen on keydown at the window during a drag. Cheap + no library.
+  const [snapMultiplier, setSnapMultiplier] = useState(1);
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.shiftKey) setSnapMultiplier(0.1);
+      else if (ev.altKey) setSnapMultiplier(10);
+      else setSnapMultiplier(1);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, []);
+
   return (
     <label className="flex flex-col gap-1 text-xs">
       <span className="flex items-center justify-between gap-2">
@@ -584,24 +615,42 @@ function Field(props: {
           <input
             type={props.type ?? (isNumber ? 'number' : 'text')}
             step="any"
-            value={String(props.value)}
-            onChange={(e) => props.onChange(isNumber ? Number(e.target.value) : e.target.value)}
+            value={displayValue}
+            onFocus={(e) => {
+              setBuffer(e.target.value);
+              setFocused(true);
+            }}
+            onBlur={() => setFocused(false)}
+            onChange={(e) => {
+              setBuffer(e.target.value);
+              props.onChange(isNumber ? Number(e.target.value) : e.target.value);
+            }}
             className="w-24 rounded border border-white/10 bg-surface-0 px-2 py-1 text-right text-neutral-100 outline-none focus:border-white/30"
           />
           {props.suffix && <span className="w-6 text-left text-neutral-500">{props.suffix}</span>}
         </span>
       </span>
       {hasSlider && (
-        <input
-          type="range"
-          min={props.min}
-          max={props.max}
-          step={props.step ?? 1}
-          value={clampForSlider(Number(props.value), props.min!, props.max!)}
-          onChange={(e) => props.onChange(Number(e.target.value))}
-          className="h-1 w-full cursor-pointer accent-sky-400"
-          aria-label={`${props.label} slider`}
-        />
+        <div className="flex items-center gap-1">
+          <input
+            type="range"
+            min={props.min}
+            max={props.max}
+            step={baseStep * snapMultiplier}
+            value={clampForSlider(Number(props.value), props.min!, props.max!)}
+            onChange={(e) => props.onChange(Number(e.target.value))}
+            className="h-1 flex-1 cursor-pointer accent-sky-400"
+            aria-label={`${props.label} slider`}
+            title={
+              snapMultiplier === 1
+                ? `Step ${baseStep} — hold Shift for finer, Alt for coarser`
+                : `Step ${(baseStep * snapMultiplier).toPrecision(2)}`
+            }
+          />
+          <span className="w-10 text-right text-[10px] text-neutral-500 tabular-nums">
+            ±{formatDisplay(baseStep * snapMultiplier)}
+          </span>
+        </div>
       )}
     </label>
   );
@@ -610,6 +659,21 @@ function Field(props: {
 function clampForSlider(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return value < min ? min : value > max ? max : value;
+}
+
+/** Rounds for display without trailing-zero noise. Keeps 4 significant
+ *  digits for non-integer values, integers stay exact. */
+function formatDisplay(v: number): string {
+  if (!Number.isFinite(v)) return '';
+  if (Number.isInteger(v)) return String(v);
+  const abs = Math.abs(v);
+  // Choose decimal places so the shown value has ~4 significant figures,
+  // bounded to [1, 4] so huge/tiny values don't explode.
+  const sigDigits = 4;
+  const magnitude = abs >= 1 ? Math.floor(Math.log10(abs)) + 1 : 1;
+  const decimals = Math.max(1, Math.min(4, sigDigits - magnitude));
+  const rounded = Number(v.toFixed(decimals));
+  return String(rounded);
 }
 
 function Vec3Field(props: {

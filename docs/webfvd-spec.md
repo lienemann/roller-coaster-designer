@@ -1742,6 +1742,26 @@ Listed to make the "out of scope" list unambiguous — these _are_ planned:
 - **Heart-line vs rail-line ribbon → M7.** The ribbon currently renders around the integrated centre (heart) line. Riders feel motion at the rail line (offset by `track.heart` along the normal), and some users want to see where their feet sit rather than where their head does. A toggle (Viewport settings) flips the ribbon to draw `positions + norm × heart` instead of `positions ± lat × railHalfWidth` so both views are available.
 - **Sky + environment textures → M7.** FVD++ ships panoramic sky images and ground textures in its resources tree (GPL-3.0, compatible with our AGPL-3.0 output). Three.js has first-class support: equirectangular sky maps feed `scene.background` + `scene.environment` via `THREE.EquirectangularReflectionMapping` / `PMREMGenerator`; ground textures go on the `GridHelper` replacement. Ship a small bundled set at M7 plus a "drop your own" file picker, attribution in `NOTICE`. The `texturePath` field we already round-trip through `.webfvd.json` and `.fvd` points at the ground texture — that wiring is already in place.
 - **Roll offset bake-on-export → M9.** The integrator applies `rollOffset = prevRoll − rollFunc(0)` inside every section so the rider's roll stays continuous even if a user edited a section's banking without syncing with the previous section's end. FVD++ does not — it evaluates `rollFunc(0)` literally. When the `.fvd` writer lands at M9, it must bake the accumulated offset into each section's `rollFunc.subfuncs[0].startValue` so FVD++ integrates the same smooth curve we do. Until M9 exists, no risk.
+- **Perspective ↔ Orthographic camera toggle → M7.** Today the viewport
+  always uses a `PerspectiveCamera`. A toggle in the viewport toolbar
+  flips to an `OrthographicCamera` sharing the same `target` and
+  `position` direction, with zoom sized so the visible area matches the
+  perspective frustum at the target plane. OrbitControls works with both
+  camera types, so we can reuse the existing pan/zoom/rotate bindings.
+  POV stays perspective (first-person in ortho is confusing). Useful
+  for blueprint-style side/top views. Preserve the ViewCube behaviour:
+  clicking a face should snap to the same direction under both projections.
+- **Draggable 3D handles on sections → M7 (Bezier first).** The biggest
+  UX win for Bezier composition is dragging the control points in the 3D
+  view instead of editing four numbers in the properties panel. Use
+  Three's `TransformControls` attached to a small sphere mesh at each
+  handle's world position; on drag, update the store with
+  `patch({ handle: { startPos: [x, y, z] } })` so the integrator picks it
+  up on the next recompute (≤100 ms). Sockets for other section types:
+  Anchor (position + yaw), Straight (length endpoint), Curved (length +
+  axis angle). Picking priority: TransformControls gizmo > ViewCube >
+  rail raycast. Blocked by a pointer-priority layer we don't have yet —
+  build it as part of this slice.
 - **ViewCube / navigation gizmo → M7.** Today a world-axes `AxesHelper` at the origin gives R/G/B directional cues (spec §6.4 "Fly mode / ViewCube fallback" mentions a proper cube). Build a Fusion-360-style ViewCube rendered by a small second scene/camera in the top-right corner:
   - **6 face clicks** snap to orthographic Top / Bottom / Front / Back / Left / Right.
   - **12 edge clicks** snap to a 45° isometric between two faces.
