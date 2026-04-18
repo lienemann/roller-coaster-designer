@@ -8,3 +8,7 @@ reference
 pnpm-lock.yaml
 LICENSE
 NOTICE
+
+# Goldens are asserted byte-for-byte against JSON.stringify output.
+# Prettier would collapse short arrays inline and break the round-trip test.
+packages/core/test/golden/*.webfvd.json
