@@ -14,3 +14,4 @@ export const PACKAGE_BOUNDARY = Object.freeze({
 export * from './errors.js';
 export * from './io/index.js';
 export * from './model/index.js';
+export * from './physics/index.js';

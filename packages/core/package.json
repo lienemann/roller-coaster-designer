@@ -33,6 +33,7 @@
     "vitest": "^2.1.2"
   },
   "dependencies": {
+    "gl-matrix": "^3.4.4",
     "zod": "^4.3.6"
   }
 }

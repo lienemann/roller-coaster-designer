@@ -28,6 +28,20 @@ Ships as `@roller-coaster-designer/core`.
   key); never a raw string. Translation happens in the app layer.
 - **No hot-path allocation.** `gl-matrix` out-params only inside integrators.
 
+## Current state (M2)
+
+- `src/physics/subfunc-eval.ts` — `getSubFuncValue(subFunc, x)` with the
+  Linear branch filled in. Every other degree throws loudly; the full nine
+  land at M3. `applyCenter`/`applyTension` are placeholders returning
+  identity.
+- `src/physics/integrate.ts` — `integrateTrack(track)` walks sections in
+  order and produces an `MNodeArrays` populated with positions, basis
+  vectors, velocity, roll, and projected g-forces. Anchor + Straight only;
+  every other section type throws. Right-handed Y-up basis with
+  `norm = cross(lat, dir)` — the viewport and worker share this convention.
+  Scratch vec3 buffers live at module scope so the hot loop doesn't allocate.
+- `gl-matrix` is now a runtime dep. Only `vec3` is used today.
+
 ## Current state (M1)
 
 - `src/model/` — full TypeScript port of the openFVD data model: `enums`,
