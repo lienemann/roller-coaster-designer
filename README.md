@@ -10,6 +10,20 @@ Status: **pre-release, Tier 1 in progress.** See
 [`docs/webfvd-spec.md`](docs/webfvd-spec.md) for the full specification and
 milestone plan.
 
+## Positioning
+
+**WebFVD aims to be the best hobbyist and prosumer coaster-design tool —
+not a replacement for Stengel Engineering or a manufacturer's in-house
+CAD stack.** The distinction shapes scope: we model geometric forces,
+check them against published safety envelopes (ASTM F2291, EN 13814),
+and visualise jerk and clearance — all as _design aids_. We do not
+perform finite-element structural analysis, produce certification
+documents, emit CNC / production drawings, or ship manufacturer-specific
+parameterised track libraries. Compliance-adjacent UI always carries the
+"design aid, not a certification" disclaimer, because that is the truth
+and the only honest framing for a browser tool. See §6.10 and §20 of the
+spec for the full scope line.
+
 ## Credits
 
 This project stands on two shoulders and says so plainly.

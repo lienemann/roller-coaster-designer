@@ -822,6 +822,187 @@ Port KexEdit's optimizer (`docs/user-guide/optimizer.md`). Given a target value 
 - **UI:** right-click keyframe → Optimize submenu (Roll / Pitch / Yaw / Velocity / etc). Dialog asks for target value (default 0). Start button runs optimization with visual progress.
 - **Extended targets (T3):** optimize for a target force value, target speed at a position, or sync-point timing.
 
+### 6.10 Engineering analysis features
+
+Features that go beyond FVD++/KexEdit to make WebFVD useful for serious designers, drawing on what professional manufacturers (Mack, Vekoma, Stengel Engineering) do but scoped to what's realistic for a browser-based tool. The goal is **"best-in-class for hobbyist and prosumer coaster design,"** not **"replace Stengel Engineering's proprietary stack."**
+
+These features assume the signed-velocity physics core, cumulative time/distance arrays, and pivot system from earlier sections are in place.
+
+#### 6.10.1 Force envelope compliance checking (ASTM F2291 / EN 13814) **[T2]**
+
+Real coasters must meet force envelope standards — plots of acceptable G magnitude vs. sustained duration, with separate curves for vertical (normal), lateral, and longitudinal forces, and for positive vs. negative G directions. ASTM F2291 (US) and EN 13814 (Europe) are the two major standards. Their envelopes are published graphs in the standards documents.
+
+**Data model.** Encode each envelope as a piecewise curve of `(duration_seconds, max_g_magnitude)` pairs, one curve per (axis, direction, standard). Store as a JSON file in `packages/core/src/standards/`:
+
+```json
+{
+  "standard": "ASTM_F2291_2024",
+  "envelopes": {
+    "normal_positive": [
+      [0.0, 6.0],
+      [0.2, 6.0],
+      [1.0, 4.0],
+      [10.0, 3.0]
+    ],
+    "normal_negative": [
+      [0.0, -2.0],
+      [1.0, -1.5],
+      [10.0, -1.0]
+    ],
+    "lateral": [
+      [0.0, 3.0],
+      [1.0, 2.0],
+      [10.0, 1.8]
+    ],
+    "longitudinal_positive": [
+      [0.0, 6.0],
+      [1.0, 5.0]
+    ],
+    "longitudinal_negative": [
+      [0.0, -1.5],
+      [1.0, -1.3]
+    ]
+  }
+}
+```
+
+The values above are illustrative — **the actual envelope values must come from the standards documents themselves.** Don't hardcode made-up numbers; either get the PDFs and transcribe the curves, or leave placeholder data clearly marked as TODO until someone can.
+
+**Algorithm.** For each axis, for each contiguous window of the node stream where the force exceeds a threshold, compute the window's duration. A violation occurs when the peak G in a window exceeds the envelope value at that window's duration:
+
+```
+for each axis in [normal, lateral, longitudinal]:
+  for each direction in [positive, negative]:
+    find all maximal windows where force(node) * direction > 0
+    for each window:
+      duration = cumulativeTime[window_end] - cumulativeTime[window_start]
+      peak = max/min force in window
+      envelope_limit = interpolate(standard.envelopes[axis][direction], duration)
+      if |peak| > |envelope_limit|:
+        emit violation(window, axis, direction, peak, envelope_limit)
+```
+
+Use linear interpolation between envelope points. Duration clamping: windows shorter than the envelope's first point use the first point's limit; windows longer than the last point use the last point's limit.
+
+**Pivot dependence.** Run envelope checking at the currently-selected pivot (§6.3 pivot system). T2's multi-pivot expansion (§6.10.3) runs it at every enabled pivot and unions the violations.
+
+**UI.**
+
+- Violations appear as red shaded regions on the force graphs (§6.2) — normal violations on the normal graph, lateral on the lateral graph.
+- Track mesh gets red segments for sections containing violations when "Compliance" is the active visualization mode (add to the color-mode options in §6.2).
+- A compliance summary panel (toggleable) lists violations with: axis, peak value, envelope limit, duration, start time, section name. Click a violation → jump playhead to the start of the window.
+- Standard selection in preferences (§14.4): `none` (disabled), `ASTM_F2291`, `EN_13814`, user-uploaded JSON. Default: `none` — compliance checking is opt-in because designers iterating on concepts don't want violation noise until they're ready to validate.
+
+**Honest scoping.** This is a **design aid, not a certification.** The UI must make this clear — a prominent disclaimer in the compliance panel:
+
+> "This tool checks geometric force profiles against published envelope curves. Actual certification requires a licensed engineer, full vehicle dynamics, and standards-body review. Do not use for safety-critical decisions."
+
+**Milestone:** lands in M12 alongside T2 shuttle/bridge features, because envelope checking is more useful once the full section-type vocabulary is available.
+
+#### 6.10.2 Jerk analysis **[T2]**
+
+Jerk is `dG/dt` — the rate of change of acceleration. Low-jerk designs feel smooth; high-jerk designs feel abrupt even when peak G is moderate. Stengel's clothoid loop is famous precisely because it minimizes jerk at loop entry/exit compared to circular loops.
+
+**Computation.** Finite-difference on the force arrays per axis:
+
+```typescript
+jerkNormal[i] = (forceNormal[i + 1] - forceNormal[i - 1]) * F_HZ * 0.5; // central difference
+jerkLateral[i] = (forceLateral[i + 1] - forceLateral[i - 1]) * F_HZ * 0.5;
+```
+
+Units: `g/s`. Stored as a `Float32Array` per track, computed at recompute time alongside the existing smoothed/unsmoothed force arrays.
+
+**UI.**
+
+- Add a "Jerk" tab to the bottom-panel graphs, showing normal/lateral/longitudinal jerk over time.
+- Add "Peak jerk (normal)" and "Peak jerk (lateral)" columns to the table view (§7.3) — these reveal which sections have the worst transitions at a glance.
+- Color mode: add "Jerk magnitude" to the 3D viewport's color options, using `sqrt(jerkN² + jerkL²)` and a warning-colored gradient.
+- Stats overlay (§7.6): show instantaneous jerk alongside the force readout.
+
+**No violation thresholds.** Unlike envelope checking, there is no widely-standardized jerk limit (standards mention it qualitatively but don't publish hard numbers). Present jerk as information, not as pass/fail. Designers will learn what values feel good through practice.
+
+**Milestone:** M13, alongside the other T2 analysis work.
+
+#### 6.10.3 Multi-rider pivot analysis **[T2]**
+
+A real train has riders at different positions — front vs. back car, and within a car at different seat rows. Forces at each position differ because the train's body has finite length (typically 7–15 m for a full train). The existing pivot system (§6.3) samples at one configurable offset; this extends it to _all_ seat positions simultaneously.
+
+**Data model.** Add to the track's train configuration:
+
+```typescript
+interface SeatPosition {
+  name: string; // "Front car, row 1", "Back car, row 2", etc.
+  offsetMeters: number; // heart-distance offset from train reference point
+  heartOffsetMeters: number; // per-rider heart height override (optional)
+  enabled: boolean; // include in analysis
+}
+
+interface TrainConfig {
+  seats: SeatPosition[]; // default: one seat at offset=0
+  referencePoint: 'front' | 'middle' | 'back'; // what the playhead represents
+}
+```
+
+At T2, the seat list is configured in the train-style JSON (§M14) — just add an array of offsets. At T3 with rigid-body sim, these become actual car positions in the simulated train.
+
+**Computation.** For each frame/scrub update, for each enabled seat, look up the node at `playheadDistance + seatOffset` using the cumulative arrays. Compute forces at that node for that seat's heart offset. Store results as `Record<seatName, ForceSample>`.
+
+**Envelope checking multi-pivot.** When compliance checking (§6.10.1) runs, iterate over all enabled seats instead of just the active pivot. Report violations with which seat they occur for — the front car typically has the worst airtime, the back car the worst ejector forces, etc.
+
+**UI.**
+
+- Stats overlay (§7.6): show a compact multi-seat table when multi-pivot is enabled: one row per seat, columns for N/L/longitudinal G.
+- Compliance panel (§6.10.1): group violations by seat.
+- Graph overlays: optionally plot force curves for all seats simultaneously (colored differently) in the curve view. For 15+ seats this gets noisy — provide a "front/middle/back only" simplified toggle.
+
+**Milestone:** M14 when multi-car train rendering lands — same architectural change.
+
+#### 6.10.4 Clothoid section type **[T2]**
+
+A clothoid (Euler spiral / Cornu spiral) is a curve whose curvature increases linearly with arc length: `κ(s) = a + b·s`. It's the shape that gives the smoothest possible transition between straight and curved sections — Stengel's vertical loops use it because it produces bounded jerk where circular loops have discontinuous jerk at the transitions.
+
+**Parameters.** A `ClothoidSection` takes:
+
+- `entryCurvature`: starting curvature in rad/m (signed; 0 for tangent entry from a straight section).
+- `exitCurvature`: ending curvature in rad/m.
+- `arcLength`: total heart-length of the section in meters.
+- `axis`: plane of the curve, in degrees from the track's current lateral axis (0 = pitch up, 90 = yaw right, etc.).
+- `leadIn` / `leadOut`: optional smoothing at endpoints (same semantics as Curved sections).
+- `rollFunc`: standard roll function like other sections.
+
+**Integration.** At each 1000 Hz step, compute the instantaneous curvature `κ(s) = entryCurvature + (exitCurvature − entryCurvature) * (s / arcLength)` where `s` is the arc length traversed so far. The pitch/yaw rates are `κ * v` decomposed by axis angle. Everything else (velocity via energy, roll from the roll function) follows the existing integration pattern.
+
+**Math reference.** Standard Fresnel integrals give the position explicitly:
+
+- `x(s) = ∫₀ˢ cos(a·t + b·t²/2) dt`
+- `y(s) = ∫₀ˢ sin(a·t + b·t²/2) dt`
+
+where `a = entryCurvature`, `b = (exitCurvature − entryCurvature) / arcLength`. But for consistency with existing section types and to inherit all the velocity/energy bookkeeping, compute numerically via the standard integrator rather than using closed-form Fresnel values. The Fresnel form is only useful for validation tests.
+
+**File format.** New section type in the JSON schema; enum extension for `.fvd` (though `.fvd` save will warn that `ClothoidSection` isn't FVD++-compatible, like `ReverseSection` from §6.6).
+
+**UI.** Properties panel lists the four numeric fields plus axis plus lead-in/out. No new timeline graphs needed — it's a geometry-parameter section like Curved, not a force-function section like Forced.
+
+**Milestone:** M13, alongside jerk analysis — the two are thematically linked (clothoids exist _because_ of jerk).
+
+#### 6.10.5 Clearance envelope vs imported scenery **[T3]**
+
+Builds on the Mesh reference asset feature (M13): users can import `.gltf` / `.glb` files as visual reference geometry. This feature extends that to collision detection — checking whether the track's clearance box intersects imported scenery.
+
+**Clearance box.** Swept along the track at ±`clearanceLat` and ±`clearanceNorm` offsets from the heart line, by default matching FVD++'s 5 m-tall POV building border. User-configurable per track (different ride types have different clearance requirements: sit-down vs. floorless vs. flying).
+
+**Collision test.** For each mesh reference asset, at each sampled track position (every ~0.5 m of heart distance), build an oriented bounding box for the clearance at that position and test intersection with the imported mesh. Use Three.js `Box3.intersectsObject` with proper transformation to the track's local frame at that position.
+
+**Performance.** A 60-second coaster with 0.5 m mesh sampling is ~2000 tests per imported mesh per recompute. Worst case with 5 large meshes and BVH raycasting: ~50 ms on a laptop. Run on the worker, not the main thread.
+
+**UI.**
+
+- Track mesh colored red at sections with collisions when "Clearance" is the active visualization mode.
+- Compliance panel gets a "Clearance violations" section listing each section with a collision, the offending mesh asset name, and the max intrusion depth.
+- Cause-helpful error: "Train body intersects `Terrain.gltf` at section 12, 0.8 m intrusion. Either raise track or lower terrain at this location."
+
+**Milestone:** M19, alongside other T3 features. Realistic because it reuses mesh import machinery from M13 and adds only collision logic on top.
+
 ## 7. UI (redesigned)
 
 FVD++'s Qt UI is three things fighting for space: the 3D viewport, the sections tree, and the graphs. The redesign gives each a proper role, and adds a **table view** and a **stats overlay** that FVD++ lacks but power users need.
@@ -1439,26 +1620,30 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **`.fvd` save** warns about data loss if reversals present; JSON is lossless.
 - Golden tests with hand-built shuttle projects (JSON-only; no FVD++ reference exists for signed-velocity behavior).
 
-#### M12 — Bridges & complete circuits **[T2]**
+#### M12 — Bridges, complete circuits & envelope compliance **[T2]**
 
 - **`BridgeSection`**: takes two anchor endpoints, generates a Catmull-Rom spline connector (per KexEdit `docs/user-guide/complete-circuits.md`).
 - **Closed-loop detection**: project validation flags unclosed intentional-loop tracks.
 - **Recompute across bridges**: velocity and forces at bridge exit come from the bridge integration, so the circuit is physically consistent.
 - Bridge UI: drop a bridge into the sections list, select source anchor and target anchor.
+- **Force envelope compliance checking** (§6.10.1): ASTM F2291 / EN 13814 envelope JSON files, violation detection on the node stream, red shading on the force graphs, "Compliance" color mode on the track mesh, compliance summary panel with the "design aid, not a certification" disclaimer, preference for standard selection (`none` default).
 
-#### M13 — Copy-path + optimizer + mesh assets **[T2]**
+#### M13 — Copy-path, optimizer, mesh assets, jerk & clothoids **[T2]**
 
 - **`CopyPathSection`** (§6.7 T2): references another section, reuses its node geometry while recomputing forces from the new anchor. Enables KexEdit-style shuttle composition (`docs/user-guide/shuttle-coasters.md`).
 - **Reverse-path operation**: a CopyPath variant that traverses the source section backward.
 - **Optimizer** per §6.9: gradient descent for roll/pitch/yaw targets. Right-click keyframe → Optimize submenu.
 - **Mesh reference assets** (KexEdit Mesh nodes): import `.gltf` / `.glb` files as visual-only reference geometry (terrain, nearby buildings). No physics interaction.
+- **Jerk analysis** (§6.10.2): per-axis finite-difference on the force arrays, new "Jerk" graph tab, peak-jerk columns in the table view, jerk-magnitude color mode, instantaneous jerk in the stats overlay. No pass/fail thresholds — information only.
+- **Clothoid section type** (§6.10.4): `ClothoidSection` with `entryCurvature` / `exitCurvature` / `arcLength` / `axis` / leadIn / leadOut / `rollFunc`. Integrated numerically at 1000 Hz alongside the other section types. JSON schema extension; `.fvd` save warns on non-FVD++-compatible section.
 
-#### M14 — Multi-car train rendering **[T2]**
+#### M14 — Multi-car train rendering & multi-rider pivot analysis **[T2]**
 
 - **Multi-car visual** per §6.3 T2: JSON train-style configuration (front/middle/back car meshes, wheel assembly, 1–20 cars).
 - **KexEdit train-style compat**: drop KexEdit's `trains/*.json` + meshes into WebFVD's trains folder (IndexedDB), use them directly.
 - **Pivot selector** gains "car front / car N / car back" options in addition to the existing numeric offset.
 - **Force display** gains a "car position" indicator alongside force values.
+- **Multi-rider pivot analysis** (§6.10.3): `TrainConfig` with a `SeatPosition[]` array (per-seat offset + optional heart override + enabled flag). Stats overlay gains a compact multi-seat table; envelope checking (§6.10.1) iterates all enabled seats and groups violations per seat; graph overlay can plot all seats with a "front/middle/back only" simplification toggle.
 
 #### M15 — Node graph view (simplified) **[T2]**
 
@@ -1494,10 +1679,11 @@ Organized by tier. Each tier ends with a **release** — an actually shippable p
 - **Node graph view upgraded**: multi-output sections, runtime switch state controls.
 - **Validation**: cycle detection, path-completeness check.
 
-#### M19 — Beyond-vertical + sync points **[T3]**
+#### M19 — Beyond-vertical, sync points & clearance checking **[T3]**
 
 - **Overhang geometry** per §6.8.4: revised spine placement for beyond-vertical sections.
 - **Sync points** per §6.8.5: timing constraints, optimizer integration.
+- **Clearance envelope vs imported scenery** (§6.10.5): user-configurable `clearanceLat` / `clearanceNorm` per track; oriented-bounding-box sweep tested against imported mesh assets (M13) every ~0.5 m; "Clearance" color mode on the track mesh; compliance-panel "Clearance violations" section with offending mesh name + intrusion depth. Runs on the worker.
 
 #### M20 — Rigid-body multi-car physics **[T3]**
 
@@ -1529,6 +1715,12 @@ These are **not** deferred to a later tier — they're out of the plan entirely.
 - **Plugin / scripting API.** Someone will ask. Say no; the alternative is exposing an internal API we don't want to commit to maintaining.
 - **Realistic visuals** — cinematic lighting, photo materials, procedural scenery, weather. Out of scope for a design tool; if you want pretty pictures, export to NoLimits 2 and render there.
 - **Simulation of ride dispatch operations, throughput, line management.** We design a ride, we don't operate a park.
+- **Finite element / structural analysis of the track or supports.** Stress, strain, fatigue, buckling, natural frequencies. This requires a real FEM solver and an element library (beams, shells, connections), neither of which is worth building for this tool's audience. What pro manufacturers get from ANSYS, Nastran, or in-house FEM packages is outside our scope — we check geometric forces, not physical load-bearing.
+- **Production drawings, CNC / welding / bending output.** Exporting track geometry to IGES, STEP, or manufacturer-specific CNC formats for actual factory production. This requires tolerance analysis, material specifications, welding annotations. Real coaster manufacturing pipelines use CATIA or SolidWorks for this; we don't replace them.
+- **Regulatory certification document generation.** Load case reports, failure-mode analysis, emergency-stop simulation reports, evacuation path verification documents. Software can assist a certified engineer; it cannot replace one. WebFVD's compliance checking (§6.10.1) is a design aid, not a certification pathway.
+- **Manufacturer-specific parameterized track libraries.** We ship 8 generic styles (from FVD++). We don't attempt to reproduce B&M's exact rail profile, Mack Stryker dimensions, Vekoma SLC geometry, etc. — these are proprietary to those companies and legally risky to reverse-engineer from public photos.
+- **Heart-rate modeling, biomechanical prediction, motion sickness likelihood.** Professional tools can predict subjective ride comfort from trajectory data because their vendors have spent decades correlating measurements to response. We don't have the dataset and won't acquire it; stick to measurable physical quantities.
+- **Launch system electrical / thermal / power-grid design.** LSM coil layout, power draw, thermal dissipation, grid integration. Our `LaunchSection` (T3, §6.8.1) specifies a kinematic profile; the electrical engineering to realize it is out of scope.
 
 ## 20b. Deferred to later tiers (will happen)
 
