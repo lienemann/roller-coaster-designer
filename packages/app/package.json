@@ -2,7 +2,7 @@
   "name": "@roller-coaster-designer/app",
   "version": "0.0.0",
   "description": "React PWA for roller-coaster-designer.",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "private": true,
   "scripts": {

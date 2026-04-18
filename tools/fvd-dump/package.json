@@ -2,7 +2,7 @@
   "name": "@roller-coaster-designer/fvd-dump",
   "version": "0.0.0",
   "description": "CLI: read a legacy .fvd file and emit its node stream as JSON or CSV. Used to generate golden reference data from FVD++ outputs.",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "private": true,
   "bin": {

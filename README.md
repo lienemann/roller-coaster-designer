@@ -26,8 +26,12 @@ See [`NOTICE`](NOTICE) for the full attribution.
 
 ## License
 
-[GPL-3.0-only](LICENSE), inherited from FVD++. If you distribute a modified
-version, your version must be GPL-3.0 too.
+[AGPL-3.0-only](LICENSE). If you distribute a modified version — or run one
+as a network service that users interact with — your version must also be
+offered under AGPL-3.0. Upgrading from FVD++'s GPL-3.0 to AGPL-3.0 keeps
+compatibility with the upstream (AGPL-3.0 is a permitted combination for
+GPL-3.0 code) while adding §13's network-use clause: a hosted version of
+this tool must link to its source from the app itself.
 
 ## Quickstart
 

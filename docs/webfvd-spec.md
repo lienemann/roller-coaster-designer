@@ -7,7 +7,7 @@
 - `altlenny/openFVD` (C++/Qt5, GPL-3.0) — the original FVD tool; ground truth for physics and file format.
 - `IndividualKex/KexEdit` (Unity/C#, MIT) — modern FVD editor with node graph, multi-car trains, optimizer.
 
-**License:** Our output is GPL-3.0 (inherited from openFVD since we port its physics). MIT code from KexEdit may be consulted for reference but not copy-pasted; reimplement concepts in our own code. Preserve openFVD copyright notices on any file whose logic is directly ported.
+**License:** Our output is AGPL-3.0 (compatible with openFVD's GPL-3.0 upstream, adds AGPL §13 for hosted deployments). MIT code from KexEdit may be consulted for reference but not copy-pasted; reimplement concepts in our own code. Preserve openFVD copyright notices on any file whose logic is directly ported.
 
 **Reference reading:** this document points you at specific files and line patterns in both repos. Never translate blindly. Read the source first, understand the intent, then write idiomatic TypeScript.
 
@@ -1313,7 +1313,7 @@ Mobile Safari and Chrome for Android: the app must load and render without crash
 - **Domain:** TBD. Until then, GitHub Pages URL.
 - **PWA:** installable. `manifest.webmanifest` with icons, theme color, display `standalone`. Service worker caches the app shell for offline use.
 - **Update flow:** service worker detects new version, shows a "Reload to update" toast. Does not force-reload.
-- **Source-available:** repo is public from day one, GPL-3.0, with a clear contributing guide.
+- **Source-available:** repo is public from day one, AGPL-3.0, with a clear contributing guide.
 
 ## 19. Milestones
 

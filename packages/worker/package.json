@@ -2,7 +2,7 @@
   "name": "@roller-coaster-designer/worker",
   "version": "0.0.0",
   "description": "Web Worker wrapping @roller-coaster-designer/core via Comlink RPC.",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

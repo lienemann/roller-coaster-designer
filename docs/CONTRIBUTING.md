@@ -80,7 +80,7 @@ runs in the Web Worker — never call an integrator from a React component.
 - No comments that explain what the code does — names do that. Comments
   explain why: a hidden constraint, a subtle invariant, a workaround.
 - No history comments. No TODO comments without a tracking issue.
-- SPDX header on every new source file: `// SPDX-License-Identifier: GPL-3.0-only`.
+- SPDX header on every new source file: `// SPDX-License-Identifier: AGPL-3.0-only`.
 
 ## i18n
 

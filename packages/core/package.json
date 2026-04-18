@@ -2,7 +2,7 @@
   "name": "@roller-coaster-designer/core",
   "version": "0.0.0",
   "description": "Pure TypeScript data model, physics, and file I/O for roller-coaster-designer. No DOM.",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",

@@ -2,8 +2,13 @@ roller-coaster-designer
 Copyright (C) 2026 the roller-coaster-designer contributors.
 
 This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License version 3 as published by the Free
-Software Foundation. See the LICENSE file for the full text.
+the terms of the GNU Affero General Public License version 3 as published by
+the Free Software Foundation. See the LICENSE file for the full text.
+
+If you run a modified version of this program as a network service that users
+can interact with, AGPL-3.0 §13 requires you to offer those users the source
+of your modified version. The app's About dialog is the intended place to
+link to it.
 
 ================================================================================
 Upstream attributions
@@ -24,7 +29,11 @@ FVD++ (openFVD)
              interchange cleanly with existing FVD++ workflows and NoLimits
              exports.
 
-    Because FVD++ is licensed GPL-3.0, this project is also licensed GPL-3.0.
+    License compatibility: FVD++ is GPL-3.0; this project is AGPL-3.0. The
+    FSF explicitly permits combining GPL-3.0 code into an AGPL-3.0 work
+    (see https://www.gnu.org/licenses/license-list.html#GNUAGPL), with the
+    combined result licensed under AGPL-3.0. AGPL-3.0 adds §13 (network use
+    triggers source disclosure) on top of the GPL-3.0 terms.
 
 KexEdit
     Source:  https://github.com/IndividualKex/KexEdit
