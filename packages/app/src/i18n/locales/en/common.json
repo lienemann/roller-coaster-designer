@@ -1,7 +1,10 @@
 {
   "app": {
     "title": "Roller Coaster Designer",
-    "tagline": "Design a coaster by sculpting the forces you want riders to feel."
+    "tagline": "Design a coaster by sculpting the forces you want riders to feel.",
+    "noProject": "No project",
+    "untitled": "Untitled",
+    "currentProject": "Current project"
   },
   "lang": {
     "switch": "Language",
@@ -10,5 +13,13 @@
   },
   "status": {
     "scaffold": "Tier 1 in progress. No physics wired yet."
+  },
+  "menu": {
+    "file": "File",
+    "new": "New",
+    "open": "Open…",
+    "save": "Save",
+    "saveAs": "Save As…",
+    "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead."
   }
 }

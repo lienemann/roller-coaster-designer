@@ -12,10 +12,18 @@ for data and physics via `@roller-coaster-designer/worker`.
 - Owns the undo/redo command log (spec §9) — the executor lives here because
   commands touch UI state.
 
-## Current state (M0)
+## Current state (M1)
 
-- App shell: top bar with title + EN/DE language switcher + three-pane
-  placeholder layout.
+- App shell: top bar with title + File menu + project-name indicator with
+  dirty marker + EN/DE language switcher + three-pane placeholder layout.
+- File menu (`src/ui/menu-bar.tsx`): New / Open… / Save / Save As… driving
+  `src/io/file-system.ts`, which prefers `showOpenFilePicker` /
+  `showSaveFilePicker` and falls back to `<input type="file">` +
+  `Blob` download when the File System Access API is unavailable. Save is
+  disabled in fallback mode (no handle to write back into); tooltip
+  explains why via `t()`.
+- Project slice on `useAppStore`: `project`, `projectName`, `projectHandle`,
+  `isDirty`, plus `newProject`, `loadProject`, `markSaved`, `markDirty`.
 - i18n wired via `i18next` + `react-i18next`. All six namespaces
   (`common`, `editor`, `sections`, `functions`, `export`, `errors`) are loaded
   for both EN and DE. Namespaces beyond `common` carry only a `placeholder`

@@ -1,3 +1,11 @@
 {
-  "unknown": "Etwas ist schiefgelaufen."
+  "unknown": "Etwas ist schiefgelaufen.",
+  "schema": {
+    "invalid": "Die Datei sieht nicht wie ein gültiges WebFVD-Projekt aus ({{path}}: {{reason}}).",
+    "versionUnsupported": "Diese Datei nutzt Formatversion {{got}}; dieses Build kann bis Version {{expected}} lesen."
+  },
+  "io": {
+    "fileRejected": "Die Datei konnte nicht geöffnet werden: {{reason}}.",
+    "saveCancelled": "Speichern wurde abgebrochen."
+  }
 }

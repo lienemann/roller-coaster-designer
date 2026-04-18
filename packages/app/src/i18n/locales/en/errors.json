@@ -1,3 +1,11 @@
 {
-  "unknown": "Something went wrong."
+  "unknown": "Something went wrong.",
+  "schema": {
+    "invalid": "The file does not look like a valid WebFVD project ({{path}}: {{reason}}).",
+    "versionUnsupported": "This file uses format version {{got}}; this build understands up to version {{expected}}."
+  },
+  "io": {
+    "fileRejected": "Could not open the file: {{reason}}.",
+    "saveCancelled": "Saving was cancelled."
+  }
 }

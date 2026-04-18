@@ -1,7 +1,10 @@
 {
   "app": {
     "title": "Achterbahn-Designer",
-    "tagline": "Eine Achterbahn entwerfen, indem du die Kräfte modellierst, die deine Fahrgäste spüren sollen."
+    "tagline": "Eine Achterbahn entwerfen, indem du die Kräfte modellierst, die deine Fahrgäste spüren sollen.",
+    "noProject": "Kein Projekt",
+    "untitled": "Unbenannt",
+    "currentProject": "Aktuelles Projekt"
   },
   "lang": {
     "switch": "Sprache",
@@ -10,5 +13,13 @@
   },
   "status": {
     "scaffold": "Tier 1 in Arbeit. Physik noch nicht angebunden."
+  },
+  "menu": {
+    "file": "Datei",
+    "new": "Neu",
+    "open": "Öffnen…",
+    "save": "Speichern",
+    "saveAs": "Speichern unter…",
+    "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“."
   }
 }
