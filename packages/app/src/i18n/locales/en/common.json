@@ -23,7 +23,8 @@
     "saveAs": "Save As…",
     "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead.",
     "closeTrack": "Close Track",
-    "loadDemo": "Load Demo"
+    "loadDemo": "Load Demo",
+    "more": "More…"
   },
   "panels": {
     "sections": "Sections",

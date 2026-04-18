@@ -2,7 +2,7 @@
 
 import { WebFvdError } from '@roller-coaster-designer/core';
 import { type TFunction } from 'i18next';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { hasFileSystemAccess, openProject, saveProject, saveProjectAs } from '../io/file-system.js';
@@ -71,25 +71,51 @@ export function MenuBar(): JSX.Element {
   const canCloseTrack =
     project !== null && project.tracks.length > 0 && (project.tracks[0]?.sections.length ?? 0) >= 2;
 
+  // Primary actions stay visible at all widths; secondary actions collapse
+  // into an overflow menu on narrow screens. CSS-only hide/show matches the
+  // spec §20b "compact menu" deferral without adding a resize observer.
   return (
     <nav aria-label={t('common:menu.file')} className="flex items-center gap-1 text-sm">
       <MenuButton onClick={handleNew}>{t('common:menu.new')}</MenuButton>
-      <MenuButton onClick={handleOpen}>{t('common:menu.open')}</MenuButton>
-      <MenuButton
-        onClick={handleSave}
-        disabled={!canSave}
-        title={canSave ? undefined : t('common:menu.saveUnavailable')}
-      >
-        {t('common:menu.save')}
-      </MenuButton>
-      <MenuButton onClick={handleSaveAs} disabled={project === null}>
-        {t('common:menu.saveAs')}
-      </MenuButton>
-      <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
       <MenuButton onClick={handleLoadDemo}>{t('common:menu.loadDemo')}</MenuButton>
-      <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
-        {t('common:menu.closeTrack')}
-      </MenuButton>
+
+      {/* Primary save stays on desktop; collapses into overflow on mobile. */}
+      <span className="hidden md:contents">
+        <MenuButton onClick={handleOpen}>{t('common:menu.open')}</MenuButton>
+        <MenuButton
+          onClick={handleSave}
+          disabled={!canSave}
+          title={canSave ? undefined : t('common:menu.saveUnavailable')}
+        >
+          {t('common:menu.save')}
+        </MenuButton>
+        <MenuButton onClick={handleSaveAs} disabled={project === null}>
+          {t('common:menu.saveAs')}
+        </MenuButton>
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+        <MenuButton onClick={handleCloseTrack} disabled={!canCloseTrack}>
+          {t('common:menu.closeTrack')}
+        </MenuButton>
+      </span>
+
+      <OverflowMenu
+        label={t('common:menu.more')}
+        items={[
+          { label: t('common:menu.open'), onClick: handleOpen },
+          {
+            label: t('common:menu.save'),
+            onClick: handleSave,
+            disabled: !canSave,
+            title: canSave ? undefined : t('common:menu.saveUnavailable'),
+          },
+          { label: t('common:menu.saveAs'), onClick: handleSaveAs, disabled: project === null },
+          {
+            label: t('common:menu.closeTrack'),
+            onClick: handleCloseTrack,
+            disabled: !canCloseTrack,
+          },
+        ]}
+      />
     </nav>
   );
 }
@@ -112,6 +138,65 @@ function MenuButton({ onClick, children, disabled, title }: MenuButtonProps): JS
     >
       {children}
     </button>
+  );
+}
+
+interface OverflowItem {
+  label: string;
+  onClick: () => void | Promise<void>;
+  disabled?: boolean;
+  title?: string | undefined;
+}
+
+function OverflowMenu(props: { label: string; items: OverflowItem[] }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Click-away closes the menu.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (ev: MouseEvent): void => {
+      if (!rootRef.current?.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative md:hidden">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="rounded px-2 py-1 text-neutral-200 ring-1 ring-transparent hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-white/30"
+      >
+        {props.label}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 flex min-w-[10rem] flex-col gap-0.5 rounded border border-white/10 bg-surface-1 p-1 text-sm shadow-lg"
+        >
+          {props.items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              title={item.title}
+              onClick={() => {
+                setOpen(false);
+                void item.onClick();
+              }}
+              className="rounded px-2 py-1 text-left text-neutral-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

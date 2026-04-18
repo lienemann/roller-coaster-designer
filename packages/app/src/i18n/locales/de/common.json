@@ -23,7 +23,8 @@
     "saveAs": "Speichern unter…",
     "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
     "closeTrack": "Strecke schließen",
-    "loadDemo": "Demo laden"
+    "loadDemo": "Demo laden",
+    "more": "Mehr…"
   },
   "panels": {
     "sections": "Abschnitte",
