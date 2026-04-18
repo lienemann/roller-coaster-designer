@@ -26,6 +26,10 @@ export interface TrackMeshParams {
   readonly railSpacingHalf: number;
   /** Tube radius for each rail (m). */
   readonly railRadius: number;
+  /** Distance BELOW the heart line (along the track's normal axis) that
+   *  the rails sit at. In FVD++ the heart line is the rider's heart —
+   *  actual rails are 1.0–1.2 m below, depending on the track style. */
+  readonly heartOffset: number;
   /** Ring tessellation (triangles around the tube). More = smoother but
    *  more vertices. 8 is enough at typical zoom levels. */
   readonly ringSegments: number;
@@ -44,6 +48,7 @@ export interface TrackMeshParams {
 export const DEFAULT_TRACK_MESH_PARAMS: TrackMeshParams = {
   railSpacingHalf: 0.35,
   railRadius: 0.05,
+  heartOffset: 1.1,
   ringSegments: 8,
   maxRingStep: 0.8,
   angleStep: (Math.PI / 180) * 5,
@@ -183,6 +188,9 @@ function buildRailGeometry(
       track.positions[ni * 3 + 1]!,
       track.positions[ni * 3 + 2]!,
     );
+    // Rails sit `heartOffset` below the integrated heart line along the
+    // track's normal axis, then offset laterally for left/right rail.
+    ringCentre.addScaledVector(normVec, -params.heartOffset);
     ringCentre.addScaledVector(latVec, lateralOffset);
 
     for (let k = 0; k < N; k += 1) {
@@ -279,7 +287,12 @@ function buildCrossties(track: TrackStream, params: TrackMeshParams): Mesh | nul
       track.positions[ni * 3 + 1]!,
       track.positions[ni * 3 + 2]!,
     );
-    tie.position.addScaledVector(normVec, -params.railRadius - params.crosstieThickness);
+    // Ties sit just below the rails, which are themselves `heartOffset`
+    // below the heart line. Same frame as buildRailGeometry.
+    tie.position.addScaledVector(
+      normVec,
+      -params.heartOffset - params.railRadius - params.crosstieThickness,
+    );
     tie.matrixAutoUpdate = false;
     // Row-major basis: columns (lat, -norm, dir). Three expects column
     // layout in .matrix.elements but the four-arg setBasis trick needs
@@ -311,8 +324,11 @@ export function buildTubularTrackMesh(
   track: TrackStream,
   sectionColorsOverride: readonly string[] | undefined,
   selectedSectionIndex: number | null | undefined,
-  params: TrackMeshParams = DEFAULT_TRACK_MESH_PARAMS,
+  paramsOverride?: Partial<TrackMeshParams>,
 ): BuiltTrackMesh {
+  const params: TrackMeshParams = paramsOverride
+    ? { ...DEFAULT_TRACK_MESH_PARAMS, ...paramsOverride }
+    : DEFAULT_TRACK_MESH_PARAMS;
   const group = new Group();
   const pickables: { sectionIndex: number; mesh: Mesh }[] = [];
   const disposeList: { dispose(): void }[] = [];

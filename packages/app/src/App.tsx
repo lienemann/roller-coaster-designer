@@ -18,9 +18,13 @@ import { useRecomputeOnProjectChange } from './worker/use-recompute.js';
 type MobileTab = 'sections' | 'properties';
 
 // Bump the desktop threshold above typical phone landscape widths (720px
-// on modern phones) so portrait + landscape both use the stacked mobile
-// layout. Tablets (iPad at 1024 and up) still get the three-column grid.
+// on modern phones) so portrait + landscape both use a mobile layout.
+// Tablets (iPad at 1024 and up) still get the three-column grid.
 const DESKTOP_QUERY = '(min-width: 1024px)';
+// Below desktop, pick a wide-short layout when the device is landscape
+// (viewport left, panels right) vs. the default stacked vertical one
+// (portrait phones + narrow windows).
+const LANDSCAPE_QUERY = '(orientation: landscape) and (max-width: 1023px)';
 
 export function App(): JSX.Element {
   const { t } = useTranslation('common');
@@ -40,6 +44,7 @@ export function App(): JSX.Element {
   const requestResetView = useAppStore((s) => s.requestResetView);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
+  const isLandscapeMobile = useMediaQuery(LANDSCAPE_QUERY, false);
   const [mobileTab, setMobileTab] = useState<MobileTab>('sections');
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
   const [renderStyle, setRenderStyle] = useState<RenderStyle>('tubular');
@@ -147,6 +152,7 @@ export function App(): JSX.Element {
           onHome={requestResetView}
           projection={projection}
           showHeartline={showHeartline}
+          heartOffset={project?.tracks[0]?.heart ?? 1.1}
           bezierHandles={bezierHandles}
           onBezierHandleChange={(index, pos) => {
             if (!bezierHandles) return;
@@ -172,56 +178,59 @@ export function App(): JSX.Element {
           aria-label={t('viewport.cameraMode')}
           className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap items-center gap-1"
         >
+          {/* Camera mode: Orbit (spiral arrow) vs POV (eye). */}
           <SegmentedGroup>
             <Segment
               active={cameraMode === 'orbit'}
               onClick={() => setCameraMode('orbit')}
-              icon="⟲"
+              svg={ORBIT_SVG}
               title={t('viewport.orbit')}
             />
             <Segment
               active={cameraMode === 'pov'}
               onClick={() => setCameraMode('pov')}
-              icon="↗"
+              svg={POV_SVG}
               title={t('viewport.pov')}
             />
           </SegmentedGroup>
+          {/* Render style: Tubular (pipe) vs Ribbon (single line). */}
           <SegmentedGroup>
             <Segment
               active={renderStyle === 'tubular'}
               onClick={() => setRenderStyle('tubular')}
-              icon="⬤"
+              svg={TUBULAR_SVG}
               title={t('viewport.styleTubular')}
             />
             <Segment
               active={renderStyle === 'ribbon'}
               onClick={() => setRenderStyle('ribbon')}
-              icon="━"
+              svg={RIBBON_SVG}
               title={t('viewport.styleRibbon')}
             />
           </SegmentedGroup>
+          {/* Projection: Perspective (converging lines) vs Ortho (parallel). */}
           <SegmentedGroup>
             <Segment
               active={projection === 'perspective'}
               onClick={() => setProjection('perspective')}
-              icon="◢"
+              svg={PERSP_SVG}
               title={t('viewport.persp')}
             />
             <Segment
               active={projection === 'ortho'}
               onClick={() => setProjection('ortho')}
-              icon="□"
+              svg={ORTHO_SVG}
               title={t('viewport.ortho')}
             />
           </SegmentedGroup>
           <IconToggle
             active={showHeartline}
             onClick={() => setShowHeartline((v) => !v)}
-            icon="♥"
+            svg={HEART_SVG}
             title={t('viewport.heartline')}
           />
-          <IconAction onClick={requestFitView} icon="⛶" title={t('viewport.fit')} />
-          <IconAction onClick={requestResetView} icon="⟳" title={t('viewport.reset')} />
+          <IconAction onClick={requestFitView} svg={FIT_SVG} title={t('viewport.fit')} />
+          <IconAction onClick={requestResetView} svg={RESET_SVG} title={t('viewport.reset')} />
         </div>
       </>
     );
@@ -319,6 +328,64 @@ export function App(): JSX.Element {
               </div>
             )}
           </footer>
+        </main>
+      ) : isLandscapeMobile ? (
+        // Landscape phone / narrow landscape window: put the 3D viewport
+        // + graphs on the left, panels + tabs on the right. Keeps the
+        // 3D view usable instead of being squished into a tall strip.
+        <main className="flex min-h-0 flex-1 flex-row">
+          <div className="flex min-h-0 flex-[3] flex-col">
+            <section
+              aria-label="viewport"
+              className="relative min-h-0 flex-[3] border-b border-white/10 bg-surface-0"
+            >
+              {viewportContent}
+            </section>
+            <div
+              aria-label={t('panels.graphs')}
+              className={`flex flex-col overflow-hidden bg-surface-2 ${
+                graphCollapsed ? 'shrink-0' : 'min-h-0 flex-[2]'
+              }`}
+            >
+              <GraphHeader
+                collapsed={graphCollapsed}
+                onToggle={() => setGraphCollapsed((v) => !v)}
+                label={t('panels.graphs')}
+                expandLabel={t('panels.expand')}
+                collapseLabel={t('panels.collapse')}
+              />
+              {!graphCollapsed && (
+                <div className="min-h-0 flex-1 p-2">
+                  <ForcesGraph
+                    track={firstTrack}
+                    sectionStartTimes={sectionStartTimes}
+                    sectionColors={sectionColors}
+                    label={graphLabel}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-[2] flex-col border-l border-white/10">
+            <div className="flex shrink-0 border-b border-white/10 bg-surface-1">
+              <MobileTabButton
+                active={mobileTab === 'sections'}
+                onClick={() => setMobileTab('sections')}
+                label={t('panels.sections')}
+              />
+              <MobileTabButton
+                active={mobileTab === 'properties'}
+                onClick={() => setMobileTab('properties')}
+                label={t('panels.properties')}
+              />
+            </div>
+            <section
+              aria-label={mobileTab === 'sections' ? t('panels.sections') : t('panels.properties')}
+              className="min-h-0 flex-1 overflow-auto bg-surface-1 p-3"
+            >
+              {mobileTab === 'sections' ? <SectionsPanel /> : <PropertiesPanel />}
+            </section>
+          </div>
         </main>
       ) : (
         <main className="flex min-h-0 flex-1 flex-col">
@@ -464,10 +531,27 @@ function SegmentedGroup(props: { children: React.ReactNode }): JSX.Element {
   );
 }
 
+function ButtonSvg({ svg }: { svg: string }): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 function Segment(props: {
   active: boolean;
   onClick: () => void;
-  icon: string;
+  svg?: string;
+  icon?: string;
   title: string;
 }): JSX.Element {
   return (
@@ -483,12 +567,17 @@ function Segment(props: {
           : 'text-neutral-300 hover:bg-white/10 hover:text-neutral-100'
       }`}
     >
-      {props.icon}
+      {props.svg ? <ButtonSvg svg={props.svg} /> : props.icon}
     </button>
   );
 }
 
-function IconAction(props: { onClick: () => void; icon: string; title: string }): JSX.Element {
+function IconAction(props: {
+  onClick: () => void;
+  svg?: string;
+  icon?: string;
+  title: string;
+}): JSX.Element {
   return (
     <button
       type="button"
@@ -498,7 +587,7 @@ function IconAction(props: { onClick: () => void; icon: string; title: string })
       className="pointer-events-auto flex h-6 w-7 items-center justify-center rounded text-[13px] leading-none text-neutral-300 ring-1 ring-white/10 backdrop-blur-sm hover:bg-white/10 hover:text-neutral-100"
       style={{ backgroundColor: 'rgba(20, 20, 20, 0.6)' }}
     >
-      {props.icon}
+      {props.svg ? <ButtonSvg svg={props.svg} /> : props.icon}
     </button>
   );
 }
@@ -506,7 +595,8 @@ function IconAction(props: { onClick: () => void; icon: string; title: string })
 function IconToggle(props: {
   active: boolean;
   onClick: () => void;
-  icon: string;
+  svg?: string;
+  icon?: string;
   title: string;
 }): JSX.Element {
   return (
@@ -525,7 +615,19 @@ function IconToggle(props: {
         backgroundColor: props.active ? undefined : 'rgba(20, 20, 20, 0.6)',
       }}
     >
-      {props.icon}
+      {props.svg ? <ButtonSvg svg={props.svg} /> : props.icon}
     </button>
   );
 }
+
+// Icon library — inline SVG bodies so we don't pull an icon dependency.
+// viewBox is 0..20 on both axes with a 14×14 render box; stroke is 1.6.
+const ORBIT_SVG = `<ellipse cx="10" cy="10" rx="7" ry="3"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/>`;
+const POV_SVG = `<path d="M2 10 C 5 5 15 5 18 10 C 15 15 5 15 2 10 Z"/><circle cx="10" cy="10" r="2" fill="currentColor"/>`;
+const TUBULAR_SVG = `<rect x="3" y="7" width="14" height="6" rx="3"/><line x1="3" y1="10" x2="17" y2="10"/>`;
+const RIBBON_SVG = `<line x1="3" y1="10" x2="17" y2="10"/>`;
+const PERSP_SVG = `<polygon points="4,4 16,4 13,16 7,16"/>`;
+const ORTHO_SVG = `<rect x="4" y="4" width="12" height="12"/>`;
+const HEART_SVG = `<path d="M10 16 C 3 11 3 5 7 5 C 9 5 10 7 10 7 C 10 7 11 5 13 5 C 17 5 17 11 10 16 Z" fill="currentColor" stroke="none"/>`;
+const FIT_SVG = `<polyline points="3,7 3,3 7,3"/><polyline points="17,7 17,3 13,3"/><polyline points="3,13 3,17 7,17"/><polyline points="17,13 17,17 13,17"/>`;
+const RESET_SVG = `<path d="M16 10 A 6 6 0 1 1 14 5.5"/><polyline points="14,2 14,6 18,6"/>`;

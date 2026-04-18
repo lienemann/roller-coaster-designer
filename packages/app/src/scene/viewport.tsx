@@ -79,9 +79,14 @@ export interface ViewportProps {
    *  switches to a blueprint-style parallel projection. POV mode always
    *  stays perspective regardless of this prop. */
   readonly projection?: Projection;
-  /** When true, draws a thin highlight line along the heart centreline on
-   *  top of the rails. Works in both tubular and ribbon modes. */
+  /** When true, draws a thin highlight ribbon along the heart centreline
+   *  on top of the rails. Works in both tubular and ribbon modes. */
   readonly showHeartline?: boolean;
+  /** Distance (m) from the heart line down to the rails along the track's
+   *  normal axis. Matches `Track.heart` in the project model. Defaults to
+   *  1.1 m, the typical rider-heart-above-rail distance for a B&M/Vekoma-
+   *  class coaster. */
+  readonly heartOffset?: number;
   /** Four world-space control points of the currently-selected Bezier
    *  section. `null` hides the transform handles. Handles use the same
    *  per-section colour so it's obvious which section they belong to. */
@@ -131,6 +136,10 @@ interface SceneRefs {
   lines: Line[];
   /** Tubular-style mesh (when active). Disposed on rebuild / style change. */
   builtMesh: BuiltTrackMesh | null;
+  /** Two narrow lines drawn along the heart line when `showHeartline` is
+   *  on. Lives in its own effect so toggling the overlay doesn't rebuild
+   *  rails + retrigger the auto-fit. */
+  heartlineObj: Line[] | null;
   /** Section-tagged Objects for click-to-select raycasting. Populated by
    *  whichever render style is currently active. */
   pickables: Pickable[];
@@ -476,8 +485,9 @@ function buildTubularScene(
   track: TrackStream,
   sectionColors: readonly string[] | undefined,
   selectedIndex: number | null,
+  heartOffset: number,
 ): void {
-  const built = buildTubularTrackMesh(track, sectionColors, selectedIndex);
+  const built = buildTubularTrackMesh(track, sectionColors, selectedIndex, { heartOffset });
   state.scene.add(built.group);
   state.builtMesh = built;
   for (const p of built.pickables) {
@@ -492,10 +502,14 @@ function buildRibbonScene(
   track: TrackStream,
   sectionColors: readonly string[] | undefined,
   selectedIndex: number | null,
+  heartOffset: number,
 ): void {
   const n = track.nodeCount;
   const railLeft = new Float32Array(n * 3);
   const railRight = new Float32Array(n * 3);
+  // Ribbon rails sit `heartOffset` below the heart line along norm so
+  // the ribbon matches the tubular-mesh placement — rider's heart is
+  // well above the rails in both modes.
   for (let i = 0; i < n; i += 1) {
     const px = track.positions[i * 3]!;
     const py = track.positions[i * 3 + 1]!;
@@ -503,12 +517,28 @@ function buildRibbonScene(
     const lx = track.lateralAxis[i * 3]!;
     const ly = track.lateralAxis[i * 3 + 1]!;
     const lz = track.lateralAxis[i * 3 + 2]!;
-    railLeft[i * 3] = px - lx * RAIL_HALF_WIDTH;
-    railLeft[i * 3 + 1] = py - ly * RAIL_HALF_WIDTH;
-    railLeft[i * 3 + 2] = pz - lz * RAIL_HALF_WIDTH;
-    railRight[i * 3] = px + lx * RAIL_HALF_WIDTH;
-    railRight[i * 3 + 1] = py + ly * RAIL_HALF_WIDTH;
-    railRight[i * 3 + 2] = pz + lz * RAIL_HALF_WIDTH;
+    // norm = lat × dir; we need dir from neighbours.
+    const ni = Math.min(i + 1, n - 1);
+    const pi = Math.max(i - 1, 0);
+    const dx = track.positions[ni * 3]! - track.positions[pi * 3]!;
+    const dy = track.positions[ni * 3 + 1]! - track.positions[pi * 3 + 1]!;
+    const dz = track.positions[ni * 3 + 2]! - track.positions[pi * 3 + 2]!;
+    const dlen = Math.hypot(dx, dy, dz) || 1;
+    const dxn = dx / dlen;
+    const dyn = dy / dlen;
+    const dzn = dz / dlen;
+    const nx = ly * dzn - lz * dyn;
+    const ny = lz * dxn - lx * dzn;
+    const nz = lx * dyn - ly * dxn;
+    const bx = px - nx * heartOffset;
+    const by = py - ny * heartOffset;
+    const bz = pz - nz * heartOffset;
+    railLeft[i * 3] = bx - lx * RAIL_HALF_WIDTH;
+    railLeft[i * 3 + 1] = by - ly * RAIL_HALF_WIDTH;
+    railLeft[i * 3 + 2] = bz - lz * RAIL_HALF_WIDTH;
+    railRight[i * 3] = bx + lx * RAIL_HALF_WIDTH;
+    railRight[i * 3 + 1] = by + ly * RAIL_HALF_WIDTH;
+    railRight[i * 3 + 2] = bz + lz * RAIL_HALF_WIDTH;
   }
 
   const centreGeom = new BufferGeometry();
@@ -571,6 +601,7 @@ export function Viewport({
   bezierHandles,
   onBezierHandleChange,
   showHeartline,
+  heartOffset,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
@@ -692,6 +723,7 @@ export function Viewport({
       controls,
       lines: [],
       builtMesh: null,
+      heartlineObj: null,
       pickables: [],
       frame: 0,
       framedTrack: null,
@@ -850,6 +882,14 @@ export function Viewport({
       state.transform?.detach();
       scene.remove(transformHelper);
       state.transform?.dispose();
+      if (state.heartlineObj) {
+        for (const l of state.heartlineObj) {
+          state.scene.remove(l);
+          l.geometry.dispose();
+          (l.material as LineBasicMaterial).dispose();
+        }
+        state.heartlineObj = null;
+      }
       disposeTrackGeometry(state);
       state.cube.dispose();
       renderer.dispose();
@@ -979,24 +1019,69 @@ export function Viewport({
     state.framedTrack = first;
 
     const style: RenderStyle = renderStyle ?? 'tubular';
+    const h = heartOffset ?? 1.1;
     if (style === 'tubular') {
-      buildTubularScene(state, first, sectionColors, selectedSectionIndex ?? null);
+      buildTubularScene(state, first, sectionColors, selectedSectionIndex ?? null, h);
     } else {
-      buildRibbonScene(state, first, sectionColors, selectedSectionIndex ?? null);
+      buildRibbonScene(state, first, sectionColors, selectedSectionIndex ?? null, h);
     }
-    if (showHeartline) {
-      const heartGeom = new BufferGeometry();
-      heartGeom.setAttribute('position', new BufferAttribute(first.positions, 3));
-      heartGeom.setDrawRange(0, first.nodeCount);
-      const heart = new Line(
-        heartGeom,
+  }, [tracks, sectionColors, selectedSectionIndex, renderStyle, heartOffset]);
+
+  // Heartline overlay lives in its own effect. Previously it shared deps
+  // with the rails rebuild, and toggling it caused a full mesh dispose
+  // which visually flashed and (on first run of the heartline branch)
+  // could re-frame the camera. Owning its own objects keeps the toggle
+  // cheap.
+  useEffect(() => {
+    const state = refs.current;
+    if (!state) return;
+    // Clear any previous heartline overlay.
+    if (state.heartlineObj) {
+      for (const l of state.heartlineObj) {
+        state.scene.remove(l);
+        l.geometry.dispose();
+        (l.material as LineBasicMaterial).dispose();
+      }
+      state.heartlineObj = null;
+    }
+    if (!showHeartline) return;
+    const first = tracks[0];
+    if (!first || first.nodeCount < 2) return;
+    // Narrow twin ribbon (±0.08 m lateral around the heart line) so the
+    // banking rolls with the track and stays clearly narrower than the
+    // rails (which are at ±0.35 m by default).
+    const n = first.nodeCount;
+    const ribbonHalf = 0.08;
+    const leftVerts = new Float32Array(n * 3);
+    const rightVerts = new Float32Array(n * 3);
+    for (let i = 0; i < n; i += 1) {
+      const px = first.positions[i * 3]!;
+      const py = first.positions[i * 3 + 1]!;
+      const pz = first.positions[i * 3 + 2]!;
+      const lx = first.lateralAxis[i * 3]!;
+      const ly = first.lateralAxis[i * 3 + 1]!;
+      const lz = first.lateralAxis[i * 3 + 2]!;
+      leftVerts[i * 3] = px - lx * ribbonHalf;
+      leftVerts[i * 3 + 1] = py - ly * ribbonHalf;
+      leftVerts[i * 3 + 2] = pz - lz * ribbonHalf;
+      rightVerts[i * 3] = px + lx * ribbonHalf;
+      rightVerts[i * 3 + 1] = py + ly * ribbonHalf;
+      rightVerts[i * 3 + 2] = pz + lz * ribbonHalf;
+    }
+    const objs: Line[] = [];
+    for (const verts of [leftVerts, rightVerts]) {
+      const geom = new BufferGeometry();
+      geom.setAttribute('position', new BufferAttribute(verts, 3));
+      const line = new Line(
+        geom,
         new LineBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.9 }),
       );
-      heart.renderOrder = 2;
-      state.scene.add(heart);
-      state.lines.push(heart);
+      line.renderOrder = 2;
+      state.scene.add(line);
+      objs.push(line);
     }
-  }, [tracks, sectionColors, selectedSectionIndex, renderStyle, showHeartline]);
+    state.heartlineObj = objs;
+  }, [tracks, showHeartline]);
 
   if (!webglSupported) {
     return (
@@ -1023,20 +1108,16 @@ export function Viewport({
   const cubeHidden = cameraMode === 'pov';
   const labels = cubeLabels ?? DEFAULT_CUBE_LABELS;
 
-  // The cube occupies 120×120 at right:12 top:12. The arrow ring sits
-  // flush in the same top-right rectangle, extending 22 px beyond the
-  // cube on each side so the ring is fully inside the canvas and the
-  // arrows hug the cube's edges. Nothing bleeds past the canvas bounds
-  // that `overflow: hidden` would clip.
-  const CUBE_SIZE = 120;
+  // Must match SIZE_PX / MARGIN_PX in view-cube.ts. The cube itself is
+  // drawn by WebGL into a scissored region at (right: CUBE_INSET, top:
+  // CUBE_INSET) of size CUBE_SIZE. The DOM arrow ring wraps tight around
+  // that rectangle, leaving ARROW_GUTTER px for the tilt arrows inside.
+  const CUBE_SIZE = 100;
+  const CUBE_INSET = 34;
   const ARROW_GUTTER = 22;
   const RING_SIZE = CUBE_SIZE + ARROW_GUTTER * 2;
-  const RING_TOP = 12 - ARROW_GUTTER;
-  const RING_RIGHT = 12 - ARROW_GUTTER;
-  // Negative inset would push the ring out of the canvas. Clamp so the
-  // ring sits at least at the top-right corner of the canvas.
-  const clampedTop = Math.max(0, RING_TOP);
-  const clampedRight = Math.max(0, RING_RIGHT);
+  const RING_TOP = CUBE_INSET - ARROW_GUTTER;
+  const RING_RIGHT = CUBE_INSET - ARROW_GUTTER;
 
   return (
     <div
@@ -1057,22 +1138,24 @@ export function Viewport({
           style={{
             width: RING_SIZE,
             height: RING_SIZE,
-            top: clampedTop,
-            right: clampedRight,
+            top: RING_TOP,
+            right: RING_RIGHT,
           }}
         >
-          {/* Rotate arrows in the top corners. Small enough to fit inside
-              the 22 px gutter without overlapping the cube. */}
+          {/* In-plane rotation arrows in the top corners of the ring.
+              Rotate the camera 90° around the current forward axis. Using
+              SVG (not Unicode ↻/↺) so they render consistently across
+              fonts. */}
           <ArrowButton
-            glyph="↺"
+            svg={ROTATE_CCW_SVG}
             label={labels.rotateCcw ?? 'Rotate counter-clockwise'}
-            style={{ top: 1, left: 1 }}
+            style={{ top: 0, left: 0 }}
             onClick={() => rotate(-1)}
           />
           <ArrowButton
-            glyph="↻"
+            svg={ROTATE_CW_SVG}
             label={labels.rotateCw ?? 'Rotate clockwise'}
-            style={{ top: 1, right: 1 }}
+            style={{ top: 0, right: 0 }}
             onClick={() => rotate(1)}
           />
           {/* Four tilt-triangle arrows on each side of the cube, tucked
@@ -1117,21 +1200,44 @@ export function Viewport({
 }
 
 interface ArrowButtonProps {
-  readonly glyph: string;
+  /** Unicode glyph. Mutually exclusive with `svg`. */
+  readonly glyph?: string;
+  /** Inline SVG body. Mutually exclusive with `glyph`. */
+  readonly svg?: string;
   readonly label: string;
   readonly style: React.CSSProperties;
   readonly onClick: () => void;
 }
-function ArrowButton({ glyph, label, style, onClick }: ArrowButtonProps): JSX.Element {
+function ArrowButton({ glyph, svg, label, style, onClick }: ArrowButtonProps): JSX.Element {
   return (
     <button
       type="button"
       aria-label={label}
+      title={label}
       onClick={onClick}
       className="pointer-events-auto absolute flex h-5 w-5 items-center justify-center rounded text-[13px] leading-none text-neutral-200 hover:bg-white/20 focus-visible:outline-none focus-visible:ring focus-visible:ring-white/30"
       style={{ ...style, backgroundColor: 'rgba(30, 30, 30, 0.55)' }}
     >
-      {glyph}
+      {svg ? (
+        <svg
+          viewBox="0 0 20 20"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      ) : (
+        glyph
+      )}
     </button>
   );
 }
+
+// 270° arc with an arrowhead at the end — "rotate counter-clockwise".
+const ROTATE_CCW_SVG = `<path d="M15 5 A 7 7 0 1 0 17 13" /><polyline points="14,10 17,13 20,10" />`;
+// Mirrored: "rotate clockwise".
+const ROTATE_CW_SVG = `<path d="M5 5 A 7 7 0 1 1 3 13" /><polyline points="6,10 3,13 0,10" />`;

@@ -47,8 +47,11 @@ interface CubeHit {
   readonly viewDir: Vector3;
 }
 
-const SIZE_PX = 120;
-const MARGIN_PX = 12;
+const SIZE_PX = 100;
+// The cube is inset further from the canvas edge so the tilt-arrow ring
+// around it has room to live fully on-canvas without being clipped by
+// `overflow: hidden` on the viewport container.
+const MARGIN_PX = 34;
 const FACE_THRESHOLD = 0.3; // local-coord magnitude for "near the edge"
 
 /** FreeCAD-style face texture: light grey chamfered panel, bold dark text,
