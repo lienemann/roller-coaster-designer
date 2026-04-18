@@ -1401,6 +1401,82 @@ Command log pattern. Port `core/undoaction.cpp` (808 LOC) and `core/undohandler.
 
 Every UI mutation goes through `dispatch(action)`, never direct state writes. This is also how recompute is triggered: after `apply`, the worker is notified which sections from the modified one onwards need reintegration.
 
+### 9.1 Shape of an undoable action
+
+```typescript
+interface UndoableAction {
+  /** Stable ID used for coalescing (see §9.4) and for i18n of the
+   *  history panel label. Examples: "section.patch",
+   *  "section.add.bezier", "bezier.handle.drag". */
+  readonly kind: string;
+  /** Short human-readable label for the history panel and undo tooltip,
+   *  through `t()`. Example: "Change pitch rate of Curve 3". */
+  readonly label: string;
+  /** Monotonic timestamp (`performance.now()`) at the moment the action
+   *  was applied. Used to group rapid successive edits (§9.4). */
+  readonly timestamp: number;
+  /** Pure functions — no store mutations outside these two. Produce the
+   *  next and previous `Project` snapshot respectively. Immutable
+   *  in; immutable out. */
+  apply(project: Project): Project;
+  revert(project: Project): Project;
+}
+```
+
+Actions capture enough information in their closure to revert without reading back live state. For a property edit: `(kind: 'section.patch', sectionIndex, key, prevValue, nextValue)`. For a structural change (add / remove section): the full section payload + its position.
+
+### 9.2 Scope boundaries
+
+- Undo applies to the **project only.** View state (camera position, render-style toggle, graph collapse, selected section, cube projection) is **not** undoable. Users don't expect "undo" to move their camera.
+- **File operations** (Open, Save, Save As, Load Demo, New Project) clear the stack. Opening a new project is a discrete step, not part of the edit history.
+- **Imported-geometry edits** to `NoLimitsCSV` sections aren't allowed in M3, so there's nothing to undo there until the M5 import pipeline lets users delete/rename that section. Once it does, the deletion IS undoable.
+- **Preferences** (§14.4, M8) live in their own store slice and have their own minimal history; they don't share a stack with the project.
+
+### 9.3 UI surface
+
+- **Keyboard:** `Cmd/Ctrl+Z` undo, `Cmd/Ctrl+Shift+Z` redo, `Cmd/Ctrl+Y` redo (Windows convention). Scoped to the document area — ignored while the user is inside a text input unless the native browser undo has nothing to do (we let the input win for typing inside a field).
+- **Menu:** `Edit → Undo <label>` / `Edit → Redo <label>` with the action label appended so users know what they're about to undo. Disabled when the stack is empty.
+- **Status line:** the bottom-right dirty marker (`*` next to the project name) reflects "has changes since last save" — not "undo stack is non-empty." A saved project with 20 undoable edits is clean; `Ctrl+Z` on it doesn't break that invariant but DOES re-mark the project dirty.
+- **History panel** (M8, optional): a collapsible side rail listing the last 50 actions by label + timestamp, with click-to-jump-to-state. Out of scope for T1 beyond keyboard + menu.
+
+### 9.4 Coalescing & throttling
+
+Some edits produce many actions in rapid succession — scrub a slider, drag a Bezier handle, type into the name field. A naive stack would fill with hundreds of steps for one logical change.
+
+Rules:
+
+- **Coalesce by `kind` + stable target key within a debounce window** (default 350 ms since the previous action with the same `(kind, target)` signature). The combined action's `revert` uses the ORIGINAL `prevValue` from the first edit; `apply` uses the LATEST `nextValue`. Timestamp is kept at the latest.
+- **Drag interactions** (Bezier handle, timeline keyframe once it lands) emit a single action at drag end — the in-flight movement is visual only. This matches the current draggable-handles implementation.
+- **Coalesce opts** attached to each action kind: some never coalesce (add / remove section), some always coalesce within the window (property patches, roll-function keyframe drag), some coalesce with an inactivity-only variant (name field: coalesce until focus leaves the input). Defaults documented in `packages/core/src/undo/coalesce-rules.ts`.
+
+### 9.5 Recompute integration
+
+The worker (§5, M2+) integrates the physics lazily on a project change. Undo must:
+
+- Fire the same recompute pipeline `apply` does. Revert returns a `Project`; the store subscription triggers recompute like any other change. No special path.
+- Optionally remember the **first section index affected** in the action metadata so the recompute RPC can do an incremental pass instead of a full retrace. M6 smoothing already caches by index; undo can reuse that cache by passing the saved affected index through (T2 perf tuning, not required for correctness).
+
+### 9.6 Stack limits + memory
+
+- **Max stack depth:** 200 undo steps (per project, per `past` / `future`). Older actions discarded FIFO. Configurable in preferences.
+- **Snapshot strategy:** actions store deltas (key + prev + next), not full-project snapshots. A 60-section project edit averages ≤ 500 bytes per action; 200 actions ≤ 100 KB.
+- **Structural snapshots** (add / remove section / add keyframe) store the affected section object plus its position — larger but bounded by section count.
+- **Autosave** (§14.3, M8) snapshots the full project, not the undo stack. Re-opening an autosave restores `present` only; the stack is empty (matches the "open clears stack" rule).
+
+### 9.7 Persistence across sessions
+
+Undo stack does **not** persist across reloads or new tabs in the initial cut. Rationale: the reload-cleared-stack matches every other tool in this class, avoids a schema-versioning headache for action payloads, and removes a class of "I can't reproduce this bug" reports where someone undoes to a state from a different version of the app. Revisit if users ask.
+
+### 9.8 Milestone phasing
+
+- **M0 / M1 scaffold:** empty store slice for `past` / `future` + dispatch signature. No-ops until an action type exists.
+- **M4 wiring:** the schema-driven properties panel is the first place actions land — its field-change callback dispatches `section.patch` actions instead of calling `patchSelectedSection` directly. Keyboard shortcut handlers added. Menu items added. Coalesce rules for property edits.
+- **M5 structural actions:** add / remove section, reorder (drag-to-reorder in the sections panel becomes an undoable `section.reorder`).
+- **M7 Bezier handle drag:** drag-end dispatches a single `bezier.handle.drag` action with the start and end positions.
+- **M8 history panel (optional):** visual list of the last N actions, click-to-jump. Preference for max stack depth.
+- **T2 (M11+):** signed-velocity-aware actions — reversing a shuttle's direction while editing backward motion integrates correctly through undo.
+- **T3 (M18+):** switch-state actions for the DAG (flipping a SwitchSection at runtime is NOT undoable — it's a play-mode event, not a design edit).
+
 ## 10. Testing
 
 The physics is the risky part. Build the test harness **before** porting the integrators.
