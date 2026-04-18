@@ -28,11 +28,22 @@ Ships as `@roller-coaster-designer/core`.
   key); never a raw string. Translation happens in the app layer.
 - **No hot-path allocation.** `gl-matrix` out-params only inside integrators.
 
-## Current state (M0)
+## Current state (M1)
 
-Empty except for `src/index.ts` which exports a version banner and a
-declarative package-boundary marker. First real code arrives at M1 with the
-data model.
+- `src/model/` — full TypeScript port of the openFVD data model: `enums`,
+  `constants`, `mnode` SoA container, `subfunction`, `function`, `section`
+  (discriminated union over all seven `SecType` variants), `track`, and
+  `project`. Shape-only at M1; integration logic lands at M2+.
+- `src/errors.ts` — `WebFvdError` plus a `WEBFVD_ERROR_CODES` catalogue.
+  Every code has matching EN + DE translations in
+  `packages/app/src/i18n/locales/`.
+- `src/io/json/` — Zod schema (`z.discriminatedUnion` on `SecType`), a
+  probe-first reader that dispatches migrations before full validation, a
+  deterministic stable-key-order writer, and a migrations registry seeded
+  with `CURRENT_VERSION = 1`.
+- `test/golden/minimal-straight.webfvd.json` — hand-crafted minimal project
+  asserted byte-for-byte against `stringifyWebFvdJson` output. Listed in
+  `.prettierignore` so formatter runs don't wreck the round-trip.
 
 ## Test policy
 

@@ -10,3 +10,7 @@ export const PACKAGE_BOUNDARY = Object.freeze({
   name: '@roller-coaster-designer/core',
   forbiddenGlobals: ['window', 'document', 'navigator'] as const,
 });
+
+export * from './errors.js';
+export * from './io/index.js';
+export * from './model/index.js';
