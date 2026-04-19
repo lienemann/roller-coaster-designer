@@ -19,6 +19,8 @@ export interface TrackStream {
   readonly forceNormal: Float32Array;
   readonly forceLateral: Float32Array;
   readonly forceLong: Float32Array;
+  /** Banking rate (roll speed) in rad/s. Graph converts to deg/s for display. */
+  readonly rollSpeed: Float32Array;
   readonly cumulativeTime: Float32Array;
   /** Uint16 per node naming which section produced it; indexes
    *  sectionStartNodes. Lets the viewport colour and highlight per section

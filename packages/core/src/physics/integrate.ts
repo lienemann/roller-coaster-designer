@@ -50,6 +50,17 @@ export function integrateTrack(track: Track, capacity = DEFAULT_CAPACITY): Track
   }
   arrays.length = idx + 1;
 
+  // Roll speed (banking rate) in rad/s, numerically differentiated from the
+  // per-node roll column. `roll` is already offset-corrected across section
+  // boundaries, so a simple forward-difference produces a clean curve. The
+  // graph layer converts rad/s → deg/s for display.
+  if (arrays.length > 0) {
+    arrays.rollSpeed[0] = 0;
+    for (let i = 1; i < arrays.length; i += 1) {
+      arrays.rollSpeed[i] = (arrays.roll[i]! - arrays.roll[i - 1]!) * F_HZ;
+    }
+  }
+
   // Apply the track's registered smoothers to the force columns. Always
   // runs — when smoothers is empty the helper copies raw into smoothed so
   // downstream consumers read one source of truth. `track.smoothers` may be
@@ -115,9 +126,12 @@ function integrateAnchor(section: AnchorSection, arrays: MNodeArrays, heart: num
 
   // Right-handed Y-up world. dir = forward, lat = rider's right, norm = up.
   // At rest: forward=+X, right=+Z, up=+Y, and norm = cross(lat, dir) = +Y.
-  // Spec §4.2 writes `norm = cross(dir, lat)`, but that assumes Y-down; the
-  // viewport (Three.js) and Vite dev build both use Y-up, so we flip the
-  // cross order once here and stay Y-up through the whole pipeline.
+  // FVD++ is Y-up too (mnode.h:69 `getPitch() = atan2(vDir.y, ...)`), but
+  // its vNorm = cross(vDir, vLat) points toward the rider's FEET (−Y at
+  // rest). We flip the cross order so our `norm` points toward the SKY (+Y
+  // at rest); that matches Three.js and keeps the viewport math obvious.
+  // The sign flip is absorbed in `heartY` and `projectGravity` so the
+  // energy / force values still match FVD++ outputs.
   const dir = vec3.set(tmp0, 1, 0, 0);
   const lat = vec3.set(tmp1, 0, 0, 1);
   const up = vec3.set(tmp2, 0, 1, 0);
@@ -142,11 +156,9 @@ function integrateAnchor(section: AnchorSection, arrays: MNodeArrays, heart: num
     norm,
     roll: section.roll,
     vel: section.speed,
-    // Heart-path y offsets by `heart` along the normal; keep the simplified
-    // form from track.cpp:50 (0.9×heart) so energy matches FVD++.
-    energy:
-      0.5 * section.speed * section.speed +
-      F_G * heartY(section.position, norm, heart) * HEART_ENERGY_FACTOR,
+    // Heart-path y offsets by `heart` along the normal; matches track.cpp:50
+    // (0.9×heart inside the gravity term, no outer factor).
+    energy: 0.5 * section.speed * section.speed + F_G * heartY(section.position, norm, heart),
     distFromLast: 0,
     heartDistFromLast: 0,
     totalLength: 0,
@@ -209,8 +221,8 @@ function integrateStraight(
     vec3.cross(norm, lat, dir);
 
     // Velocity from energy conservation at the new heart-path y.
-    const yH = posY + norm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const yH = posY - norm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH;
     const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
 
     writeNode(arrays, idx, {
@@ -301,8 +313,8 @@ function integrateBezier(
     vec3.cross(bezierNorm, bezierLat, bezierTangent);
 
     const energy = arrays.energy[idx - 1]!;
-    const yH = bezierPos[1] + bezierNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const yH = bezierPos[1] - bezierNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH;
     const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
 
     writeNode(arrays, idx, {
@@ -405,8 +417,8 @@ function integrateCurved(
     vec3.cross(curvedNorm, curvedLat, curvedDir);
 
     const energy = arrays.energy[idx - 1]!;
-    const yH = posY + curvedNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const yH = posY - curvedNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH;
     const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
 
     writeNode(arrays, idx, {
@@ -535,8 +547,8 @@ function integrateForced(
     const posZ = arrays.posZ[idx - 1]! + avgZ * step;
 
     const energy = arrays.energy[idx - 1]!;
-    const yH = posY + forcedNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const yH = posY - forcedNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH;
     const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
 
     // Advance the argument. TIME-arg sections step `dt` per node; DISTANCE
@@ -639,8 +651,8 @@ function integrateGeometric(
     const posZ = arrays.posZ[idx - 1]! + avgZ * step;
 
     const energy = arrays.energy[idx - 1]!;
-    const yH = posY + geomNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH * HEART_ENERGY_FACTOR;
+    const yH = posY - geomNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const kinetic = energy - F_G * yH;
     const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
 
     arg += dArg;
@@ -728,16 +740,25 @@ function writeNode(arrays: MNodeArrays, i: number, n: NodeWrite): void {
   arrays.totalHeartLength[i] = n.totalHeartLength;
 }
 
+// NOTE: matches FVD++ 0.79 (secstraight.cpp:110–113, seccurved.cpp:143–146).
+// FVD++ stores the heart-path y via `vPosHearty(0.9*heart) = vPos.y +
+// 0.9*heart*vNorm.y`. Its vNorm points toward the rider's feet (−Y at rest),
+// so 0.9*heart·vNorm.y is a negative offset on a level track. Our `norm`
+// points toward the sky (+Y at rest), so we subtract instead of add to
+// arrive at the same y-coordinate. The 0.9 factor is applied exactly once,
+// here — callers must NOT multiply again.
 function heartY(position: readonly [number, number, number], norm: vec3, heart: number): number {
-  return position[1] + norm[1] * heart * HEART_ENERGY_FACTOR;
+  return position[1] - norm[1] * heart * HEART_ENERGY_FACTOR;
 }
 
-// Gravity (world: [0, -F_G, 0]) projected onto a unit axis and returned as a
-// dimensionless g multiple. Sign follows FVD++: forceNormal is positive when
-// the rider is pressed into their seat, forceLateral is positive to the
-// right.
+// Gravity (world: [0, −F_G, 0]) projected onto a rider-frame unit axis, as a
+// dimensionless g multiple. Matches FVD++ `forceNormal = −vNorm.y` after
+// accounting for the sky-vs-feet sign flip on `norm` (see integrateAnchor):
+// FVD++ vNorm.y = −axis[1] in our convention, so `−vNorm.y = axis[1]`.
+// Convention: forceNormal positive = rider pressed into seat, forceLateral
+// positive = force to the rider's right.
 function projectGravity(axis: vec3): number {
-  return -(-F_G * axis[1]) / F_G;
+  return axis[1];
 }
 
 // Longitudinal g from gravity alone: positive means the rider is pushed

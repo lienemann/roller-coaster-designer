@@ -20,6 +20,9 @@ export interface ForcesGraphProps {
     forceLongShort: string;
     velocity: string;
     velocityShort: string;
+    rollSpeed: string;
+    rollSpeedShort: string;
+    rollSpeedAxis: string;
     time: string;
     timeShort: string;
     force: string;
@@ -27,11 +30,14 @@ export interface ForcesGraphProps {
   };
 }
 
+const RAD_TO_DEG = 180 / Math.PI;
+
 const SERIES_COLORS = {
   normal: '#5cc8ff',
   lateral: '#ff9f5c',
   long: '#d7a7ff',
   velocity: '#9ef1b9',
+  rollSpeed: '#f7d76a',
 } as const;
 
 interface LiveValues {
@@ -40,6 +46,7 @@ interface LiveValues {
   readonly lateral: number | null;
   readonly long: number | null;
   readonly velocity: number | null;
+  readonly rollSpeed: number | null;
 }
 
 const EMPTY_VALUES: LiveValues = {
@@ -48,6 +55,7 @@ const EMPTY_VALUES: LiveValues = {
   lateral: null,
   long: null,
   velocity: null,
+  rollSpeed: null,
 };
 
 /**
@@ -113,7 +121,7 @@ export function ForcesGraph({
     const opts: UPlotOptions = {
       width: hostWidth,
       height: hostHeight,
-      scales: { x: { time: false }, g: {}, v: {} },
+      scales: { x: { time: false }, g: {}, v: {}, rs: {} },
       axes: [
         {
           stroke: '#a3a3a3',
@@ -141,6 +149,17 @@ export function ForcesGraph({
           grid: { show: false },
           size: 44,
           label: label.velocityAxis,
+          labelSize: 14,
+          labelFont: '11px system-ui, sans-serif',
+          labelGap: 2,
+        },
+        {
+          scale: 'rs',
+          side: 1,
+          stroke: '#a3a3a3',
+          grid: { show: false },
+          size: 44,
+          label: label.rollSpeedAxis,
           labelSize: 14,
           labelFont: '11px system-ui, sans-serif',
           labelGap: 2,
@@ -173,6 +192,13 @@ export function ForcesGraph({
           width: 1.25,
           dash: [4, 3],
         },
+        {
+          label: label.rollSpeed,
+          scale: 'rs',
+          stroke: SERIES_COLORS.rollSpeed,
+          width: 1.25,
+          dash: [1, 3],
+        },
       ],
       legend: { show: false },
       plugins: [plugin],
@@ -193,6 +219,7 @@ export function ForcesGraph({
               lateral: u.data[2]?.[idx] ?? null,
               long: u.data[3]?.[idx] ?? null,
               velocity: u.data[4]?.[idx] ?? null,
+              rollSpeed: u.data[5]?.[idx] ?? null,
             });
           },
         ],
@@ -204,7 +231,9 @@ export function ForcesGraph({
     const l = Array.from(track.forceLateral);
     const a = Array.from(track.forceLong);
     const v = Array.from(track.velocity);
-    const plot = new uPlot(opts, [x, n, l, a, v], host);
+    // Banking speed comes off the worker in rad/s; display in deg/s.
+    const rs = Array.from(track.rollSpeed, (r) => r * RAD_TO_DEG);
+    const plot = new uPlot(opts, [x, n, l, a, v, rs], host);
     plotRef.current = plot;
 
     let lastWidth = hostWidth;
@@ -280,6 +309,11 @@ function FloatingLegend({
         {label.velocityShort}
       </span>
       <span className="tabular-nums">{fmt(live.velocity, 1, 'm/s')}</span>
+      <Swatch color={SERIES_COLORS.rollSpeed} />
+      <span className="text-neutral-400" title={label.rollSpeed}>
+        {label.rollSpeedShort}
+      </span>
+      <span className="tabular-nums">{fmt(live.rollSpeed, 0, '°/s')}</span>
     </div>
   );
 }
