@@ -91,11 +91,15 @@ export interface AppState {
     readonly floorDataUri: string | null;
     readonly floorColor: string;
     readonly floorVisible: boolean;
+    /** World-metres per floor-texture tile. Unbounded; UI slider clamps
+     *  only its own track, direct numeric entry can exceed the slider range. */
+    readonly floorTileMeters: number;
   };
   readonly setSkyImage: (dataUri: string | null) => void;
   readonly setFloorImage: (dataUri: string | null) => void;
   readonly setFloorColor: (hex: string) => void;
   readonly setFloorVisible: (visible: boolean) => void;
+  readonly setFloorTileMeters: (meters: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -278,6 +282,7 @@ export const useAppStore = create<AppState>((set) => ({
     floorDataUri: null,
     floorColor: '#0b0b0b',
     floorVisible: true,
+    floorTileMeters: 10,
   },
   setSkyImage: (dataUri) =>
     set((state) => ({ environment: { ...state.environment, skyDataUri: dataUri } })),
@@ -287,6 +292,13 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({ environment: { ...state.environment, floorColor: hex } })),
   setFloorVisible: (visible) =>
     set((state) => ({ environment: { ...state.environment, floorVisible: visible } })),
+  setFloorTileMeters: (meters) =>
+    set((state) => ({
+      environment: {
+        ...state.environment,
+        floorTileMeters: Number.isFinite(meters) && meters > 0 ? meters : state.environment.floorTileMeters,
+      },
+    })),
 }));
 
 // --- helpers ---------------------------------------------------------------

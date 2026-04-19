@@ -40,6 +40,8 @@
     "colorUsed": "Using colour",
     "floorColor": "Colour",
     "floorVisible": "Show floor",
+    "floorTile": "Tile size",
+    "floorTileHint": "World metres per texture tile. Slider covers 0.5–50 m; numeric field accepts any positive value.",
     "colorHiddenByImage": "Clear the image to pick a colour",
     "close": "Close",
     "note": "Images live in the browser tab and vanish on reload."

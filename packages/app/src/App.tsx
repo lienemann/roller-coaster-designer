@@ -181,6 +181,7 @@ export function App(): JSX.Element {
           floorDataUri={environment.floorDataUri}
           floorColor={environment.floorColor}
           floorVisible={environment.floorVisible}
+          floorTileMeters={environment.floorTileMeters}
           bezierHandles={bezierHandles}
           onBezierHandleChange={(index, pos) => {
             if (!bezierHandles) return;

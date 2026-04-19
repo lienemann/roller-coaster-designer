@@ -119,6 +119,10 @@ export interface ViewportProps {
   /** When false, the ground plane is hidden entirely (no shadows, no
    *  colour, no grid-catching plane). */
   readonly floorVisible?: boolean;
+  /** World-metres per floor-texture tile. The ground plane is 500×500 m, so
+   *  e.g. 10 m/tile produces a 50×50 repeat. Updates take effect on the
+   *  currently-loaded texture without forcing a reload. */
+  readonly floorTileMeters?: number;
 }
 
 interface CameraTween {
@@ -193,6 +197,7 @@ interface SceneRefs {
 
 const RAIL_HALF_WIDTH = 0.3;
 const CROSSTIE_EVERY_N_NODES = 120;
+const GROUND_SIZE_M = 500;
 const HIGHLIGHT_MULTIPLIER = 1.6; // brighten the selected section's rails
 const CUBE_TWEEN_MS = 400;
 const CLICK_MOVE_PX = 4; // max pointer movement to still count as "click"
@@ -631,6 +636,7 @@ export function Viewport({
   floorDataUri,
   floorColor,
   floorVisible,
+  floorTileMeters,
 }: ViewportProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
@@ -675,7 +681,10 @@ export function Viewport({
     // A wide invisible plane that only renders cast shadows. Keeps the
     // grid visible (no solid ground competing for attention) while giving
     // the rail/crosstie meshes somewhere to project their shadows.
-    const ground = new Mesh(new PlaneGeometry(500, 500), new ShadowMaterial({ opacity: 0.35 }));
+    const ground = new Mesh(
+      new PlaneGeometry(GROUND_SIZE_M, GROUND_SIZE_M),
+      new ShadowMaterial({ opacity: 0.35 }),
+    );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
@@ -993,7 +1002,9 @@ export function Viewport({
       new TextureLoader().load(floorDataUri, (tex) => {
         tex.wrapS = RepeatWrapping;
         tex.wrapT = RepeatWrapping;
-        tex.repeat.set(40, 40);
+        const tile = floorTileMeters && floorTileMeters > 0 ? floorTileMeters : 10;
+        const repeat = GROUND_SIZE_M / tile;
+        tex.repeat.set(repeat, repeat);
         tex.colorSpace = SRGBColorSpace;
         const cur = refs.current;
         if (!cur) {
@@ -1022,7 +1033,19 @@ export function Viewport({
       g.material = new ShadowMaterial({ opacity: 0.35 });
       oldMat.dispose();
     }
-  }, [floorDataUri, floorColor]);
+  }, [floorDataUri, floorColor, floorTileMeters]);
+
+  // Live update of the floor tile scale without reloading the texture.
+  // Runs independently so dragging the slider doesn't trigger the material
+  // effect's full dispose-and-rebuild.
+  useEffect(() => {
+    const state = refs.current;
+    if (!state?.floorTexture) return;
+    const tile = floorTileMeters && floorTileMeters > 0 ? floorTileMeters : 10;
+    const repeat = GROUND_SIZE_M / tile;
+    state.floorTexture.repeat.set(repeat, repeat);
+    state.floorTexture.needsUpdate = true;
+  }, [floorTileMeters]);
 
   // Toggle ground plane visibility entirely. `floorVisible = false`
   // hides the shadow-receiving plane so the scene looks like it's

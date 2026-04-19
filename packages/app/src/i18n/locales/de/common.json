@@ -40,6 +40,8 @@
     "colorUsed": "Farbe wird verwendet",
     "floorColor": "Farbe",
     "floorVisible": "Boden anzeigen",
+    "floorTile": "Kachelgröße",
+    "floorTileHint": "Weltmeter pro Texturkachel. Der Regler deckt 0,5–50 m ab; das Eingabefeld akzeptiert jeden positiven Wert.",
     "colorHiddenByImage": "Entferne das Bild, um eine Farbe zu wählen",
     "close": "Schließen",
     "note": "Bilder bleiben im Browser-Tab und gehen beim Neuladen verloren."

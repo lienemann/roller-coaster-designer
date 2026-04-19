@@ -114,21 +114,30 @@ export function closeTrack(track: Track): Track {
     return track;
   }
 
-  // Handle length scales with the angle between entry and exit tangents: the
-  // classic 1/3-gap rule only looks smooth when the tangents are aligned. As
-  // the tangents diverge, the Bezier must curve harder in the same gap, which
-  // produces a hairpin (or self-intersection). Stretch the handles out so the
-  // curve has room to breathe.
-  //
-  // dotET  →  +1  aligned  → handle = gap / 3
-  //           0   orthogonal → handle ≈ gap * 0.58
-  //          −1   opposite → handle ≈ gap * 1.17 (prevents a cusp)
-  //
-  // Minimum absolute length keeps degenerate near-zero gaps from producing
-  // zero-length handles that collapse the curve to a line.
-  const dotET = endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2];
-  const angleScale = 1 + (2.5 * (1 - Math.max(-1, Math.min(1, dotET)))) / 2;
-  const handleLen = Math.max((gap / 3) * angleScale, 0.5);
+  // Handle length has to account for three things that push it up:
+  //   1. Tangent divergence: parallel tangents want ≈ gap/3; opposing
+  //      tangents want > gap/1 to avoid a cusp.
+  //   2. Gap geometry: the straight-line gap under-estimates how much curve
+  //      a Bezier needs when end and anchor don't point AT each other —
+  //      specifically when the two tangents project onto the gap with a
+  //      small footprint, the Bezier has to arc sideways a lot. We use the
+  //      component of the gap perpendicular to the mean tangent as an extra
+  //      "sideways demand" and pad the handles by it.
+  //   3. Minimum absolute length so near-zero gaps still produce a curve.
+  const dotET = clamp(
+    endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2],
+    -1,
+    1,
+  );
+  const angleScale = 1 + 1.25 * (1 - dotET);
+  const meanTx = 0.5 * (endDir[0] + anchorDir[0]);
+  const meanTy = 0.5 * (endDir[1] + anchorDir[1]);
+  const meanTz = 0.5 * (endDir[2] + anchorDir[2]);
+  const meanLen = Math.hypot(meanTx, meanTy, meanTz) || 1;
+  const gapAlong = (dx * meanTx + dy * meanTy + dz * meanTz) / meanLen;
+  const gapPerpSq = Math.max(0, dx * dx + dy * dy + dz * dz - gapAlong * gapAlong);
+  const perpPad = Math.sqrt(gapPerpSq) * 0.4;
+  const handleLen = Math.max((gap / 3) * angleScale + perpPad, 0.5);
   const p1: [number, number, number] = [
     endPos[0] + endDir[0] * handleLen,
     endPos[1] + endDir[1] * handleLen,
@@ -140,8 +149,13 @@ export function closeTrack(track: Track): Track {
     anchor.position[2] - anchorDir[2] * handleLen,
   ];
 
+  // Shortest-path roll unwrap. The ramp is in absolute angle; if the track
+  // ends at +3π/2 and the anchor is at 0, the raw delta is −3π/2 which
+  // would roll the rider backward through upside-down. Unwrapping to the
+  // ±π branch (here: +π/2) keeps the closure upright whenever the two
+  // endpoints are already close in angle modulo 2π.
+  const rollDelta = shortestAngleDelta(endRoll, anchor.roll);
   const rollFunc = createEmptyFunc(EFuncType.Roll, 'Closure roll');
-  // One linear ramp taking the current roll back to the anchor's roll.
   // `length` is in meters; we use the straight-line gap as a conservative
   // arc-length estimate — the integrator re-derives the true arc length from
   // the curve itself, and a small length mismatch only changes the rate of
@@ -150,7 +164,7 @@ export function closeTrack(track: Track): Track {
     createLinearSubFunc({
       length: Math.max(gap, 0.01),
       startValue: 0,
-      endValue: anchor.roll - endRoll,
+      endValue: rollDelta,
     }),
   );
 
@@ -168,6 +182,21 @@ export function closeTrack(track: Track): Track {
     ...track,
     sections: [...track.sections, closure],
   };
+}
+
+/** Signed delta `b − a` reduced to the range [−π, π]. Picks the shortest
+ *  rotation to go from `a` to `b`; doesn't care how many full turns apart
+ *  they nominally are. */
+function shortestAngleDelta(a: number, b: number): number {
+  const TWO_PI = Math.PI * 2;
+  let d = (b - a) % TWO_PI;
+  if (d > Math.PI) d -= TWO_PI;
+  else if (d < -Math.PI) d += TWO_PI;
+  return d;
+}
+
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, value));
 }
 
 function anchorForward(yaw: number, pitch: number): [number, number, number] {

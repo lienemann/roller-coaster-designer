@@ -21,6 +21,7 @@ export function MenuBar(): JSX.Element {
   const setFloorImage = useAppStore((s) => s.setFloorImage);
   const setFloorColor = useAppStore((s) => s.setFloorColor);
   const setFloorVisible = useAppStore((s) => s.setFloorVisible);
+  const setFloorTileMeters = useAppStore((s) => s.setFloorTileMeters);
   const [sceneOpen, setSceneOpen] = useState(false);
 
   const handleNew = useCallback(() => {
@@ -124,10 +125,12 @@ export function MenuBar(): JSX.Element {
           floorDataUri={environment.floorDataUri}
           floorColor={environment.floorColor}
           floorVisible={environment.floorVisible}
+          floorTileMeters={environment.floorTileMeters}
           onSetSky={setSkyImage}
           onSetFloor={setFloorImage}
           onSetFloorColor={setFloorColor}
           onSetFloorVisible={setFloorVisible}
+          onSetFloorTileMeters={setFloorTileMeters}
           onClose={() => setSceneOpen(false)}
           t={t}
         />
@@ -221,10 +224,12 @@ interface SceneDialogProps {
   floorDataUri: string | null;
   floorColor: string;
   floorVisible: boolean;
+  floorTileMeters: number;
   onSetSky: (dataUri: string | null) => void;
   onSetFloor: (dataUri: string | null) => void;
   onSetFloorColor: (hex: string) => void;
   onSetFloorVisible: (visible: boolean) => void;
+  onSetFloorTileMeters: (meters: number) => void;
   onClose: () => void;
   t: TFunction<['common', 'errors']>;
 }
@@ -234,10 +239,12 @@ function SceneDialog({
   floorDataUri,
   floorColor,
   floorVisible,
+  floorTileMeters,
   onSetSky,
   onSetFloor,
   onSetFloorColor,
   onSetFloorVisible,
+  onSetFloorTileMeters,
   onClose,
   t,
 }: SceneDialogProps): JSX.Element {
@@ -362,12 +369,98 @@ function SceneDialog({
             />
             <span className="tabular-nums text-neutral-300">{floorColor}</span>
           </label>
+          <FloorTileMetersRow
+            floorTileMeters={floorTileMeters}
+            disabled={!floorVisible || !floorDataUri}
+            onChange={onSetFloorTileMeters}
+            label={t('common:scene.floorTile')}
+            hint={t('common:scene.floorTileHint')}
+          />
         </section>
 
         <p className="mt-1 text-xs text-neutral-500">{t('common:scene.note')}</p>
       </div>
     </div>
   );
+}
+
+interface FloorTileMetersRowProps {
+  floorTileMeters: number;
+  disabled: boolean;
+  onChange: (meters: number) => void;
+  label: string;
+  hint: string;
+}
+
+/**
+ * Slider + numeric input for the floor texture's tile size in metres.
+ * The slider track covers a sensible 0.5 – 50 m range; typing into the
+ * number field accepts anything positive (no maxima clamp). They stay in
+ * sync via the store — dragging the slider updates the number, and a
+ * typed value beyond the slider's range just parks the thumb at its end.
+ */
+function FloorTileMetersRow({
+  floorTileMeters,
+  disabled,
+  onChange,
+  label,
+  hint,
+}: FloorTileMetersRowProps): JSX.Element {
+  const SLIDER_MIN = 0.5;
+  const SLIDER_MAX = 50;
+  const [buffer, setBuffer] = useState<string>(() => formatFloorTile(floorTileMeters));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (focused) return;
+    setBuffer(formatFloorTile(floorTileMeters));
+  }, [floorTileMeters, focused]);
+  const commit = (raw: string): void => {
+    const parsed = Number(raw.replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed > 0) onChange(parsed);
+    setBuffer(formatFloorTile(Number.isFinite(parsed) && parsed > 0 ? parsed : floorTileMeters));
+  };
+  return (
+    <div
+      className={`flex flex-col gap-1 text-xs text-neutral-400 ${disabled ? 'opacity-40' : ''}`}
+      title={hint}
+    >
+      <div className="flex items-center gap-2">
+        <span className="w-20 shrink-0">{label}</span>
+        <input
+          type="range"
+          min={SLIDER_MIN}
+          max={SLIDER_MAX}
+          step={0.1}
+          value={Math.min(Math.max(floorTileMeters, SLIDER_MIN), SLIDER_MAX)}
+          disabled={disabled}
+          onChange={(ev) => onChange(Number(ev.target.value))}
+          className="flex-1 accent-sky-400"
+        />
+        <input
+          type="number"
+          min={0}
+          step={0.1}
+          value={buffer}
+          disabled={disabled}
+          onFocus={() => setFocused(true)}
+          onBlur={(ev) => {
+            setFocused(false);
+            commit(ev.target.value);
+          }}
+          onChange={(ev) => setBuffer(ev.target.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur();
+          }}
+          className="w-20 rounded bg-surface-2 px-1.5 py-0.5 text-right tabular-nums text-neutral-200 focus:outline-none focus:ring-1 focus:ring-sky-400"
+        />
+        <span className="w-6 shrink-0">m</span>
+      </div>
+    </div>
+  );
+}
+
+function formatFloorTile(m: number): string {
+  return m >= 10 ? m.toFixed(1) : m.toFixed(2);
 }
 
 function translateError(err: unknown, t: TFunction<['common', 'errors']>): string {
