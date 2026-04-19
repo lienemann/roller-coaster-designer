@@ -119,8 +119,14 @@ export function App(): JSX.Element {
   const graphLabel = {
     forceNormal: t('graphs.forceNormal'),
     forceLateral: t('graphs.forceLateral'),
+    forceLong: t('graphs.forceLong'),
+    forceNormalShort: t('graphs.forceNormalShort'),
+    forceLateralShort: t('graphs.forceLateralShort'),
+    forceLongShort: t('graphs.forceLongShort'),
     velocity: t('graphs.velocity'),
+    velocityShort: t('graphs.velocityShort'),
     time: t('graphs.time'),
+    timeShort: t('graphs.timeShort'),
     force: t('graphs.force'),
     velocityAxis: t('graphs.velocityAxis'),
   };

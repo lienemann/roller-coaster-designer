@@ -14,8 +14,14 @@ export interface ForcesGraphProps {
   readonly label: {
     forceNormal: string;
     forceLateral: string;
+    forceLong: string;
+    forceNormalShort: string;
+    forceLateralShort: string;
+    forceLongShort: string;
     velocity: string;
+    velocityShort: string;
     time: string;
+    timeShort: string;
     force: string;
     velocityAxis: string;
   };
@@ -24,6 +30,7 @@ export interface ForcesGraphProps {
 const SERIES_COLORS = {
   normal: '#5cc8ff',
   lateral: '#ff9f5c',
+  long: '#d7a7ff',
   velocity: '#9ef1b9',
 } as const;
 
@@ -31,22 +38,28 @@ interface LiveValues {
   readonly t: number | null;
   readonly normal: number | null;
   readonly lateral: number | null;
+  readonly long: number | null;
   readonly velocity: number | null;
 }
 
-const EMPTY_VALUES: LiveValues = { t: null, normal: null, lateral: null, velocity: null };
+const EMPTY_VALUES: LiveValues = {
+  t: null,
+  normal: null,
+  lateral: null,
+  long: null,
+  velocity: null,
+};
 
 /**
- * uPlot value-over-time chart. Section-start markers (thin vertical lines)
- * and per-section colours are optional and drawn through a custom plugin.
- *
- * Value units: g-force (dimensionless multiples of F_G). Time units: seconds
- * along the integrated path — cumulativeTime[i] = i / F_HZ.
+ * uPlot value-over-time chart. Three rider-frame force components (normal,
+ * lateral, longitudinal) on a g-scale plus velocity on a secondary m/s axis.
+ * Section-start markers (thin vertical lines) and per-section colours are
+ * optional and drawn through a custom plugin.
  *
  * uPlot's built-in DOM legend is disabled; we draw a compact floating
- * legend inside the chart's top-left instead. It stays readable on narrow
- * (phone) widths where the stock legend wraps to two lines and eats half
- * the graph height.
+ * legend inside the chart's top-left with short labels and live cursor
+ * values. It stays readable on narrow (phone) widths where the stock legend
+ * wraps and eats half the graph height.
  */
 export function ForcesGraph({
   track,
@@ -81,7 +94,6 @@ export function ForcesGraph({
           ctx.save();
           ctx.setLineDash([2, 4]);
           ctx.lineWidth = 1;
-          // Skip the first marker (t=0) — it sits on the axis.
           for (let i = 1; i < sectionStartTimes.length; i += 1) {
             const t = sectionStartTimes[i]!;
             const x = u.valToPos(t, 'x', true);
@@ -107,14 +119,31 @@ export function ForcesGraph({
           stroke: '#a3a3a3',
           grid: { stroke: '#1f1f1f' },
           size: 28,
+          label: label.time,
+          labelSize: 16,
+          labelFont: '11px system-ui, sans-serif',
+          labelGap: 2,
         },
-        { scale: 'g', stroke: '#a3a3a3', grid: { stroke: '#1f1f1f' }, size: 32 },
+        {
+          scale: 'g',
+          stroke: '#a3a3a3',
+          grid: { stroke: '#1f1f1f' },
+          size: 44,
+          label: label.force,
+          labelSize: 14,
+          labelFont: '11px system-ui, sans-serif',
+          labelGap: 2,
+        },
         {
           scale: 'v',
           side: 1,
           stroke: '#a3a3a3',
           grid: { show: false },
-          size: 32,
+          size: 44,
+          label: label.velocityAxis,
+          labelSize: 14,
+          labelFont: '11px system-ui, sans-serif',
+          labelGap: 2,
         },
       ],
       series: [
@@ -129,6 +158,12 @@ export function ForcesGraph({
           label: label.forceLateral,
           scale: 'g',
           stroke: SERIES_COLORS.lateral,
+          width: 1.25,
+        },
+        {
+          label: label.forceLong,
+          scale: 'g',
+          stroke: SERIES_COLORS.long,
           width: 1.25,
         },
         {
@@ -156,7 +191,8 @@ export function ForcesGraph({
               t: u.data[0]?.[idx] ?? null,
               normal: u.data[1]?.[idx] ?? null,
               lateral: u.data[2]?.[idx] ?? null,
-              velocity: u.data[3]?.[idx] ?? null,
+              long: u.data[3]?.[idx] ?? null,
+              velocity: u.data[4]?.[idx] ?? null,
             });
           },
         ],
@@ -166,8 +202,9 @@ export function ForcesGraph({
     const x = Array.from(track.cumulativeTime);
     const n = Array.from(track.forceNormal);
     const l = Array.from(track.forceLateral);
+    const a = Array.from(track.forceLong);
     const v = Array.from(track.velocity);
-    const plot = new uPlot(opts, [x, n, l, v], host);
+    const plot = new uPlot(opts, [x, n, l, a, v], host);
     plotRef.current = plot;
 
     let lastWidth = hostWidth;
@@ -202,12 +239,18 @@ export function ForcesGraph({
 
   return (
     <div ref={hostRef} className="relative h-full w-full">
-      <FloatingLegend live={live} />
+      <FloatingLegend live={live} label={label} />
     </div>
   );
 }
 
-function FloatingLegend({ live }: { live: LiveValues }): JSX.Element {
+function FloatingLegend({
+  live,
+  label,
+}: {
+  live: LiveValues;
+  label: ForcesGraphProps['label'];
+}): JSX.Element {
   const fmt = (v: number | null, digits: number, unit: string): string =>
     v == null ? '—' : `${v.toFixed(digits)}${unit}`;
   return (
@@ -215,13 +258,27 @@ function FloatingLegend({ live }: { live: LiveValues }): JSX.Element {
       aria-hidden="false"
       className="pointer-events-none absolute left-2 top-1 z-10 flex flex-wrap items-center gap-x-2 gap-y-0 rounded bg-black/55 px-1.5 py-0.5 text-[11px] leading-tight text-neutral-200 backdrop-blur-sm"
     >
-      <span className="text-neutral-400">t</span>
+      <span className="text-neutral-400">{label.timeShort}</span>
       <span className="tabular-nums">{fmt(live.t, 2, 's')}</span>
       <Swatch color={SERIES_COLORS.normal} />
+      <span className="text-neutral-400" title={label.forceNormal}>
+        {label.forceNormalShort}
+      </span>
       <span className="tabular-nums">{fmt(live.normal, 2, 'g')}</span>
       <Swatch color={SERIES_COLORS.lateral} />
+      <span className="text-neutral-400" title={label.forceLateral}>
+        {label.forceLateralShort}
+      </span>
       <span className="tabular-nums">{fmt(live.lateral, 2, 'g')}</span>
+      <Swatch color={SERIES_COLORS.long} />
+      <span className="text-neutral-400" title={label.forceLong}>
+        {label.forceLongShort}
+      </span>
+      <span className="tabular-nums">{fmt(live.long, 2, 'g')}</span>
       <Swatch color={SERIES_COLORS.velocity} />
+      <span className="text-neutral-400" title={label.velocity}>
+        {label.velocityShort}
+      </span>
       <span className="tabular-nums">{fmt(live.velocity, 1, 'm/s')}</span>
     </div>
   );

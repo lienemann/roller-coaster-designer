@@ -153,6 +153,7 @@ function integrateAnchor(section: AnchorSection, arrays: MNodeArrays, heart: num
     totalHeartLength: 0,
     forceNormal: projectGravity(norm),
     forceLateral: projectGravity(lat),
+    forceLong: projectGravityLong(dir),
   });
   return idx;
 }
@@ -226,6 +227,7 @@ function integrateStraight(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
       forceNormal: projectGravity(norm),
       forceLateral: projectGravity(lat),
+      forceLong: projectGravityLong(dir),
     });
   }
   return idx;
@@ -317,6 +319,7 @@ function integrateBezier(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
       forceNormal: projectGravity(bezierNorm),
       forceLateral: projectGravity(bezierLat),
+      forceLong: projectGravityLong(bezierTangent),
     });
   }
   return idx;
@@ -333,6 +336,7 @@ function integrateBezier(
 const curvedDir = vec3.create();
 const curvedLat = vec3.create();
 const curvedNorm = vec3.create();
+const curvedHorizLat = vec3.create();
 
 function integrateCurved(
   section: CurvedSection,
@@ -371,8 +375,20 @@ function integrateCurved(
     const yawRate = section.yawRate * blend;
     const pitchRate = section.pitchRate * blend;
 
-    // Pitch rotates around the lateral axis.
-    rotateAroundAxis(curvedDir, curvedDir, curvedLat, pitchRate * clippedStep);
+    // Pitch rotates around the *horizontal* lateral axis (rider's right
+    // projected onto the ground = dir × up), not the banked `curvedLat`.
+    // Rolling the track around dir tilts curvedLat out of the horizontal
+    // plane; rotating dir around a tilted axis leaks pitch into yaw and
+    // warps the path. Decoupling here keeps the geometry banking-
+    // independent, matching FVD++'s Curved section.
+    vec3.set(curvedHorizLat, -curvedDir[2], 0, curvedDir[0]);
+    const horizLen = Math.hypot(curvedHorizLat[0], curvedHorizLat[2]);
+    if (horizLen > 1e-6) {
+      curvedHorizLat[0] /= horizLen;
+      curvedHorizLat[2] /= horizLen;
+      rotateAroundAxis(curvedDir, curvedDir, curvedHorizLat, pitchRate * clippedStep);
+      rotateAroundAxis(curvedLat, curvedLat, curvedHorizLat, pitchRate * clippedStep);
+    }
     // Yaw rotates around world-up. Lat rotates too so it stays perpendicular
     // to the new forward direction.
     vec3.rotateY(curvedDir, curvedDir, [0, 0, 0], yawRate * clippedStep);
@@ -407,6 +423,7 @@ function integrateCurved(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
       forceNormal: projectGravity(curvedNorm),
       forceLateral: projectGravity(curvedLat),
+      forceLong: projectGravityLong(curvedDir),
     });
   }
   return idx;
@@ -540,6 +557,7 @@ function integrateForced(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
       forceNormal: normalG,
       forceLateral: lateralG,
+      forceLong: projectGravityLong(forcedDir),
     });
   }
   return idx;
@@ -641,6 +659,7 @@ function integrateGeometric(
       totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
       forceNormal: projectGravity(geomNorm),
       forceLateral: projectGravity(geomLat),
+      forceLong: projectGravityLong(geomDir),
     });
   }
   return idx;
@@ -678,6 +697,7 @@ interface NodeWrite {
   totalHeartLength: number;
   forceNormal: number;
   forceLateral: number;
+  forceLong: number;
 }
 
 function writeNode(arrays: MNodeArrays, i: number, n: NodeWrite): void {
@@ -698,8 +718,10 @@ function writeNode(arrays: MNodeArrays, i: number, n: NodeWrite): void {
   arrays.energy[i] = n.energy;
   arrays.forceNormal[i] = n.forceNormal;
   arrays.forceLateral[i] = n.forceLateral;
+  arrays.forceLong[i] = n.forceLong;
   arrays.smoothNormal[i] = n.forceNormal;
   arrays.smoothLateral[i] = n.forceLateral;
+  arrays.smoothLong[i] = n.forceLong;
   arrays.distFromLast[i] = n.distFromLast;
   arrays.heartDistFromLast[i] = n.heartDistFromLast;
   arrays.totalLength[i] = n.totalLength;
@@ -716,6 +738,14 @@ function heartY(position: readonly [number, number, number], norm: vec3, heart: 
 // right.
 function projectGravity(axis: vec3): number {
   return -(-F_G * axis[1]) / F_G;
+}
+
+// Longitudinal g from gravity alone: positive means the rider is pushed
+// forward (downhill accelerates the car). For a forward unit vector `dir`,
+// gravity=(0,-g,0) has a forward component of `-g·dir_y`, so the g multiple
+// is `-dir_y`.
+function projectGravityLong(dir: vec3): number {
+  return -dir[1];
 }
 
 function evalRoll(func: Func, s: number): number {

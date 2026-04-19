@@ -66,6 +66,7 @@ export function applySmoothers(
   for (let i = 0; i < count; i += 1) {
     arrays.smoothNormal[i] = arrays.forceNormal[i]!;
     arrays.smoothLateral[i] = arrays.forceLateral[i]!;
+    arrays.smoothLong[i] = arrays.forceLong[i]!;
   }
 
   if (smoothers.length === 0) return;
@@ -96,6 +97,7 @@ function smoothWindow(
   for (let i = lo; i <= hi; i += 1) {
     let weightedN = 0;
     let weightedL = 0;
+    let weightedLong = 0;
     let weightSum = 0;
     for (let k = -KERNEL_RADIUS; k <= KERNEL_RADIUS; k += 1) {
       const j = i + k;
@@ -103,11 +105,13 @@ function smoothWindow(
       const w = KERNEL[k + KERNEL_RADIUS]!;
       weightedN += w * arrays.forceNormal[j]!;
       weightedL += w * arrays.forceLateral[j]!;
+      weightedLong += w * arrays.forceLong[j]!;
       weightSum += w;
     }
     if (weightSum <= 0) continue;
     const blurN = weightedN / weightSum;
     const blurL = weightedL / weightSum;
+    const blurLong = weightedLong / weightSum;
 
     // Feather the strength away from the boundary: full strength at
     // `centre`, linear roll-off to 0 at the window edges. Stops the
@@ -119,5 +123,6 @@ function smoothWindow(
 
     arrays.smoothNormal[i] = arrays.forceNormal[i]! * (1 - blend) + blurN * blend;
     arrays.smoothLateral[i] = arrays.forceLateral[i]! * (1 - blend) + blurL * blend;
+    arrays.smoothLong[i] = arrays.forceLong[i]! * (1 - blend) + blurLong * blend;
   }
 }

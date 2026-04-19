@@ -26,10 +26,14 @@ export const MNODE_FIELDS = [
   'vel',
   'energy',
   // Forces: raw output of the Force functions, then the smoothed variant.
+  // Three rider-frame components: normal (into-seat), lateral (to the right),
+  // longitudinal (forward along dir). All three are dimensionless g multiples.
   'forceNormal',
   'forceLateral',
+  'forceLong',
   'smoothNormal',
   'smoothLateral',
+  'smoothLong',
   // Per-step deltas.
   'distFromLast',
   'heartDistFromLast',

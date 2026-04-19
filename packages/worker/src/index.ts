@@ -20,6 +20,7 @@ const api: PhysicsWorkerApi = {
       const velocity = new Float32Array(count);
       const forceNormal = new Float32Array(count);
       const forceLateral = new Float32Array(count);
+      const forceLong = new Float32Array(count);
       const cumulativeTime = new Float32Array(count);
       const sectionIndex = new Uint16Array(count);
 
@@ -48,6 +49,7 @@ const api: PhysicsWorkerApi = {
         velocity[i] = arrays.vel[i]!;
         forceNormal[i] = arrays.forceNormal[i]!;
         forceLateral[i] = arrays.forceLateral[i]!;
+        forceLong[i] = arrays.forceLong[i]!;
         cumulativeTime[i] = i * dt;
       }
       return {
@@ -57,6 +59,7 @@ const api: PhysicsWorkerApi = {
         velocity,
         forceNormal,
         forceLateral,
+        forceLong,
         cumulativeTime,
         sectionIndex,
         sectionStartNodes,
@@ -69,6 +72,7 @@ const api: PhysicsWorkerApi = {
       t.velocity.buffer,
       t.forceNormal.buffer,
       t.forceLateral.buffer,
+      t.forceLong.buffer,
       t.cumulativeTime.buffer,
       t.sectionIndex.buffer,
     ]);

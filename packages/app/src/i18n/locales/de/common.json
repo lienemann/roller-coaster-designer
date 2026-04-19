@@ -129,8 +129,14 @@
   "graphs": {
     "forceNormal": "Normal-g",
     "forceLateral": "Lateral-g",
+    "forceLong": "Längs-g",
+    "forceNormalShort": "Fn",
+    "forceLateralShort": "Fl",
+    "forceLongShort": "Fa",
     "velocity": "Geschwindigkeit",
+    "velocityShort": "v",
     "time": "Zeit (s)",
+    "timeShort": "t",
     "force": "Kraft (g)",
     "velocityAxis": "Geschw. (m/s)"
   }
