@@ -23,13 +23,15 @@
 import { describe, it } from 'vitest';
 
 import { F_HZ } from '../../src/model/constants.js';
+import { SecType } from '../../src/model/enums.js';
 import { type MNodeArrays } from '../../src/model/mnode.js';
 import { type Track } from '../../src/model/track.js';
+import { closeTrack as importedCloseTrack } from '../../src/ops/close-track.js';
 import { integrateTrack } from '../../src/physics/integrate.js';
 
 import {
   anchorAt,
-  chainedBezier,
+  bezier,
   cubicSubFunc,
   curved,
   flatRoll,
@@ -67,68 +69,57 @@ const cases: ContinuityCase[] = [
     ]),
   },
   {
-    name: 'wild-2: bezier sandwiched between two curves',
-    track: (() => {
-      const anchor = anchorAt([5, 18, 0], { yaw: 0.3, speed: 15 });
-      const curve1 = curved({
-        length: 12,
-        yawRate: 0.21 / 12,
-        rollFunc: linearRoll(12, 0, 0.6),
-      });
-      // The Bezier's first control point MUST equal the previous section's
-      // end position — the integrator samples the cubic verbatim and does
-      // not auto-translate. `chainedBezier` integrates the prefix, then
-      // pins p0 to that end, with the remaining three handles given
-      // relative to that pinned origin.
-      const bez = chainedBezier([anchor, curve1], {
-        handleLength: 4,
-        // p2 and p3 are absolute; just pick something that makes a sane
-        // curve from the curve1 endpoint forward.
-        p2: [22, 18.7, -7],
-        p3: [26, 18, -8],
+    name: 'wild-2: bezier sandwiched between two curves with arbitrary control points',
+    track: makeTrack('wild-2', [
+      anchorAt([5, 18, 0], { yaw: 0.3, speed: 15 }),
+      curved({ length: 12, yawRate: 0.21 / 12, rollFunc: linearRoll(12, 0, 0.6) }),
+      // Deliberately arbitrary control points — including a p0 that does
+      // NOT match the previous section's end position. The integrator
+      // auto-anchors so the boundary stays continuous regardless.
+      bezier({
+        controlPoints: [
+          [0, 0, 0],
+          [3, 0.5, -1],
+          [6, 0.7, -2],
+          [10, 0, -2.5],
+        ],
         rollFunc: linearRoll(11, 0, -1),
-      });
-      return makeTrack('wild-2', [
-        anchor,
-        curve1,
-        bez,
-        curved({ length: 8, pitchRate: 0.12 / 8, rollFunc: linearRoll(8, 0, 0.4) }),
-      ]);
-    })(),
+      }),
+      curved({ length: 8, pitchRate: 0.12 / 8, rollFunc: linearRoll(8, 0, 0.4) }),
+    ]),
   },
   {
     name: 'wild-3: mix every integrator (Straight → Forced → Geometric → Curved → Bezier → Straight)',
-    track: (() => {
-      const anchor = anchorAt([0, 25, 0], { pitch: -0.18, speed: 22 });
-      const s1 = straight(8, linearRoll(8, 0, 0.7));
-      const f = forced({
-        extent: 1.5,
-        normalG: 1.4,
-        lateralG: -0.3,
-        rollFunc: linearRoll(1.5, 0, 0.3),
-      });
-      const g = geometric({
+    track: makeTrack('wild-3', [
+      anchorAt([0, 25, 0], { pitch: -0.18, speed: 22 }),
+      straight(8, linearRoll(8, 0, 0.7)),
+      forced({ extent: 1.5, normalG: 1.4, lateralG: -0.3, rollFunc: linearRoll(1.5, 0, 0.3) }),
+      geometric({
         extent: 6,
         pitchRate: 0.15 / 6,
         yawRate: 0.08 / 6,
         rollFunc: linearRoll(6, 0, -0.7),
-      });
-      const c = curved({
+      }),
+      curved({
         length: 9,
         pitchRate: -0.22 / 9,
         yawRate: 0.13 / 9,
         leadIn: 1.5,
         leadOut: 1.5,
         rollFunc: linearRoll(9, 0, -0.8),
-      });
-      const bez = chainedBezier([anchor, s1, f, g, c], {
-        handleLength: 3,
-        p2: [60, 33, 7],
-        p3: [62, 33, 8],
+      }),
+      // Arbitrary control points — auto-anchored by the integrator.
+      bezier({
+        controlPoints: [
+          [0, 0, 0],
+          [2, 0.3, 0.4],
+          [4, 0.5, 0.8],
+          [7, 0.5, 1.2],
+        ],
         rollFunc: linearRoll(7, 0, 0.5),
-      });
-      return makeTrack('wild-3', [anchor, s1, f, g, c, bez, straight(4)]);
-    })(),
+      }),
+      straight(4),
+    ]),
   },
   {
     name: 'wild-4: multi-subfunc roll spanning a section boundary',
@@ -164,6 +155,13 @@ const cases: ContinuityCase[] = [
     ]),
   },
 ];
+
+// Tighten the boundary slack now that the Bezier integrator auto-anchors:
+// every section transition should be C0 in pose, so any boundary delta
+// larger than ~2× a typical in-section step is a real bug.
+const CLOSURE_POS_TOL = 0.5; // m — total cumulated drift over the closure
+const CLOSURE_DIR_TOL = 0.05; // rad ≈ 2.9°
+const CLOSURE_ROLL_TOL = 0.05; // rad
 
 describe('section-boundary continuity', () => {
   for (const c of cases) {
@@ -291,4 +289,161 @@ function angleBetween(a: readonly number[], b: readonly number[]): number {
   // Clamp to the valid acos domain — float32 dot products can overshoot ±1
   // by 1e-7 on parallel unit vectors.
   return Math.acos(Math.max(-1, Math.min(1, d)));
+}
+
+// ---------------------------------------------------------------------------
+// Closure continuity. A closeTrack-generated Bezier (`isClosure: true`) must:
+//   1. Meet the previous section's end pose (handled by the same auto-anchor
+//      tested above; we verify it explicitly for closures).
+//   2. End at the anchor's position with the anchor's direction. The
+//      integrator's auto-anchor for closure sections enforces this so the
+//      track always closes a loop, even when the user's stored controlPoints
+//      have drifted out of date (e.g. before regenerateClosure has run).
+// ---------------------------------------------------------------------------
+
+interface ClosureCase {
+  readonly name: string;
+  readonly track: Track;
+}
+
+const closureCases: ClosureCase[] = [
+  {
+    name: 'closure-1: triangle of straights closes back to anchor',
+    track: closeTrackForTest('closure-1', [
+      anchorAt([0, 12, 0], { speed: 12 }),
+      straight(20),
+      curved({ length: 12, yawRate: (Math.PI * 2) / 3 / 12 }),
+      straight(20),
+      curved({ length: 12, yawRate: (Math.PI * 2) / 3 / 12 }),
+      straight(20),
+    ]),
+  },
+  {
+    // Wild combinations of pitch + yaw + roll across multiple sections —
+    // not "the train climbs to a stall"; the speed is chosen high enough
+    // that energy conservation never drops vel to 0.
+    name: 'closure-2: a wild loop comes back without manual alignment',
+    track: closeTrackForTest('closure-2', [
+      anchorAt([0, 30, 0], { yaw: 0.3, pitch: 0.05, roll: 0.1, speed: 30 }),
+      curved({
+        length: 14,
+        pitchRate: 0.4 / 14,
+        yawRate: -0.6 / 14,
+        rollFunc: linearRoll(14, 0, 0.7),
+      }),
+      straight(8, linearRoll(8, 0, -0.4)),
+      curved({
+        length: 16,
+        pitchRate: -0.5 / 16,
+        yawRate: 0.9 / 16,
+        rollFunc: linearRoll(16, 0, 0.5),
+      }),
+      straight(6),
+    ]),
+  },
+  {
+    name: 'closure-3: closure with stored controlPoints deliberately wrong',
+    track: closeTrackThenCorrupt('closure-3', [
+      anchorAt([5, 10, 0], { speed: 13 }),
+      straight(15),
+      curved({ length: 10, yawRate: (Math.PI / 2) / 10 }),
+      straight(15),
+    ]),
+  },
+];
+
+describe('closure continuity', () => {
+  for (const c of closureCases) {
+    it(c.name, () => {
+      const { arrays, sectionStartNodes } = integrateTrack(c.track);
+
+      // 1. The closure entry boundary follows the same per-step rule as
+      //    every other section transition.
+      const closureSectionIdx = sectionStartNodes.length - 1;
+      const start = sectionStartNodes[closureSectionIdx]!;
+      const prev = start - 1;
+      const within = withinSectionMaxDelta(arrays, prev, sectionStartNodes, closureSectionIdx);
+      const localVel = Math.max(arrays.vel[prev] ?? 0, arrays.vel[start] ?? 0);
+      const velFloor = (localVel / F_HZ) * 1.5;
+      const withinFloored: StepDelta = {
+        pos: Math.max(within.pos, velFloor),
+        dirAngle: within.dirAngle,
+        latAngle: within.latAngle,
+        roll: within.roll,
+      };
+      const boundary = stepDelta(arrays, prev, start);
+      assertContinuity(boundary, withinFloored, c.name, closureSectionIdx, prev, start, arrays);
+
+      // 2. The closure end matches the anchor in all 6 DoFs.
+      const lastIdx = arrays.length - 1;
+      const anchor = c.track.sections[0]!;
+      if (anchor.type !== SecType.Anchor) throw new Error('first section is not anchor');
+      const anchorPos = anchor.position;
+      const anchorDir = anchorForwardForTest(anchor.yaw, anchor.pitch);
+
+      const dPos = Math.hypot(
+        (arrays.posX[lastIdx] ?? 0) - anchorPos[0],
+        (arrays.posY[lastIdx] ?? 0) - anchorPos[1],
+        (arrays.posZ[lastIdx] ?? 0) - anchorPos[2],
+      );
+      const dDir = angleBetween(
+        [arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!],
+        anchorDir,
+      );
+      const dRoll = Math.abs(
+        ((arrays.roll[lastIdx]! - anchor.roll + Math.PI) % (Math.PI * 2)) - Math.PI,
+      );
+
+      if (dPos > CLOSURE_POS_TOL) {
+        throw new Error(`${c.name}: closure end pos ${dPos.toFixed(4)} m off from anchor`);
+      }
+      if (dDir > CLOSURE_DIR_TOL) {
+        throw new Error(
+          `${c.name}: closure end dir ${dDir.toFixed(4)} rad off from anchor (${(dDir * (180 / Math.PI)).toFixed(2)}°)`,
+        );
+      }
+      if (dRoll > CLOSURE_ROLL_TOL) {
+        throw new Error(
+          `${c.name}: closure end roll ${dRoll.toFixed(4)} rad off from anchor`,
+        );
+      }
+    });
+  }
+});
+
+/** Wrap closeTrack so the test reads cleanly. */
+function closeTrackForTest(name: string, sections: ReturnType<typeof anchorAt>[]): Track {
+  return importedCloseTrack(makeTrack(name, sections));
+}
+
+/** Same but then mutates the closure's controlPoints to deliberately wrong
+ *  values. The integrator's auto-anchor must still recover. */
+function closeTrackThenCorrupt(name: string, sections: ReturnType<typeof anchorAt>[]): Track {
+  const closed = importedCloseTrack(makeTrack(name, sections));
+  const last = closed.sections[closed.sections.length - 1]!;
+  if (last.type !== SecType.Bezier) throw new Error('expected Bezier closure');
+  const corrupted: Track = {
+    ...closed,
+    sections: [
+      ...closed.sections.slice(0, -1),
+      {
+        ...last,
+        controlPoints: [
+          [999, 999, 999],
+          [1001, 999, 999],
+          [-50, 50, -50],
+          [-100, 100, -100],
+        ],
+      },
+    ],
+  };
+  return corrupted;
+}
+
+function anchorForwardForTest(yaw: number, pitch: number): [number, number, number] {
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  return [cy * cp, sp, -sy * cp];
 }

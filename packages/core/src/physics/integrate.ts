@@ -43,10 +43,15 @@ export function integrateTrack(track: Track, capacity = DEFAULT_CAPACITY): Track
   const arrays = allocateMNodeArrays(capacity);
   const sectionStartNodes: number[] = [];
 
+  // Cache the anchor — needed by integrateBezier when isClosure: true so
+  // the closure's end can be pinned to the anchor's pose.
+  const anchor = track.sections[0];
+  const anchorSection = anchor?.type === SecType.Anchor ? anchor : null;
+
   let idx = -1;
   for (const section of track.sections) {
     sectionStartNodes.push(idx + 1);
-    idx = integrateSection(section, arrays, idx, track.heart);
+    idx = integrateSection(section, arrays, idx, track.heart, anchorSection);
   }
   arrays.length = idx + 1;
 
@@ -79,6 +84,7 @@ function integrateSection(
   arrays: MNodeArrays,
   lastIdx: number,
   heart: number,
+  anchor: AnchorSection | null,
 ): number {
   switch (section.type) {
     case SecType.Anchor:
@@ -95,7 +101,7 @@ function integrateSection(
       if (lastIdx < 0) {
         throw new Error('Bezier section requires a prior Anchor.');
       }
-      return integrateBezier(section, arrays, lastIdx, heart);
+      return integrateBezier(section, arrays, lastIdx, heart, anchor);
     case SecType.Curved:
       if (lastIdx < 0) {
         throw new Error('Curved section requires a prior Anchor.');
@@ -262,8 +268,20 @@ function integrateBezier(
   arrays: MNodeArrays,
   lastIdx: number,
   heart: number,
+  anchor: AnchorSection | null,
 ): number {
-  const [p0, p1, p2, p3] = section.controlPoints;
+  // Auto-anchor the curve to the previous section's end pose. The user-
+  // supplied control points provide the SHAPE; the position and the
+  // entry-tangent are clamped to whatever the integrator actually
+  // produced for the previous node, so a Bezier never introduces a
+  // C0 jump regardless of what the user dragged.
+  //
+  // For closure sections (`isClosure: true`) the END is also clamped: p3
+  // becomes the anchor's position and p2 sits along the anchor's
+  // incoming direction (preserving the user's chosen handle length). The
+  // closure therefore matches the start of the track even if the user
+  // edits stored controlPoints by hand.
+  const [p0, p1, p2, p3] = effectiveBezierControlPoints(section, arrays, lastIdx, anchor);
   const table = sampleArcLengthTable(p0, p1, p2, p3, BEZIER_ARC_SAMPLES);
   const totalArc = table[table.length - 1]!;
   if (totalArc <= 0) return lastIdx;
@@ -759,6 +777,101 @@ function heartY(position: readonly [number, number, number], norm: vec3, heart: 
 // positive = force to the rider's right.
 function projectGravity(axis: vec3): number {
   return axis[1];
+}
+
+/**
+ * Compute the four cubic-Bezier control points the integrator actually uses,
+ * given a `BezierSection`'s stored controlPoints, the previous section's end
+ * pose (read from `arrays[lastIdx]`), and — for closure sections — the
+ * track's anchor.
+ *
+ * Auto-anchor contract:
+ *   - p0' is always the previous section's end position.
+ *   - p1' lies along the previous section's end direction at the user's
+ *     chosen handle length (|stored p1 − stored p0|).
+ *   - For mid-track Beziers, p2' and p3' are translated by the same delta
+ *     as p0 (preserves the curve's user-authored shape relative to its
+ *     start).
+ *   - For closure Beziers (`isClosure: true`), p3' = anchor.position and
+ *     p2' lies along the anchor's incoming direction at the user's chosen
+ *     end-handle length (|stored p2 − stored p3|). This guarantees the
+ *     closure rejoins the anchor tangentially even if upstream geometry
+ *     shifts and `regenerateClosure` hasn't run yet.
+ */
+function effectiveBezierControlPoints(
+  section: BezierSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  anchor: AnchorSection | null,
+): [
+  readonly [number, number, number],
+  readonly [number, number, number],
+  readonly [number, number, number],
+  readonly [number, number, number],
+] {
+  const [storedP0, storedP1, storedP2, storedP3] = section.controlPoints;
+
+  const prevPos: [number, number, number] = [
+    arrays.posX[lastIdx]!,
+    arrays.posY[lastIdx]!,
+    arrays.posZ[lastIdx]!,
+  ];
+  const prevDir: [number, number, number] = [
+    arrays.dirX[lastIdx]!,
+    arrays.dirY[lastIdx]!,
+    arrays.dirZ[lastIdx]!,
+  ];
+
+  const handle1Len = Math.hypot(
+    storedP1[0] - storedP0[0],
+    storedP1[1] - storedP0[1],
+    storedP1[2] - storedP0[2],
+  );
+
+  const p0: [number, number, number] = [...prevPos];
+  const p1: [number, number, number] = [
+    prevPos[0] + prevDir[0] * handle1Len,
+    prevPos[1] + prevDir[1] * handle1Len,
+    prevPos[2] + prevDir[2] * handle1Len,
+  ];
+
+  if (section.isClosure === true && anchor !== null) {
+    const handle2Len = Math.hypot(
+      storedP3[0] - storedP2[0],
+      storedP3[1] - storedP2[1],
+      storedP3[2] - storedP2[2],
+    );
+    const anchorDir = anchorForwardFromYawPitch(anchor.yaw, anchor.pitch);
+    const p3: [number, number, number] = [...anchor.position];
+    const p2: [number, number, number] = [
+      anchor.position[0] - anchorDir[0] * handle2Len,
+      anchor.position[1] - anchorDir[1] * handle2Len,
+      anchor.position[2] - anchorDir[2] * handle2Len,
+    ];
+    return [p0, p1, p2, p3];
+  }
+
+  // Mid-track Bezier: translate p2 and p3 alongside p0 so the curve's
+  // user-authored shape moves with the section's start.
+  const dx = prevPos[0] - storedP0[0];
+  const dy = prevPos[1] - storedP0[1];
+  const dz = prevPos[2] - storedP0[2];
+  const p2: [number, number, number] = [storedP2[0] + dx, storedP2[1] + dy, storedP2[2] + dz];
+  const p3: [number, number, number] = [storedP3[0] + dx, storedP3[1] + dy, storedP3[2] + dz];
+  return [p0, p1, p2, p3];
+}
+
+/**
+ * Anchor's forward direction from its (yaw, pitch). Matches the convention
+ * used by `integrateAnchor` (yaw around +Y, then pitch around the yawed
+ * lateral axis = +Z·yaw). Used by closeTrack and effectiveBezierControlPoints.
+ */
+function anchorForwardFromYawPitch(yaw: number, pitch: number): [number, number, number] {
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  return [cy * cp, sp, -sy * cp];
 }
 
 // Longitudinal g from gravity alone: positive means the rider is pushed

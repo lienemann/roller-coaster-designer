@@ -18,7 +18,6 @@ import { createEmptyFunc, type Func } from '../../src/model/function.js';
 import { type Section } from '../../src/model/section.js';
 import { createLinearSubFunc, type SubFunc } from '../../src/model/subfunction.js';
 import { type Track } from '../../src/model/track.js';
-import { integrateTrack } from '../../src/physics/integrate.js';
 
 export const DEFAULT_HEART = 1.1;
 export const DEFAULT_SPEED = 12;
@@ -175,59 +174,6 @@ export function forced(options: {
     normalFunc,
     lateralFunc,
   };
-}
-
-/**
- * Build a Bezier that meets the previous section tangent-continuously.
- *
- * The Bezier integrator samples the cubic verbatim — it does NOT auto-
- * translate or re-orient. So for a mid-track Bezier to land smoothly:
- *
- *   - p0 must equal the previous section's end position
- *   - p1 must lie along the previous section's end direction (a unit vector
- *     × handle distance), because the Bezier's tangent at t=0 is
- *     3·(p1 − p0)
- *
- * `closeTrack` does both of these explicitly. This helper does the same so
- * test cases for mid-track Beziers don't have to recompute the prefix's
- * end pose by hand. p2 and p3 are free choices in absolute world coords.
- */
-export function chainedBezier(
-  prefix: Section[],
-  options: {
-    /** Distance along the previous section's end direction for p1. */
-    handleLength: number;
-    /** Second control point in world coordinates. */
-    p2: [number, number, number];
-    /** Final control point (where the Bezier section ends). */
-    p3: [number, number, number];
-    rollFunc?: Func;
-    name?: string;
-  },
-): Section {
-  const { arrays } = integrateTrack(makeTrack('chain-prefix', prefix));
-  const last = arrays.length - 1;
-  if (last < 0) throw new Error('chainedBezier: prefix integrated to nothing');
-  const endPos: [number, number, number] = [
-    arrays.posX[last]!,
-    arrays.posY[last]!,
-    arrays.posZ[last]!,
-  ];
-  const endDir: [number, number, number] = [
-    arrays.dirX[last]!,
-    arrays.dirY[last]!,
-    arrays.dirZ[last]!,
-  ];
-  const p1: [number, number, number] = [
-    endPos[0] + endDir[0] * options.handleLength,
-    endPos[1] + endDir[1] * options.handleLength,
-    endPos[2] + endDir[2] * options.handleLength,
-  ];
-  return bezier({
-    controlPoints: [endPos, p1, options.p2, options.p3],
-    ...(options.rollFunc !== undefined ? { rollFunc: options.rollFunc } : {}),
-    ...(options.name !== undefined ? { name: options.name } : {}),
-  });
 }
 
 export function geometric(options: {
