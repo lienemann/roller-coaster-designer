@@ -6,6 +6,7 @@
   },
   "io": {
     "fileRejected": "Die Datei konnte nicht geöffnet werden: {{reason}}.",
-    "saveCancelled": "Speichern wurde abgebrochen."
+    "saveCancelled": "Speichern wurde abgebrochen.",
+    "fvdMalformed": "Die .fvd-Datei ist beschädigt: {{reason}} (Offset {{offset}})."
   }
 }

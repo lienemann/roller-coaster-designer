@@ -115,6 +115,7 @@ describe('integrateTrack — inclined Straight conserves energy', () => {
           rollFunc: createEmptyFunc(EFuncType.Roll),
         },
       ],
+      smoothers: [],
     };
     const { arrays } = integrateTrack(up);
     const last = arrays.length - 1;
@@ -371,6 +372,7 @@ describe('integrateTrack — Straight with a Roll Func', () => {
         },
         { type: SecType.Straight, name: 's', length: 10, rollFunc },
       ],
+      smoothers: [],
     };
     const { arrays } = integrateTrack(track);
     const last = arrays.length - 1;

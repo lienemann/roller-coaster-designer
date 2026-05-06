@@ -6,6 +6,7 @@
   },
   "io": {
     "fileRejected": "Could not open the file: {{reason}}.",
-    "saveCancelled": "Saving was cancelled."
+    "saveCancelled": "Saving was cancelled.",
+    "fvdMalformed": "The .fvd file is malformed: {{reason}} (offset {{offset}})."
   }
 }

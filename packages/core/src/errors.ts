@@ -37,5 +37,6 @@ export const WEBFVD_ERROR_CODES = {
   io: {
     fileRejected: 'io.fileRejected',
     saveCancelled: 'io.saveCancelled',
+    fvdMalformed: 'io.fvdMalformed',
   },
 } as const;
