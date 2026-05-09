@@ -19,6 +19,7 @@
     "file": "File",
     "new": "New",
     "open": "Open…",
+    "importFvd": "Import .fvd…",
     "save": "Save",
     "saveAs": "Save As…",
     "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead.",
