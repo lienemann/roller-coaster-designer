@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
+  parseFvd,
   parseWebFvdJson,
   stringifyWebFvdJson,
   WebFvdError,
@@ -50,6 +51,13 @@ const PICKER_TYPES = [
   },
 ] satisfies NonNullable<SaveFilePickerOptions['types']>;
 
+const FVD_PICKER_TYPES = [
+  {
+    description: 'FVD++ project',
+    accept: { 'application/octet-stream': ['.fvd'] },
+  },
+] satisfies NonNullable<SaveFilePickerOptions['types']>;
+
 export interface OpenResult {
   readonly project: Project;
   readonly handle: OpaqueFileHandle | null;
@@ -75,7 +83,7 @@ export async function openProject(): Promise<OpenResult | null> {
     return { project, handle, name: file.name };
   }
 
-  const file = await openViaInput();
+  const file = await openViaInput('.webfvd.json,application/json');
   if (!file) return null;
   const text = await file.text();
   const { project } = parseWebFvdJson(text);
@@ -85,6 +93,54 @@ export async function openProject(): Promise<OpenResult | null> {
 export interface SaveResult {
   readonly handle: OpaqueFileHandle | null;
   readonly name: string;
+}
+
+export interface FvdImportResult {
+  readonly project: Project;
+  readonly name: string;
+  readonly version: 'v0.77' | 'v0.30';
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Import a legacy FVD++ `.fvd` binary. Returns null if the user cancels;
+ * throws WebFvdError on a malformed file. Always returns a fresh Project
+ * (no in-place file handle for re-saves — the writer lands at M9).
+ */
+export async function importFvd(): Promise<FvdImportResult | null> {
+  const w = globalThis as unknown as FsaWindow;
+  let bytes: ArrayBuffer;
+  let name: string;
+  if (hasFileSystemAccess()) {
+    let handle: FileSystemFileHandle;
+    try {
+      const handles = await w.showOpenFilePicker!({
+        types: FVD_PICKER_TYPES,
+        multiple: false,
+      });
+      const first = handles[0];
+      if (!first) return null;
+      handle = first;
+    } catch (err) {
+      if (isUserCancellation(err)) return null;
+      throw new WebFvdError('io.fileRejected', { reason: reasonOf(err) });
+    }
+    const file = await handle.getFile();
+    bytes = await file.arrayBuffer();
+    name = file.name;
+  } else {
+    const file = await openViaInput('.fvd,application/octet-stream');
+    if (!file) return null;
+    bytes = await file.arrayBuffer();
+    name = file.name;
+  }
+  const result = parseFvd(new Uint8Array(bytes));
+  return {
+    project: result.project,
+    name,
+    version: result.version,
+    warnings: result.warnings,
+  };
 }
 
 export async function saveProjectAs(project: Project): Promise<SaveResult | null> {
@@ -137,11 +193,11 @@ function reasonOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function openViaInput(): Promise<File | null> {
+function openViaInput(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.webfvd.json,application/json';
+    input.accept = accept;
     input.style.display = 'none';
     input.addEventListener('change', () => {
       const file = input.files?.[0] ?? null;

@@ -468,6 +468,14 @@ Gradient modes:
 - **Flexion**: green to red (kink detection).
 - **None**: solid color.
 
+#### 6.2.1 3D force-vector overlay **[T2]**
+
+In addition to color-coding the track itself, render a **3D arrow / cylinder per node** (sub-sampled at every Nth integration step) showing the direction and magnitude of the rider's felt force vector. Length encodes magnitude, hue encodes which component (normal / lateral / longitudinal). Arrow tip clamped to a max length so a 6 G airtime spike doesn't fill the viewport. User-toggleable per-component.
+
+Inspired by the academic multi-body simulator (cylinders along the track giving "where do forces spike" at a glance — much more intuitive than the 2D graph for spotting bad sections). Bidirectional with the forces graph: hovering a graph cursor highlights the corresponding 3D arrow, and vice versa.
+
+Deferred to T2 because the data is already in the worker stream — implementation is a few hundred lines of geometry + a buffered InstancedMesh — but the UX work to make it readable on a busy track (avoid arrow clutter, sub-sampling rate, color choices) is non-trivial and benefits from baseline force-graph polish landing first.
+
 ### 6.3 Playback & POV **[T1]**
 
 Playback is a first-class feature, not a mode. A single **playhead** — a position expressed as heart-distance from the anchor (not a node index, because recompute can change the node count) — is shared across the whole application. The 3D viewport, the POV view, the timeline, the graphs, and the stats overlay all render at the current playhead and all update together when it moves.
@@ -1297,7 +1305,8 @@ Toggleable overlay in the 3D viewport, showing live values at the current playhe
 
 - Position (x, y, z) in m
 - Velocity (m/s and km/h)
-- Normal / lateral / roll forces (G)
+- Normal / lateral / longitudinal forces (G) — left/right, up/down, fore/aft
+- Linear acceleration (m/s²) — same three components
 - Roll, pitch, yaw (degrees)
 - Roll speed (°/s)
 - Flexion (°/m)
@@ -1305,6 +1314,8 @@ Toggleable overlay in the 3D viewport, showing live values at the current playhe
 - Time from anchor
 
 Two modes: compact (single line at the viewport bottom) and expanded (labeled rows in a corner). User choice, persisted.
+
+> **Inspiration:** the academic multi-body simulator screenshot (Nov 2026, see issue tracker) showed the value of an always-visible `T`/`U`/`E`/`q`/`qd` HUD for catching energy-conservation regressions visually. We won't show energy directly — the user-facing readouts here are forces, acceleration, and speed — but the underlying values are computed the same way and surface as part of the M6 stats overlay.
 
 ### 7.7 Starter experience **[T1]**
 
@@ -1966,7 +1977,7 @@ These are **not** deferred to a later tier — they're out of the plan entirely.
 Listed to make the "out of scope" list unambiguous — these _are_ planned:
 
 - Multi-car train visualization → T2 (M14).
-- Rigid-body train physics → T3 (M20).
+- Rigid-body train physics → T3 (M20). The internal API will eventually return per-axle / per-car forces using generalized coordinates (`q`, `qd`, `qdd` per body) rather than the current single-point heart-line model. Naming conventions in the integrator + worker stream should leave room for this — see also §6.2.1 (force-vector overlay) and §7.6 (stats overlay).
 - Node graph view → T2 (M15).
 - Closed circuits / bridges → T2 (M12).
 - Shuttle coasters → T2 (M11).

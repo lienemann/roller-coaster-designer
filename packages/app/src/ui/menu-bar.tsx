@@ -5,7 +5,13 @@ import { type TFunction } from 'i18next';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { hasFileSystemAccess, openProject, saveProject, saveProjectAs } from '../io/file-system.js';
+import {
+  hasFileSystemAccess,
+  importFvd,
+  openProject,
+  saveProject,
+  saveProjectAs,
+} from '../io/file-system.js';
 import { useAppStore } from '../state/store.js';
 
 export function MenuBar(): JSX.Element {
@@ -37,6 +43,19 @@ export function MenuBar(): JSX.Element {
       const result = await openProject();
       if (!result) return;
       loadProject({ project: result.project, name: result.name, handle: result.handle });
+    } catch (err) {
+      alert(translateError(err, t));
+    }
+  }, [loadProject, t]);
+
+  const handleImportFvd = useCallback(async () => {
+    try {
+      const result = await importFvd();
+      if (!result) return;
+      loadProject({ project: result.project, name: result.name, handle: null });
+      if (result.warnings.length > 0) {
+        alert(`${result.name} loaded as ${result.version}.\n\n${result.warnings.join('\n')}`);
+      }
     } catch (err) {
       alert(translateError(err, t));
     }
@@ -83,6 +102,7 @@ export function MenuBar(): JSX.Element {
 
       <span className="hidden md:contents">
         <MenuButton onClick={handleOpen}>{t('common:menu.open')}</MenuButton>
+        <MenuButton onClick={handleImportFvd}>{t('common:menu.importFvd')}</MenuButton>
         <MenuButton
           onClick={handleSave}
           disabled={!canSave}
@@ -105,6 +125,7 @@ export function MenuBar(): JSX.Element {
         items={[
           { label: t('common:menu.loadDemo'), onClick: handleLoadDemo },
           { label: t('common:menu.open'), onClick: handleOpen },
+          { label: t('common:menu.importFvd'), onClick: handleImportFvd },
           {
             label: t('common:menu.save'),
             onClick: handleSave,

@@ -19,6 +19,7 @@
     "file": "Datei",
     "new": "Neu",
     "open": "Öffnen…",
+    "importFvd": ".fvd importieren…",
     "save": "Speichern",
     "saveAs": "Speichern unter…",
     "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
