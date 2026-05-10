@@ -113,32 +113,30 @@ describe('golden — corner cases', () => {
     });
   }
 
-  it('20-closeTrack idempotent on an already-closed track', () => {
+  it('20-closeTrack rejects an already-closed track', () => {
     const start = makeTrack('already-closed', [
       anchorAt([0, 10, 0]),
       straight(1, flatRoll(1, 0)),
     ]);
-    // Manually splice in a closure.
     const closed = closeTrack(start);
-    const twice = closeTrack(closed);
-    // closeTrack returns the input by reference when already closed.
-    expect(twice).toBe(closed);
+    // Closing a track that already has a closure throws — the model
+    // invariant is "at most one Closure per track". To refresh the
+    // closure's handle lengths after upstream edits, the app uses
+    // regenerateClosure(); calling closeTrack again is a programmer error.
+    expect(() => closeTrack(closed)).toThrow();
   });
 
-  it('21-regenerateClosure preserves isClosure flag', () => {
+  it('21-regenerateClosure keeps the section a Closure', () => {
     const start = makeTrack('start', [
       anchorAt([0, 10, 0]),
       straight(10, linearRoll(10, 0, Math.PI / 3)),
     ]);
     const closed = closeTrack(start);
     const last = closed.sections[closed.sections.length - 1];
-    expect(last?.type).toBe(SecType.Bezier);
-    if (last?.type !== SecType.Bezier) return;
-    expect(last.isClosure).toBe(true);
+    expect(last?.type).toBe(SecType.Closure);
 
     const regen = regenerateClosure(closed);
     const regenLast = regen.sections[regen.sections.length - 1];
-    if (regenLast?.type !== SecType.Bezier) throw new Error('regen last not Bezier');
-    expect(regenLast.isClosure).toBe(true);
+    expect(regenLast?.type).toBe(SecType.Closure);
   });
 });

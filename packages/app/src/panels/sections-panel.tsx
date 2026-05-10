@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { SEC_TYPE_NAMES, type Section } from '@roller-coaster-designer/core';
+import { SEC_TYPE_NAMES, SecType, type Section } from '@roller-coaster-designer/core';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -24,10 +24,11 @@ export function SectionsPanel(): JSX.Element {
   const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
 
   const sections = project?.tracks[0]?.sections ?? [];
+  const hasClosure = sections.some((s) => s.type === SecType.Closure);
   const canAdd = project !== null && sections.length > 0;
   // Closure needs at least the anchor + one non-anchor section before it
   // can re-enter the anchor tangentially.
-  const canClose = project !== null && sections.length >= 2;
+  const canClose = project !== null && sections.length >= 2 && !hasClosure;
 
   const onCloseTrack = useCallback(() => {
     try {

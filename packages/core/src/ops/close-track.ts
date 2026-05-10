@@ -2,7 +2,7 @@
 
 import { EFuncType, SecType } from '../model/enums.js';
 import { createEmptyFunc } from '../model/function.js';
-import { type BezierSection, isAnchor } from '../model/section.js';
+import { type ClosureSection, isAnchor } from '../model/section.js';
 import { createLinearSubFunc } from '../model/subfunction.js';
 import { type Track } from '../model/track.js';
 import { integrateTrack } from '../physics/integrate.js';
@@ -19,57 +19,21 @@ export class TrackClosureError extends Error {
 }
 
 /**
- * Returns a copy of the track with a Bezier section appended that smoothly
- * joins the current end pose back to the anchor. Tangent-continuous at both
- * ends: the new section leaves along the last node's forward direction and
- * enters the anchor along the anchor's forward direction.
+ * Returns a copy of the track with a `Closure` section appended that
+ * smoothly joins the current end pose back to the anchor. The closure's
+ * control points are not stored — the integrator derives them every
+ * recompute from the previous section's end pose and the anchor's pose.
  *
- * The closure Bezier's control points are the standard cubic-Hermite-style
- * "split the gap" rule:
+ * What we compute here is just a sensible default for the entry/exit
+ * handle lengths and a roll-ramp Func that moves the rider's roll back
+ * to the anchor along the shortest signed angle.
  *
- *   P0 = end position
- *   P1 = end position + end forward × (L / 3)
- *   P2 = anchor position − anchor forward × (L / 3)
- *   P3 = anchor position
+ * If the track is already closed (end ≈ anchor on both position and
+ * roll) returns the original unchanged.
  *
- * where L is the straight-line distance between end and anchor. The one-third
- * offset is the Catmull-Rom-derived choice that gives minimum curvature at
- * tangent-matched endpoints.
- *
- * The returned track's roll function ramps linearly from the end roll back to
- * the anchor roll over the closure section so the rider doesn't flip in one
- * node. If already closed (end ≈ anchor on both position and roll), returns
- * the original track unchanged.
- *
- * Throws `TrackClosureError` when the track has fewer than two sections or
- * does not start with an Anchor.
+ * Throws `TrackClosureError` when the track has fewer than two sections,
+ * does not start with an Anchor, or already has a Closure.
  */
-/**
- * If the track's last section is a `closeTrack`-generated closure (marked
- * `isClosure: true`), regenerates its control points from the current
- * upstream geometry so the closure always meets the anchor tangentially.
- * Cheap no-op when the last section isn't a closure.
- *
- * This is what the app calls after every edit so a user doesn't have to
- * "Close Track" again every time they tweak a section in the middle.
- */
-export function regenerateClosure(track: Track): Track {
-  const n = track.sections.length;
-  if (n < 2) return track;
-  const last = track.sections[n - 1];
-  if (last?.type !== SecType.Bezier || last.isClosure !== true) return track;
-  const openTrack: Track = { ...track, sections: track.sections.slice(0, n - 1) };
-  const reclosed = closeTrack(openTrack);
-  // closeTrack returns `openTrack` unchanged if already closed — in that
-  // case no closure was re-added. Our caller wants isClosure preserved
-  // either way; re-mark the last section.
-  if (reclosed === openTrack) return track;
-  const newLast = reclosed.sections[reclosed.sections.length - 1];
-  if (newLast?.type !== SecType.Bezier) return track;
-  const markedLast: BezierSection = { ...newLast, isClosure: true };
-  return { ...reclosed, sections: [...reclosed.sections.slice(0, -1), markedLast] };
-}
-
 export function closeTrack(track: Track): Track {
   if (track.sections.length < 2) {
     throw new TrackClosureError(
@@ -80,10 +44,12 @@ export function closeTrack(track: Track): Track {
   if (!isAnchor(anchor)) {
     throw new TrackClosureError('First section must be an Anchor.');
   }
+  if (track.sections.some((s) => s.type === SecType.Closure)) {
+    throw new TrackClosureError('Track already has a closure section.');
+  }
 
-  // Run the existing integrator to discover the current end state. The
-  // closeTrack output still has to round-trip through the same integrator,
-  // which is exactly what the viewport does after a close.
+  // Run the integrator to discover the current end state. The closure
+  // itself round-trips through this same integrator on the next recompute.
   const { arrays } = integrateTrack(track);
   const last = arrays.length - 1;
   if (last <= 0) {
@@ -114,16 +80,12 @@ export function closeTrack(track: Track): Track {
     return track;
   }
 
-  // Handle length has to account for three things that push it up:
+  // Handle length scales with three things:
   //   1. Tangent divergence: parallel tangents want ≈ gap/3; opposing
-  //      tangents want > gap/1 to avoid a cusp.
-  //   2. Gap geometry: the straight-line gap under-estimates how much curve
-  //      a Bezier needs when end and anchor don't point AT each other —
-  //      specifically when the two tangents project onto the gap with a
-  //      small footprint, the Bezier has to arc sideways a lot. We use the
-  //      component of the gap perpendicular to the mean tangent as an extra
-  //      "sideways demand" and pad the handles by it.
-  //   3. Minimum absolute length so near-zero gaps still produce a curve.
+  //      tangents want > gap to avoid a cusp.
+  //   2. Sideways gap: the component perpendicular to the mean tangent —
+  //      a Bezier needs longer handles to arc out of the way.
+  //   3. A floor so near-zero gaps still produce a curve.
   const dotET = clamp(
     endDir[0] * anchorDir[0] + endDir[1] * anchorDir[1] + endDir[2] * anchorDir[2],
     -1,
@@ -138,28 +100,11 @@ export function closeTrack(track: Track): Track {
   const gapPerpSq = Math.max(0, dx * dx + dy * dy + dz * dz - gapAlong * gapAlong);
   const perpPad = Math.sqrt(gapPerpSq) * 0.4;
   const handleLen = Math.max((gap / 3) * angleScale + perpPad, 0.5);
-  const p1: [number, number, number] = [
-    endPos[0] + endDir[0] * handleLen,
-    endPos[1] + endDir[1] * handleLen,
-    endPos[2] + endDir[2] * handleLen,
-  ];
-  const p2: [number, number, number] = [
-    anchor.position[0] - anchorDir[0] * handleLen,
-    anchor.position[1] - anchorDir[1] * handleLen,
-    anchor.position[2] - anchorDir[2] * handleLen,
-  ];
 
-  // Shortest-path roll unwrap. The ramp is in absolute angle; if the track
-  // ends at +3π/2 and the anchor is at 0, the raw delta is −3π/2 which
-  // would roll the rider backward through upside-down. Unwrapping to the
-  // ±π branch (here: +π/2) keeps the closure upright whenever the two
-  // endpoints are already close in angle modulo 2π.
+  // Shortest-path roll unwrap: ±3π/2 endpoints map to a +π/2 ramp
+  // through upright, never the long way around through inverted.
   const rollDelta = shortestAngleDelta(endRoll, anchor.roll);
   const rollFunc = createEmptyFunc(EFuncType.Roll, 'Closure roll');
-  // `length` is in meters; we use the straight-line gap as a conservative
-  // arc-length estimate — the integrator re-derives the true arc length from
-  // the curve itself, and a small length mismatch only changes the rate of
-  // change of roll, not the endpoints.
   rollFunc.subfuncs.push(
     createLinearSubFunc({
       length: Math.max(gap, 0.01),
@@ -168,20 +113,40 @@ export function closeTrack(track: Track): Track {
     }),
   );
 
-  const closure: BezierSection = {
-    type: SecType.Bezier,
+  const closure: ClosureSection = {
+    type: SecType.Closure,
     name: 'Closure',
-    controlPoints: [endPos, p1, p2, anchor.position],
+    entryHandleLength: handleLen,
+    exitHandleLength: handleLen,
     rollFunc,
-    smoothStart: true,
-    smoothEnd: true,
-    isClosure: true,
   };
 
   return {
     ...track,
     sections: [...track.sections, closure],
   };
+}
+
+/**
+ * If the track ends in a `Closure` section, regenerate its handle lengths
+ * and roll ramp from the current upstream geometry. Cheap no-op when the
+ * track is open or already in sync. Called after every property edit so
+ * the closure follows upstream changes without the user re-running
+ * `closeTrack` manually.
+ */
+export function regenerateClosure(track: Track): Track {
+  const n = track.sections.length;
+  if (n < 2) return track;
+  const last = track.sections[n - 1];
+  if (last?.type !== SecType.Closure) return track;
+  const openTrack: Track = { ...track, sections: track.sections.slice(0, n - 1) };
+  try {
+    return closeTrack(openTrack);
+  } catch {
+    // closeTrack only throws on degenerate inputs (no anchor, < 2 sections,
+    // empty integration). In those cases we leave the closure as-is.
+    return track;
+  }
 }
 
 /** Signed delta `b − a` reduced to the range [−π, π]. Picks the shortest
@@ -201,17 +166,10 @@ function clamp(value: number, lo: number, hi: number): number {
 
 function anchorForward(yaw: number, pitch: number): [number, number, number] {
   // Match the integrator's convention: start at +X, yaw around +Y, pitch
-  // around the yawed lateral axis (rider's right = +Z at rest). Derived by
-  // inspection rather than calling the integrator to avoid a cycle.
+  // around the yawed lateral axis (rider's right = +Z at rest).
   const cy = Math.cos(yaw);
   const sy = Math.sin(yaw);
   const cp = Math.cos(pitch);
   const sp = Math.sin(pitch);
-  // Yaw only: dir = (cy, 0, -sy). Pitch around lat = (sy, 0, cy) by angle
-  // `pitch`: rotate dir upward. Using Rodrigues analytically:
-  //   dir_yawed = (cy, 0, -sy)
-  //   rotating around lat=(sy, 0, cy) by pitch:
-  //     new_y  = +sp (because axis perpendicular to dir raises the y component)
-  //     new_xz = cp * dir_yawed
   return [cy * cp, sp, -sy * cp];
 }

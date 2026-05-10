@@ -416,24 +416,26 @@ function closeTrackForTest(name: string, sections: ReturnType<typeof anchorAt>[]
   return importedCloseTrack(makeTrack(name, sections));
 }
 
-/** Same but then mutates the closure's controlPoints to deliberately wrong
- *  values. The integrator's auto-anchor must still recover. */
+/** Same but then mutates the closure's stored handle lengths to deliberately
+ *  absurd values. The integrator's derived control points should still
+ *  reach the anchor — only the curve shape changes, not the endpoints. */
 function closeTrackThenCorrupt(name: string, sections: ReturnType<typeof anchorAt>[]): Track {
   const closed = importedCloseTrack(makeTrack(name, sections));
   const last = closed.sections[closed.sections.length - 1]!;
-  if (last.type !== SecType.Bezier) throw new Error('expected Bezier closure');
+  if (last.type !== SecType.Closure) throw new Error('expected Closure section');
   const corrupted: Track = {
     ...closed,
     sections: [
       ...closed.sections.slice(0, -1),
       {
         ...last,
-        controlPoints: [
-          [999, 999, 999],
-          [1001, 999, 999],
-          [-50, 50, -50],
-          [-100, 100, -100],
-        ],
+        // Off by an order of magnitude relative to closeTrack's default;
+        // the closure must still rejoin the anchor because the integrator
+        // derives p0/p3 from prev + anchor. Don't go absurdly large or
+        // the bezier path stretches enough that the train stalls before
+        // reaching p3 (energy conservation, not a closure bug).
+        entryHandleLength: 50,
+        exitHandleLength: 50,
       },
     ],
   };

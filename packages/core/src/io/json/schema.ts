@@ -147,6 +147,15 @@ const noLimitsCsvSchema = z.object({
   csvRef: z.string(),
 });
 
+const closureSchema = z.object({
+  type: z.literal(SecType.Closure),
+  name: z.string(),
+  color: colorField,
+  entryHandleLength: finiteNumber.nonnegative(),
+  exitHandleLength: finiteNumber.nonnegative(),
+  rollFunc: funcSchema,
+});
+
 export const sectionSchema = z.discriminatedUnion('type', [
   anchorSchema,
   straightSchema,
@@ -155,6 +164,7 @@ export const sectionSchema = z.discriminatedUnion('type', [
   geometricSchema,
   bezierSchema,
   noLimitsCsvSchema,
+  closureSchema,
 ]);
 
 export const smootherSchema = z.object({
@@ -163,15 +173,33 @@ export const smootherSchema = z.object({
   strength: finiteNumber.min(0).max(1),
 });
 
-export const trackSchema = z.object({
-  name: z.string(),
-  style: trackStyleSchema,
-  heart: finiteNumber,
-  friction: finiteNumber.nonnegative(),
-  resistance: finiteNumber.nonnegative(),
-  sections: z.array(sectionSchema),
-  smoothers: z.array(smootherSchema),
-});
+export const trackSchema = z
+  .object({
+    name: z.string(),
+    style: trackStyleSchema,
+    heart: finiteNumber,
+    friction: finiteNumber.nonnegative(),
+    resistance: finiteNumber.nonnegative(),
+    sections: z.array(sectionSchema),
+    smoothers: z.array(smootherSchema),
+  })
+  .refine(
+    // Invariant: at most one Closure section per track and, if present,
+    // it must be the last section. Enforced both here (file load) and by
+    // the store's section-add operations (interactive edits).
+    (track) => {
+      const closureIndices: number[] = [];
+      for (let i = 0; i < track.sections.length; i += 1) {
+        if (track.sections[i]!.type === SecType.Closure) closureIndices.push(i);
+      }
+      if (closureIndices.length === 0) return true;
+      if (closureIndices.length > 1) return false;
+      return closureIndices[0] === track.sections.length - 1;
+    },
+    {
+      message: 'A track may have at most one Closure section, and it must be last.',
+    },
+  );
 
 export const projectSchema = z.object({
   texturePath: z.string(),
@@ -181,10 +209,14 @@ export const projectSchema = z.object({
 // Outer file wrapper — the first two fields identify the format and version
 // ahead of any data so the reader can dispatch migrations before schema
 // validation (spec §8.1).
-export const webFvdFileV1Schema = z.object({
+export const webFvdFileV2Schema = z.object({
   format: z.literal('webfvd'),
-  version: z.literal(1),
+  version: z.literal(2),
   project: projectSchema,
 });
 
-export type WebFvdFileV1 = z.infer<typeof webFvdFileV1Schema>;
+export type WebFvdFileV2 = z.infer<typeof webFvdFileV2Schema>;
+
+// Back-compat aliases so existing callers don't all need to rename at once.
+export const webFvdFileV1Schema = webFvdFileV2Schema;
+export type WebFvdFileV1 = WebFvdFileV2;

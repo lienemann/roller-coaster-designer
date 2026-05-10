@@ -9,6 +9,7 @@ import { allocateMNodeArrays, type MNodeArrays } from '../model/mnode.js';
 import {
   type AnchorSection,
   type BezierSection,
+  type ClosureSection,
   type CurvedSection,
   type ForcedSection,
   type GeometricSection,
@@ -101,7 +102,15 @@ function integrateSection(
       if (lastIdx < 0) {
         throw new Error('Bezier section requires a prior Anchor.');
       }
-      return integrateBezier(section, arrays, lastIdx, heart, anchor);
+      return integrateBezier(section, arrays, lastIdx, heart);
+    case SecType.Closure:
+      if (lastIdx < 0) {
+        throw new Error('Closure section requires a prior Anchor.');
+      }
+      if (!anchor) {
+        throw new Error('Closure section requires the track anchor to be available.');
+      }
+      return integrateClosure(section, arrays, lastIdx, heart, anchor);
     case SecType.Curved:
       if (lastIdx < 0) {
         throw new Error('Curved section requires a prior Anchor.');
@@ -268,26 +277,70 @@ function integrateBezier(
   arrays: MNodeArrays,
   lastIdx: number,
   heart: number,
-  anchor: AnchorSection | null,
 ): number {
   // Auto-anchor the curve to the previous section's end pose. The user-
   // supplied control points provide the SHAPE; the position and the
   // entry-tangent are clamped to whatever the integrator actually
   // produced for the previous node, so a Bezier never introduces a
-  // C0 jump regardless of what the user dragged.
-  //
-  // For closure sections (`isClosure: true`) the END is also clamped: p3
-  // becomes the anchor's position and p2 sits along the anchor's
-  // incoming direction (preserving the user's chosen handle length). The
-  // closure therefore matches the start of the track even if the user
-  // edits stored controlPoints by hand.
-  const [p0, p1, p2, p3] = effectiveBezierControlPoints(section, arrays, lastIdx, anchor);
+  // C0 jump regardless of what the user dragged. End-side anchoring
+  // (matching anchor pose) is now handled by `integrateClosure` for
+  // dedicated `Closure` sections — no longer a special case here.
+  const [p0, p1, p2, p3] = effectiveBezierControlPoints(section, arrays, lastIdx);
+  return runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc);
+}
+
+function integrateClosure(
+  section: ClosureSection,
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+  anchor: AnchorSection,
+): number {
+  // Closure control points are entirely derived: p0 + p1 follow the
+  // previous section's end pose, p2 + p3 follow the anchor. The user
+  // only edits the entry/exit handle lengths (and the roll ramp).
+  const prevPos: [number, number, number] = [
+    arrays.posX[lastIdx]!,
+    arrays.posY[lastIdx]!,
+    arrays.posZ[lastIdx]!,
+  ];
+  const prevDir: [number, number, number] = [
+    arrays.dirX[lastIdx]!,
+    arrays.dirY[lastIdx]!,
+    arrays.dirZ[lastIdx]!,
+  ];
+  const anchorDir = anchorForwardFromYawPitch(anchor.yaw, anchor.pitch);
+  const p0: [number, number, number] = [...prevPos];
+  const p1: [number, number, number] = [
+    prevPos[0] + prevDir[0] * section.entryHandleLength,
+    prevPos[1] + prevDir[1] * section.entryHandleLength,
+    prevPos[2] + prevDir[2] * section.entryHandleLength,
+  ];
+  const p3: [number, number, number] = [...anchor.position];
+  const p2: [number, number, number] = [
+    anchor.position[0] - anchorDir[0] * section.exitHandleLength,
+    anchor.position[1] - anchorDir[1] * section.exitHandleLength,
+    anchor.position[2] - anchorDir[2] * section.exitHandleLength,
+  ];
+  return runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc);
+}
+
+function runBezierCubic(
+  arrays: MNodeArrays,
+  lastIdx: number,
+  heart: number,
+  p0: readonly [number, number, number],
+  p1: readonly [number, number, number],
+  p2: readonly [number, number, number],
+  p3: readonly [number, number, number],
+  rollFunc: BezierSection['rollFunc'],
+): number {
   const table = sampleArcLengthTable(p0, p1, p2, p3, BEZIER_ARC_SAMPLES);
   const totalArc = table[table.length - 1]!;
   if (totalArc <= 0) return lastIdx;
 
   const dt = 1 / F_HZ;
-  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(rollFunc, 0);
   let idx = lastIdx;
   let sectionArc = 0;
 
@@ -325,7 +378,7 @@ function integrateBezier(
     }
     vec3.normalize(bezierLat, bezierLat);
 
-    const rollAbs = evalRoll(section.rollFunc, sectionArc) + rollOffset;
+    const rollAbs = evalRoll(rollFunc, sectionArc) + rollOffset;
     const prevRoll = arrays.roll[idx - 1]!;
     rotateAroundAxis(bezierLat, bezierLat, bezierTangent, rollAbs - prevRoll);
     vec3.cross(bezierNorm, bezierLat, bezierTangent);
@@ -780,29 +833,24 @@ function projectGravity(axis: vec3): number {
 }
 
 /**
- * Compute the four cubic-Bezier control points the integrator actually uses,
- * given a `BezierSection`'s stored controlPoints, the previous section's end
- * pose (read from `arrays[lastIdx]`), and — for closure sections — the
- * track's anchor.
+ * Compute the four cubic-Bezier control points the integrator actually uses
+ * for a `BezierSection`, given the section's stored controlPoints and the
+ * previous section's end pose.
  *
  * Auto-anchor contract:
  *   - p0' is always the previous section's end position.
  *   - p1' lies along the previous section's end direction at the user's
  *     chosen handle length (|stored p1 − stored p0|).
- *   - For mid-track Beziers, p2' and p3' are translated by the same delta
- *     as p0 (preserves the curve's user-authored shape relative to its
- *     start).
- *   - For closure Beziers (`isClosure: true`), p3' = anchor.position and
- *     p2' lies along the anchor's incoming direction at the user's chosen
- *     end-handle length (|stored p2 − stored p3|). This guarantees the
- *     closure rejoins the anchor tangentially even if upstream geometry
- *     shifts and `regenerateClosure` hasn't run yet.
+ *   - p2' and p3' are translated by the same delta as p0 (preserves the
+ *     curve's user-authored shape relative to its start).
+ *
+ * End-side anchoring (matching the track anchor) is handled by
+ * `integrateClosure` for `Closure` sections — not here.
  */
 function effectiveBezierControlPoints(
   section: BezierSection,
   arrays: MNodeArrays,
   lastIdx: number,
-  anchor: AnchorSection | null,
 ): [
   readonly [number, number, number],
   readonly [number, number, number],
@@ -835,24 +883,8 @@ function effectiveBezierControlPoints(
     prevPos[2] + prevDir[2] * handle1Len,
   ];
 
-  if (section.isClosure === true && anchor !== null) {
-    const handle2Len = Math.hypot(
-      storedP3[0] - storedP2[0],
-      storedP3[1] - storedP2[1],
-      storedP3[2] - storedP2[2],
-    );
-    const anchorDir = anchorForwardFromYawPitch(anchor.yaw, anchor.pitch);
-    const p3: [number, number, number] = [...anchor.position];
-    const p2: [number, number, number] = [
-      anchor.position[0] - anchorDir[0] * handle2Len,
-      anchor.position[1] - anchorDir[1] * handle2Len,
-      anchor.position[2] - anchorDir[2] * handle2Len,
-    ];
-    return [p0, p1, p2, p3];
-  }
-
-  // Mid-track Bezier: translate p2 and p3 alongside p0 so the curve's
-  // user-authored shape moves with the section's start.
+  // Translate p2 and p3 alongside p0 so the curve's user-authored shape
+  // moves with the section's start.
   const dx = prevPos[0] - storedP0[0];
   const dy = prevPos[1] - storedP0[1];
   const dz = prevPos[2] - storedP0[2];
