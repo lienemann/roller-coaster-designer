@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build:icons": "node scripts/build-icons.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint . --max-warnings 0",
@@ -39,6 +40,7 @@
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.47",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.3",
     "vite": "^5.4.8",
