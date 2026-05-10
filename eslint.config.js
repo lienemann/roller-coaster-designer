@@ -41,6 +41,10 @@ export default tseslint.config(
       'reference/**',
       // CommonJS config shims don't need type-aware linting.
       '**/postcss.config.cjs',
+      // PWA service worker source ships verbatim from public/, no bundling.
+      '**/public/sw.js',
+      // Build-time scripts run with Node directly; no need for type-aware lint.
+      '**/scripts/*.mjs',
     ],
   },
   js.configs.recommended,
