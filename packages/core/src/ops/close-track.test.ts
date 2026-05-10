@@ -38,20 +38,22 @@ function trackWithHalfLoop(): Track {
 }
 
 describe('closeTrack', () => {
-  it('appends a Bezier section whose endpoints are end pose and anchor pose', () => {
+  it('appends a Closure section with sensible handle lengths', () => {
     const closed = closeTrack(trackWithHalfLoop());
     expect(closed.sections).toHaveLength(3);
     const closure = closed.sections[2]!;
-    expect(closure.type).toBe(SecType.Bezier);
-    if (closure.type !== SecType.Bezier) throw new Error('unreachable');
+    expect(closure.type).toBe(SecType.Closure);
+    if (closure.type !== SecType.Closure) throw new Error('unreachable');
 
-    const [p0, , , p3] = closure.controlPoints;
-    // Start of closure = end of straight (30 m along +X from anchor) within
-    // Float32Array precision accumulated over 3000 integration steps.
-    expect(p0[0]).toBeCloseTo(30, 2);
-    expect(p0[1]).toBeCloseTo(10, 2);
-    // End of closure = anchor.
-    expect(p3).toEqual([0, 10, 0]);
+    // 30 m gap between end of straight and anchor → handles default near
+    // gap/3 = 10 m, with a perpendicular-gap pad and tangent-divergence
+    // bonus. Both ends should be positive and finite.
+    expect(closure.entryHandleLength).toBeGreaterThan(0);
+    expect(closure.exitHandleLength).toBeGreaterThan(0);
+    expect(Number.isFinite(closure.entryHandleLength)).toBe(true);
+    expect(Number.isFinite(closure.exitHandleLength)).toBe(true);
+    // Closure has no controlPoints — it's a derived type.
+    expect('controlPoints' in closure).toBe(false);
   });
 
   it('refuses a single-section track', () => {

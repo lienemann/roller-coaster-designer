@@ -13,6 +13,12 @@ export enum SecType {
   Geometric = 4,
   Bezier = 5,
   NoLimitsCSV = 6,
+  /** Closure: an end-of-track Bezier whose control points are fully
+   *  derived from the previous section's end pose and the anchor's pose.
+   *  At most one per track and must be the last section.
+   *  When exporting to .fvd, a Closure is materialised as a regular `BEZ`
+   *  section because the FVD++ format has no closure concept. */
+  Closure = 7,
 }
 
 export enum EDegree {
@@ -67,6 +73,7 @@ export const SEC_TYPE_NAMES = {
   [SecType.Geometric]: 'Geometric',
   [SecType.Bezier]: 'Bezier',
   [SecType.NoLimitsCSV]: 'NoLimitsCSV',
+  [SecType.Closure]: 'Closure',
 } as const;
 
 export const FUNC_TYPE_NAMES = {

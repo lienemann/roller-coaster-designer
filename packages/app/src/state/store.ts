@@ -163,6 +163,10 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => {
       if (!state.project || state.project.tracks.length === 0) return state;
       const firstTrack = state.project.tracks[0]!;
+      // Already closed: no-op. The UI gates the button on `!hasClosure`,
+      // and `patchSelectedSection` runs `regenerateClosure` after every
+      // edit so the existing closure stays in sync automatically.
+      if (firstTrack.sections.some((s) => s.type === SecType.Closure)) return state;
       const closedTrack = closeTrack(firstTrack);
       if (closedTrack === firstTrack) return state;
       return {
@@ -255,13 +259,7 @@ export const useAppStore = create<AppState>((set) => ({
       if (!current) return state;
       // The patch must preserve the discriminant; Partial<Section> wouldn't
       // permit a type swap anyway because it's still a discriminated union.
-      let merged = { ...current, ...patch } as Section;
-      // Dragging the closure's control points in the 3D view means the user
-      // has taken it over by hand — clear the closure flag so the auto-
-      // regeneration below leaves it alone.
-      if (merged.type === SecType.Bezier && merged.isClosure === true && 'controlPoints' in patch) {
-        merged = { ...merged, isClosure: false };
-      }
+      const merged = { ...current, ...patch } as Section;
       const sections = [...track.sections];
       sections[idx] = merged;
       // If a closure still exists at the end of the track, regenerate its
@@ -307,15 +305,30 @@ function appendSection(state: AppState, section: Section): Partial<AppState> {
   if (!state.project) return state;
   const tracks = state.project.tracks.length === 0 ? [makeStarterTrack()] : state.project.tracks;
   const first = tracks[0]!;
-  const nextSections = [...first.sections, section];
+  // Invariant: a Closure must be the last section. New non-closure sections
+  // are inserted *before* the closure if one exists, so the closure
+  // automatically follows the new geometry. (regenerateClosure below
+  // recomputes its handles afterward.) New Closure sections are blocked
+  // outright if a closure is already present — at most one per track.
+  const closureIdx = first.sections.findIndex((s) => s.type === SecType.Closure);
+  if (section.type === SecType.Closure && closureIdx !== -1) {
+    return state; // silently no-op; the UI guards against this too.
+  }
+  const nextSections =
+    closureIdx === -1
+      ? [...first.sections, section]
+      : [...first.sections.slice(0, closureIdx), section, ...first.sections.slice(closureIdx)];
+  const focusIdx = closureIdx === -1 ? nextSections.length - 1 : closureIdx;
+  // After splicing in front of an existing closure, refresh the closure's
+  // handle lengths so it stays aligned with the new upstream end pose.
+  const rebuilt = regenerateClosure({ ...first, sections: nextSections });
   return {
     project: {
       ...state.project,
-      tracks: [{ ...first, sections: nextSections }, ...tracks.slice(1)],
+      tracks: [rebuilt, ...tracks.slice(1)],
     },
     isDirty: true,
-    // Autofocus the new section so the properties panel opens on it.
-    selectedSectionIndex: nextSections.length - 1,
+    selectedSectionIndex: focusIdx,
   };
 }
 
