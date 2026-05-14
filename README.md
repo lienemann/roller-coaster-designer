@@ -1,113 +1,83 @@
 # roller-coaster-designer
 
-A browser-based force-vector roller coaster design tool. Design a coaster by
-sculpting the forces you want riders to feel; the tool integrates a consistent
-track geometry from them. Exports to NoLimits 1 and 2. Reads existing FVD++
-`.fvd` files. Runs entirely in the browser — no backend, no accounts, no
-telemetry.
+A browser-based force-vector roller-coaster design tool. Sculpt the forces
+the rider feels; the integrator produces the track geometry that delivers
+them. Runs entirely client-side.
 
-Status: **pre-release, Tier 1 in progress.** See
-[`docs/webfvd-spec.md`](docs/webfvd-spec.md) for the full specification and
-milestone plan.
+Status: pre-release, Tier 1 in progress. See
+[`docs/webfvd-spec.md`](docs/webfvd-spec.md) for the spec and milestone plan.
 
-## Positioning
+## Design
 
-**WebFVD aims to be the best hobbyist and prosumer coaster-design tool —
-not a replacement for Stengel Engineering or a manufacturer's in-house
-CAD stack.** The distinction shapes scope: we model geometric forces,
-check them against published safety envelopes (ASTM F2291, EN 13814),
-and visualise jerk and clearance — all as _design aids_. We do not
-perform finite-element structural analysis, produce certification
-documents, emit CNC / production drawings, or ship manufacturer-specific
-parameterised track libraries. Compliance-adjacent UI always carries the
-"design aid, not a certification" disclaimer, because that is the truth
-and the only honest framing for a browser tool. See §6.10 and §20 of the
-spec for the full scope line.
+- **Force-driven authoring.** Roll, normal and lateral g-loads are first-class
+  functions of time or arc length; pose falls out of integration, not the
+  other way round.
+- **1 kHz Euler integration** in pure TypeScript. Energy-conserving on
+  frictionless segments to within float32 drift; rollSpeed, force vectors,
+  and arc length re-derived per recompute.
+- **Hot-path discipline.** `packages/core` is DOM-free, runs in Node, and
+  forbids React / Three.js imports at the package boundary; the integrator
+  is allocation-free in its inner loop (gl-matrix out-params, SoA
+  `Float32Array` columns).
+- **Recompute off the main thread.** A Comlink-wrapped Web Worker owns the
+  physics; the React tree only sees transferable `ArrayBuffer`s.
+- **Native + legacy formats.** Round-trip `.webfvd.json` and FVD++ 0.77
+  `.fvd` binary; export NoLimits 2 CSV.
 
-**Coming from NoLimits 2?** You get a force-vector design approach NL2
-doesn't offer, clean physics-based editing, interactive graphs, and
-quick iteration on force profiles. What's familiar: an element library
-for fast prototyping of loops / rolls / hills (T2), a decent range of
-generic track styles, and CSV interop with your existing NL2 workflow.
-What we deliberately don't build: terrain, scenery, scripting, block
-systems, multi-train dispatch simulation, or cinematic rendering.
-We design _the ride itself_, not the park around it — see §6.11 and
-§20 of the spec for the full list.
+## What it isn't
 
-**Coming from FVD++?** Everything FVD++ had (T1) plus modern UX, plus
-closed circuits and shuttles (T2), plus the element library and
-track-style variety (T2), plus compliance checking, jerk analysis, and
-multi-rider pivots (§6.10, T2).
-
-## Credits
-
-This project stands on two shoulders and says so plainly.
-
-- **[FVD++](https://github.com/altlenny/openFVD)** (Christian Lenhart et al.,
-  GPL-3.0) is the physics and file-format ancestor. Every integrator here
-  traces back to its C++. For Tier 1 we match FVD++ 0.79 output byte-for-byte
-  so existing projects round-trip.
-- **[KexEdit](https://github.com/IndividualKex/KexEdit)** (IndividualKex, MIT)
-  is the UI and feature template — timeline curves, node graph, table view,
-  shuttle support, bridges, optimizer. We design from its docs, not its code.
-
-See [`NOTICE`](NOTICE) for the full attribution.
-
-## License
-
-[AGPL-3.0-only](LICENSE). If you distribute a modified version — or run one
-as a network service that users interact with — your version must also be
-offered under AGPL-3.0. Upgrading from FVD++'s GPL-3.0 to AGPL-3.0 keeps
-compatibility with the upstream (AGPL-3.0 is a permitted combination for
-GPL-3.0 code) while adding §13's network-use clause: a hosted version of
-this tool must link to its source from the app itself.
+- Not a structural-analysis or certification tool — geometric forces and
+  published-envelope checks are design aids, not stress reports.
+- No terrain, scenery, scripting, or block-system simulation.
+- No telemetry, accounts, analytics, third-party scripts, or server side.
+  Files live on your disk; the PWA shell caches itself and nothing else.
 
 ## Quickstart
 
-Requires Node 20+ (`.nvmrc`) and `pnpm` 9+ (enabled via corepack).
+Requires Node 20+ (see `.nvmrc`) and `pnpm` 9+.
 
 ```bash
 corepack enable
 pnpm install
-pnpm --filter app dev          # open http://localhost:5173
+pnpm --filter app dev          # http://localhost:5173
 ```
 
 Other scripts:
 
 ```bash
-pnpm -r lint                   # ESLint across all packages
-pnpm -r typecheck              # tsc --noEmit across all packages
-pnpm -r test                   # Vitest across all packages
-pnpm --filter app build        # production build of the web app
+pnpm -r lint
+pnpm -r typecheck
+pnpm -r test
+pnpm --filter app build
+pnpm verify                    # all of the above
 ```
 
 ## Repository layout
 
 ```
 packages/
-  core/      Pure TypeScript: data model, physics integrators, file I/O.
-             Zero DOM, React, or Three.js imports. Runs in Node.
-  worker/    Web Worker wrapping core via Comlink. Ships the physics off the
-             main thread.
-  app/       React app. Viewport, timeline, panels, i18n, state.
+  core/      Data model, physics integrators, file I/O. DOM-free, Node-runnable.
+  worker/    Web Worker wrapping core via Comlink.
+  app/       React PWA. Viewport, graphs, panels, state, i18n.
 tools/
-  fvd-dump/  CLI that reads .fvd and emits JSON / CSV node streams. Used to
-             generate golden reference data from FVD++ outputs.
+  fvd-dump/  CLI: read .fvd → JSON or per-node CSV trace.
 docs/
-  webfvd-spec.md     Full specification. Source of truth.
-reference/           Git-ignored. Manual clones of openFVD and KexEdit for
-                     reading. See docs/webfvd-spec.md §22.
+  webfvd-spec.md         Source of truth.
+  fvd-binary-format.md   Byte-level spec of the legacy .fvd format.
 ```
 
-## Contributing
+## Tests
 
-See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md). One milestone per PR. Physics
-changes require golden-file tests. No telemetry, no CDN dependencies, no
-analytics — ever.
+`pnpm -r test` runs Vitest across all packages. Physics regressions are
+caught by a JSON-snapshot golden harness (`packages/core/test/golden/`)
+covering basic, advanced, corner-case and physical-invariant tracks.
+Section transitions are exercised by a continuity test against five
+deliberately wild fixtures; closures by a separate suite asserting both
+boundary continuity and end-equals-anchor in all six rigid-body DoFs.
 
-## Privacy
+## License
 
-No analytics. No telemetry. No third-party scripts. No cookies beyond
-`localStorage` for your preferences. Projects live on your disk; nothing leaves
-your browser unless you export it. This is a feature, not a promise —
-`docs/webfvd-spec.md` §16 makes it non-negotiable.
+[AGPL-3.0-only](LICENSE). Modified versions — including network-hosted
+ones — must offer their source under the same terms; the §13 clause is
+why we upgraded from FVD++'s GPL-3.0. See [`NOTICE`](NOTICE) for full
+upstream attribution.
