@@ -308,7 +308,7 @@ describe('parseFvd — minimal track', () => {
     expect(forced.normalFunc.subfuncs[0]?.startValue).toBe(1);
   });
 
-  it('parses a Bezier section (single segment)', () => {
+  it('parses a Bezier section (two-segment cubic)', () => {
     const w = new FvdWriter()
       .projectHeader()
       .trackHeader({
@@ -325,14 +325,22 @@ describe('parseFvd — minimal track', () => {
       })
       .ascii('BEZ')
       .lstr('Bez')
-      .i32(1) // bezCount
-      // bezier_t entry: P1, Kp1, Kp2 (whole-blob reversed) + 2 bools + roll
-      .reversedVec3(0, 10, 0)
-      .reversedVec3(5, 10, 0)
-      .reversedVec3(15, 10, 0)
+      .i32(2) // bezCount — two anchors form one cubic
+      // segment[0]: anchor = p0; Kp1/Kp2 sentinels (we use anchor itself)
+      .reversedVec3(0, 10, 0) // P1
+      .reversedVec3(0, 10, 0) // Kp1 sentinel
+      .reversedVec3(0, 10, 0) // Kp2 sentinel
       .u8(0) // contRoll
       .u8(0) // relRoll
       .f32(0) // roll
+      // segment[1]: anchor = p3; Kp1 = outgoing handle from p0 (= p1);
+      // Kp2 = incoming handle into p3 (= p2)
+      .reversedVec3(15, 10, 0) // P1 = p3
+      .reversedVec3(5, 10, 0) // Kp1 = p1
+      .reversedVec3(10, 10, 0) // Kp2 = p2
+      .u8(0)
+      .u8(0)
+      .f32(0)
       .i32(0) // supCount
       .trackFooter()
       .projectFooter();
@@ -343,6 +351,8 @@ describe('parseFvd — minimal track', () => {
     if (bez.type !== SecType.Bezier) return;
     expect(bez.controlPoints[0]).toEqual([0, 10, 0]);
     expect(bez.controlPoints[1]).toEqual([5, 10, 0]);
+    expect(bez.controlPoints[2]).toEqual([10, 10, 0]);
+    expect(bez.controlPoints[3]).toEqual([15, 10, 0]);
   });
 });
 

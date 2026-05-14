@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
+  exportFvd,
+  exportNl2Csv,
   hasFileSystemAccess,
   importFvd,
   openProject,
@@ -83,6 +85,24 @@ export function MenuBar(): JSX.Element {
     }
   }, [project, markSaved, t]);
 
+  const handleExportFvd = useCallback(async () => {
+    if (!project) return;
+    try {
+      await exportFvd(project);
+    } catch (err) {
+      alert(translateError(err, t));
+    }
+  }, [project, t]);
+
+  const handleExportNl2 = useCallback(async () => {
+    if (!project) return;
+    try {
+      await exportNl2Csv(project);
+    } catch (err) {
+      alert(translateError(err, t));
+    }
+  }, [project, t]);
+
   const fsaSupported = hasFileSystemAccess();
   const canSave = project !== null && (fsaSupported ? handle !== null : false);
 
@@ -113,6 +133,12 @@ export function MenuBar(): JSX.Element {
         <MenuButton onClick={handleSaveAs} disabled={project === null}>
           {t('common:menu.saveAs')}
         </MenuButton>
+        <MenuButton onClick={handleExportFvd} disabled={project === null}>
+          {t('common:menu.exportFvd')}
+        </MenuButton>
+        <MenuButton onClick={handleExportNl2} disabled={project === null}>
+          {t('common:menu.exportNl2')}
+        </MenuButton>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
         <MenuButton onClick={() => setSceneOpen(true)}>{t('common:menu.scene')}</MenuButton>
         <MenuButton onClick={() => alert(t('common:menu.prefsStub'))}>
@@ -133,6 +159,8 @@ export function MenuBar(): JSX.Element {
             title: canSave ? undefined : t('common:menu.saveUnavailable'),
           },
           { label: t('common:menu.saveAs'), onClick: handleSaveAs, disabled: project === null },
+          { label: t('common:menu.exportFvd'), onClick: handleExportFvd, disabled: project === null },
+          { label: t('common:menu.exportNl2'), onClick: handleExportNl2, disabled: project === null },
           { label: t('common:menu.scene'), onClick: () => setSceneOpen(true) },
           {
             label: t('common:menu.preferences'),

@@ -23,6 +23,8 @@
     "save": "Save",
     "saveAs": "Save As…",
     "saveUnavailable": "Your browser does not support in-place save. Use Save As… instead.",
+    "exportFvd": "Export .fvd…",
+    "exportNl2": "Export NL2 CSV…",
     "closeTrack": "Close Track",
     "loadDemo": "Load Demo",
     "preferences": "Preferences…",
