@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
+  integrateProject,
   parseFvd,
   parseWebFvdJson,
   stringifyWebFvdJson,
   WebFvdError,
+  writeFvd,
+  writeNl2Csv,
   type Project,
 } from '@roller-coaster-designer/core';
 
@@ -212,8 +215,13 @@ function openViaInput(accept: string): Promise<File | null> {
   });
 }
 
-function downloadBlob(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'application/json' });
+function downloadBlob(
+  filename: string,
+  content: string | Uint8Array,
+  mime = 'application/json',
+): void {
+  const part: BlobPart = typeof content === 'string' ? content : (content as BlobPart);
+  const blob = new Blob([part], { type: mime });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -224,4 +232,77 @@ function downloadBlob(filename: string, content: string): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Export the current project to a legacy `.fvd` binary. Uses the File
+ * System Access API when available so the user picks the destination
+ * (and the handle could be reused for fast re-saves later); falls back
+ * to a download blob.
+ */
+export async function exportFvd(project: Project, suggestedName = 'project.fvd'): Promise<SaveResult | null> {
+  const bytes = writeFvd(project);
+  const w = globalThis as unknown as FsaWindow;
+  if (hasFileSystemAccess()) {
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await w.showSaveFilePicker!({
+        suggestedName,
+        types: FVD_PICKER_TYPES,
+      });
+    } catch (err) {
+      if (isUserCancellation(err)) return null;
+      throw new WebFvdError('io.saveCancelled', { reason: reasonOf(err) });
+    }
+    const writable = await handle.createWritable();
+    // The FSA `write()` accepts a Blob or BufferSource. Wrap our bytes in
+    // a Blob so we don't have to fight the BufferSource SharedArrayBuffer
+    // generic; the underlying browser API copies into the file either way.
+    const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' });
+    await (writable as unknown as { write(data: Blob): Promise<void> }).write(blob);
+    await writable.close();
+    return { handle, name: handle.name };
+  }
+  downloadBlob(suggestedName, bytes, 'application/octet-stream');
+  return { handle: null, name: suggestedName };
+}
+
+/**
+ * Export the integrated track stream of the first track to NoLimits 2 CSV
+ * (NL2's "Track import from CSV" format). One row per `stride`-th node;
+ * `stride` defaults to 100 (~100 ms apart at 1 kHz integration).
+ */
+export async function exportNl2Csv(
+  project: Project,
+  options: { stride?: number; suggestedName?: string } = {},
+): Promise<SaveResult | null> {
+  if (project.tracks.length === 0) return null;
+  const integrations = integrateProject([project.tracks[0]!]);
+  const arrays = integrations[0]!.arrays;
+  const csv = writeNl2Csv(arrays, options.stride !== undefined ? { stride: options.stride } : {});
+  const name = options.suggestedName ?? 'track.csv';
+  const w = globalThis as unknown as FsaWindow;
+  if (hasFileSystemAccess()) {
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await w.showSaveFilePicker!({
+        suggestedName: name,
+        types: [
+          {
+            description: 'NoLimits 2 CSV',
+            accept: { 'text/csv': ['.csv'] },
+          },
+        ],
+      });
+    } catch (err) {
+      if (isUserCancellation(err)) return null;
+      throw new WebFvdError('io.saveCancelled', { reason: reasonOf(err) });
+    }
+    const writable = await handle.createWritable();
+    await writable.write(csv);
+    await writable.close();
+    return { handle, name: handle.name };
+  }
+  downloadBlob(name, csv, 'text/csv');
+  return { handle: null, name };
 }

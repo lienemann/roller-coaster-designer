@@ -380,13 +380,19 @@ function readBezier(cursor: FvdCursor): BezierSection {
     throw new WebFvdError('io.fvdMalformed', { reason: 'absurd-bezier-count', bezCount });
   }
 
-  // FVD++ stores the spline as a list of `bezier_t` entries (P1, Kp1, Kp2,
-  // contRoll, relRoll, roll), reconstructed at load time into a polyline of
-  // cubic Bezier hops. Our `BezierSection` carries one cubic. For now: take
-  // the first segment and use its (P1, Kp1, Kp2) as p0..p3 of a single
-  // cubic. The full multi-bezier chain port lands with the FVD-export round-
-  // trip work; until then a multi-segment FVD bezier loses everything past
-  // the first.
+  // FVD++ stores the spline as a list of `bezier_t` entries each holding
+  // a junction anchor and the two handle-control-points used by the cubic
+  // *ending* at that anchor (mnode.cpp:169–176):
+  //   segment[i].P1  = anchor at i
+  //   segment[i].Kp1 = outgoing handle from segment[i-1].P1
+  //   segment[i].Kp2 = incoming handle into segment[i].P1
+  // segment[0]'s Kp1/Kp2 are sentinels (no cubic ends there).
+  //
+  // Our `BezierSection` carries one cubic. We reconstruct it from the
+  // FIRST cubic in the chain: segment[0].P1 (start), segment[1].Kp1 +
+  // segment[1].Kp2 (handles), segment[1].P1 (end). Multi-segment chains
+  // lose everything past the first cubic — TODO when we extend
+  // BezierSection to a polyline.
   let p0: [number, number, number] = [0, 0, 0];
   let p1: [number, number, number] = [0, 0, 0];
   let p2: [number, number, number] = [0, 0, 0];
@@ -400,15 +406,15 @@ function readBezier(cursor: FvdCursor): BezierSection {
     cursor.readBool(); // relRoll
     cursor.readF32(); // roll
 
-    if (i === 0) {
-      p0 = segP1;
+    if (i === 0) p0 = segP1;
+    if (i === 1) {
       p1 = segKp1;
-    }
-    if (i === bezCount - 1) {
       p2 = segKp2;
       p3 = segP1;
     }
   }
+  // bezCount === 1: only the start anchor was stored. Treat as a
+  // degenerate point — the curve has no length. Leave p1..p3 at origin.
 
   const supCount = cursor.readI32();
   if (supCount < 0 || supCount > 100_000) {

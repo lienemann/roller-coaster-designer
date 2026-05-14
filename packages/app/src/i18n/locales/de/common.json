@@ -23,6 +23,8 @@
     "save": "Speichern",
     "saveAs": "Speichern unter…",
     "saveUnavailable": "Dein Browser unterstützt das direkte Speichern nicht. Nutze „Speichern unter…“.",
+    "exportFvd": ".fvd exportieren…",
+    "exportNl2": "NL2 CSV exportieren…",
     "closeTrack": "Strecke schließen",
     "loadDemo": "Demo laden",
     "preferences": "Einstellungen…",
