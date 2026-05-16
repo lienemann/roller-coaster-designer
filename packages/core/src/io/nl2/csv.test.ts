@@ -45,7 +45,9 @@ describe('writeNl2Csv', () => {
     const { arrays } = integrateTrack(horizontalStraight());
     const csv = writeNl2Csv(arrays);
     const header = csv.split('\n', 1)[0]!;
-    expect(header).toBe('No.\tPosX\tPosY\tPosZ\tFrontX\tFrontY\tFrontZ\tLeftX\tLeftY\tLeftZ\tUpX\tUpY\tUpZ');
+    expect(header).toBe(
+      'No.\tPosX\tPosY\tPosZ\tFrontX\tFrontY\tFrontZ\tLeftX\tLeftY\tLeftZ\tUpX\tUpY\tUpZ',
+    );
   });
 
   it('writes the anchor row at index 0 with the anchor pose', () => {

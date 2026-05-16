@@ -32,12 +32,15 @@ export function createDemoProject(): Project {
     tensionArg: 0,
   });
 
+  // Roll function for the Curved section: domain is the section's
+  // ridden angle (degrees), 0..90 in this case. Per-tick value-units
+  // are degrees-per-F_HZ-ticks-of-angle (FVD++ semantics).
   const turnRoll = createEmptyFunc(EFuncType.Roll, 'Turn roll');
   turnRoll.subfuncs.push({
     degree: EDegree.Cubic,
-    length: 25,
+    length: 90,
     startValue: 0,
-    endValue: 0.35,
+    endValue: 0,
     arg1: 0,
     centerArg: 0,
     tensionArg: 0,
@@ -72,11 +75,11 @@ export function createDemoProject(): Project {
   const turn: CurvedSection = {
     type: SecType.Curved,
     name: 'Turn',
-    length: 25,
-    pitchRate: 0.35 / 25,
-    yawRate: Math.PI / 2 / 25,
-    leadIn: 4,
-    leadOut: 4,
+    fAngle: 90,
+    fRadius: 16,
+    fDirection: 90,
+    fLeadIn: 15,
+    fLeadOut: 15,
     rollFunc: turnRoll,
   };
   const climb: StraightSection = {

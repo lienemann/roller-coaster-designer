@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
+  Argument,
   EDegree,
   EFuncType,
   SecType,
   createEmptyFunc,
+  firstCubicOf,
+  replaceFirstCubic,
   type Func,
   type Section,
   type SubFunc,
@@ -22,10 +25,10 @@ import { useAppStore } from '../state/store.js';
  * the touched track.
  *
  * Pose fields (anchor position / pitch / yaw / speed) and geometry fields
- * (length, pitchRate, yawRate, lead-in/out) are rendered. Roll functions,
- * sub-function shapes, and Bezier control-point wrangling stay in the
- * Timeline v2 work at a later milestone; until then the sections panel
- * "Remove" + "Add" is the escape hatch for wholesale changes.
+ * (Curved: fAngle / fRadius / fDirection / fLeadIn / fLeadOut, mirroring
+ * FVD++; Forced + Geometric: extent + driver funcs) are rendered. Roll
+ * functions, sub-function shapes, and Bezier control-point wrangling stay
+ * in the Timeline v2 work; until then "Remove" + "Add" is the escape hatch.
  */
 export function PropertiesPanel(): JSX.Element {
   const { t } = useTranslation('common');
@@ -79,6 +82,10 @@ export function PropertiesPanel(): JSX.Element {
         <StraightFields section={section} patch={patch} t={t} />
       )}
       {section.type === SecType.Curved && <CurvedFields section={section} patch={patch} t={t} />}
+      {section.type === SecType.Forced && <ForcedFields section={section} patch={patch} t={t} />}
+      {section.type === SecType.Geometric && (
+        <GeometricFields section={section} patch={patch} t={t} />
+      )}
       {section.type === SecType.Bezier && <BezierFields section={section} patch={patch} t={t} />}
       {section.type === SecType.NoLimitsCSV && (
         <p className="text-xs text-neutral-500">{t('properties.nlCsvReadonly')}</p>
@@ -162,16 +169,65 @@ function StraightFields({
   t: Translate;
 }): JSX.Element {
   return (
-    <Field
-      label={t('properties.length')}
-      value={section.length}
-      onChange={(v) => patch({ length: Math.max(0, asNumber(v)) })}
-      suffix="m"
-    />
+    <>
+      <Field
+        label={t('properties.length')}
+        value={section.length}
+        onChange={(v) => patch({ length: Math.max(0, asNumber(v)) })}
+        suffix="m"
+      />
+      <HeldVelocityFields section={section} patch={patch} t={t} />
+    </>
   );
 }
 
-type CurvedMode = 'rate' | 'totalAngle' | 'axisAngle';
+/** bSpeed / fVel checkbox + input. Shared by Straight / Curved / Forced /
+ *  Geometric (all the section types that carry FvdSpeedFields). When the
+ *  checkbox is off, the integrator runs energy-driven (the default); when
+ *  on, velocity is held at fVel for the duration of the section. */
+function HeldVelocityFields({
+  section,
+  patch,
+  t,
+}: {
+  section: { bSpeed?: boolean | undefined; fVel?: number | undefined };
+  patch: Patcher;
+  t: Translate;
+}): JSX.Element {
+  const heldOn = section.bSpeed === false;
+  return (
+    <div className="rounded border border-white/5 bg-surface-2/50 p-2">
+      <CheckboxField
+        label={t('properties.heldVelocity')}
+        checked={heldOn}
+        onChange={(checked) => {
+          // When turning on, default fVel to whatever was there or 10 m/s.
+          // When turning off, drop the held flag entirely (back to default
+          // energy-driven mode).
+          if (checked) {
+            patch({ bSpeed: false, fVel: section.fVel ?? 10 });
+          } else {
+            patch({ bSpeed: undefined, fVel: undefined });
+          }
+        }}
+      />
+      {heldOn && (
+        <Field
+          label={t('properties.fVel')}
+          value={section.fVel ?? 10}
+          onChange={(v) => patch({ fVel: Math.max(0, asNumber(v)) })}
+          suffix="m/s"
+          min={0}
+          max={120}
+          step={0.5}
+        />
+      )}
+      <p className="mt-1 text-[10px] leading-tight text-neutral-500">
+        {t('properties.heldVelocityHint')}
+      </p>
+    </div>
+  );
+}
 
 function CurvedFields({
   section,
@@ -182,181 +238,107 @@ function CurvedFields({
   patch: Patcher;
   t: Translate;
 }): JSX.Element {
-  // Stored shape never changes — it's always (length, pitchRate, yawRate).
-  // `mode` is UI-only: "rate" shows rad/m directly, "totalAngle" lets the
-  // user type pitch and yaw angles for the whole section, "axisAngle"
-  // expresses a single rotation around a chosen axis. All three write back
-  // through the same patch() call so recompute and round-trip stay agnostic.
-  const [mode, setMode] = useState<CurvedMode>('rate');
-
-  const length = section.length;
-  const pitchRate = section.pitchRate;
-  const yawRate = section.yawRate;
-
-  // Total-angle view: rate × length. Editing an angle field solves for
-  // rate = angle / length (or zero when length ≤ 0).
-  const totalPitchDeg = radToDeg(pitchRate * length);
-  const totalYawDeg = radToDeg(yawRate * length);
-  const setTotalPitchDeg = (deg: number): void => {
-    patch({ pitchRate: length > 0 ? degToRad(deg) / length : 0 });
-  };
-  const setTotalYawDeg = (deg: number): void => {
-    patch({ yawRate: length > 0 ? degToRad(deg) / length : 0 });
-  };
-
-  // Axis-angle view: combine pitch and yaw into a single total-rotation
-  // magnitude with an axis direction (unit vector in the pitch/yaw plane).
-  // Stored orientation of this axis is arbitrary — we pick the natural
-  // "first rotate yaw, then pitch" decomposition so pure yaw → axis = (0,1),
-  // pure pitch → axis = (1,0).
-  const totalPitch = pitchRate * length;
-  const totalYaw = yawRate * length;
-  const totalAngleDeg = radToDeg(Math.hypot(totalPitch, totalYaw));
-  const axisAngleDeg = totalAngleDeg < 1e-6 ? 0 : radToDeg(Math.atan2(totalPitch, totalYaw));
-  const setAxisRotation = (angleDeg: number, axisDeg: number): void => {
-    const angle = degToRad(angleDeg);
-    const axis = degToRad(axisDeg);
-    const pitch = angle * Math.sin(axis);
-    const yaw = angle * Math.cos(axis);
-    patch({
-      pitchRate: length > 0 ? pitch / length : 0,
-      yawRate: length > 0 ? yaw / length : 0,
-    });
-  };
-
+  // Direct passthrough of FVD++'s Curved fields. The user sets total
+  // angle, radius, and direction; the integrator builds the curve.
+  // 360°/0° = vertical loop, 90° = level turn, intermediate = helix.
   return (
     <>
       <Field
-        label={t('properties.length')}
-        value={length}
-        onChange={(v) => patch({ length: Math.max(0, asNumber(v)) })}
-        suffix="m"
-      />
-
-      <ModeSelector
-        label={t('properties.curvedMode')}
-        value={mode}
-        options={[
-          { value: 'rate', label: t('properties.curvedModeRate') },
-          { value: 'totalAngle', label: t('properties.curvedModeTotal') },
-          { value: 'axisAngle', label: t('properties.curvedModeAxis') },
-        ]}
-        onChange={setMode}
-      />
-
-      {mode === 'rate' && (
-        <>
-          <Field
-            label={t('properties.pitchRate')}
-            value={radToDeg(pitchRate)}
-            onChange={(v) => patch({ pitchRate: degToRad(asNumber(v)) })}
-            suffix="°/m"
-            min={-20}
-            max={20}
-            step={0.1}
-          />
-          <Field
-            label={t('properties.yawRate')}
-            value={radToDeg(yawRate)}
-            onChange={(v) => patch({ yawRate: degToRad(asNumber(v)) })}
-            suffix="°/m"
-            min={-20}
-            max={20}
-            step={0.1}
-          />
-        </>
-      )}
-
-      {mode === 'totalAngle' && (
-        <>
-          <Field
-            label={t('properties.totalPitch')}
-            value={totalPitchDeg}
-            onChange={(v) => setTotalPitchDeg(asNumber(v))}
-            suffix="°"
-            min={-720}
-            max={720}
-            step={1}
-          />
-          <Field
-            label={t('properties.totalYaw')}
-            value={totalYawDeg}
-            onChange={(v) => setTotalYawDeg(asNumber(v))}
-            suffix="°"
-            min={-720}
-            max={720}
-            step={1}
-          />
-        </>
-      )}
-
-      {mode === 'axisAngle' && (
-        <>
-          <Field
-            label={t('properties.totalAngle')}
-            value={totalAngleDeg}
-            onChange={(v) => setAxisRotation(asNumber(v), axisAngleDeg)}
-            suffix="°"
-            min={0}
-            max={720}
-            step={1}
-          />
-          <Field
-            label={t('properties.axisDirection')}
-            value={axisAngleDeg}
-            onChange={(v) => setAxisRotation(totalAngleDeg, asNumber(v))}
-            suffix="°"
-            min={-180}
-            max={180}
-            step={1}
-          />
-          <p className="text-[10px] leading-tight text-neutral-500">{t('properties.axisHint')}</p>
-        </>
-      )}
-
-      <Field
-        label={t('properties.leadIn')}
-        value={section.leadIn}
-        onChange={(v) => patch({ leadIn: Math.max(0, asNumber(v)) })}
-        suffix="m"
+        label={t('properties.fAngle')}
+        value={section.fAngle}
+        onChange={(v) => patch({ fAngle: Math.max(0, asNumber(v)) })}
+        suffix="°"
         min={0}
-        max={30}
+        max={1440}
+        step={1}
+      />
+      <Field
+        label={t('properties.fRadius')}
+        value={section.fRadius}
+        onChange={(v) => patch({ fRadius: Math.max(0.1, asNumber(v)) })}
+        suffix="m"
+        min={0.1}
+        max={500}
         step={0.5}
       />
       <Field
-        label={t('properties.leadOut')}
-        value={section.leadOut}
-        onChange={(v) => patch({ leadOut: Math.max(0, asNumber(v)) })}
-        suffix="m"
-        min={0}
-        max={30}
-        step={0.5}
+        label={t('properties.fDirection')}
+        value={section.fDirection}
+        onChange={(v) => patch({ fDirection: asNumber(v) })}
+        suffix="°"
+        min={-180}
+        max={180}
+        step={1}
       />
+      <p className="text-[10px] leading-tight text-neutral-500">{t('properties.fDirectionHint')}</p>
+      <Field
+        label={t('properties.fLeadIn')}
+        value={section.fLeadIn}
+        onChange={(v) => patch({ fLeadIn: Math.max(0, asNumber(v)) })}
+        suffix="°"
+        min={0}
+        max={90}
+        step={1}
+      />
+      <Field
+        label={t('properties.fLeadOut')}
+        value={section.fLeadOut}
+        onChange={(v) => patch({ fLeadOut: Math.max(0, asNumber(v)) })}
+        suffix="°"
+        min={0}
+        max={90}
+        step={1}
+      />
+      <HeldVelocityFields section={section} patch={patch} t={t} />
     </>
   );
 }
 
-function ModeSelector<T extends string>(props: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
+function ForcedFields({
+  section,
+  patch,
+  t,
+}: {
+  section: Extract<Section, { type: SecType.Forced }>;
+  patch: Patcher;
+  t: Translate;
 }): JSX.Element {
   return (
-    <label className="flex items-center justify-between gap-2 text-xs">
-      <span className="min-w-0 flex-1 truncate text-neutral-400">{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value as T)}
-        className="rounded border border-white/10 bg-surface-0 px-2 py-1 text-neutral-100 outline-none focus:border-white/30"
-      >
-        {props.options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <Field
+        label={t('properties.extent')}
+        value={section.extent}
+        onChange={(v) => patch({ extent: Math.max(0, asNumber(v)) })}
+        suffix={section.argument === Argument.Distance ? 'm' : 's'}
+        min={0}
+        step={0.1}
+      />
+      <HeldVelocityFields section={section} patch={patch} t={t} />
+    </>
+  );
+}
+
+function GeometricFields({
+  section,
+  patch,
+  t,
+}: {
+  section: Extract<Section, { type: SecType.Geometric }>;
+  patch: Patcher;
+  t: Translate;
+}): JSX.Element {
+  return (
+    <>
+      <Field
+        label={t('properties.extent')}
+        value={section.extent}
+        onChange={(v) => patch({ extent: Math.max(0, asNumber(v)) })}
+        suffix={section.argument === Argument.Distance ? 'm' : 's'}
+        min={0}
+        step={0.1}
+      />
+      <HeldVelocityFields section={section} patch={patch} t={t} />
+    </>
   );
 }
 
@@ -369,16 +351,16 @@ function BezierFields({
   patch: Patcher;
   t: Translate;
 }): JSX.Element {
-  const points = section.controlPoints;
+  const points = firstCubicOf(section);
   const updatePoint = (index: 0 | 1 | 2 | 3, point: [number, number, number]): void => {
-    const cp: Extract<Section, { type: SecType.Bezier }>['controlPoints'] = [
-      points[0],
-      points[1],
-      points[2],
-      points[3],
-    ];
+    const cp: [
+      [number, number, number],
+      [number, number, number],
+      [number, number, number],
+      [number, number, number],
+    ] = [points[0], points[1], points[2], points[3]];
     cp[index] = point;
-    patch({ controlPoints: cp });
+    patch({ segments: replaceFirstCubic(section.segments, cp[0], cp[1], cp[2], cp[3]) });
   };
   return (
     <>
@@ -427,17 +409,21 @@ function sectionHasRollFunc(section: Section): section is SectionWithRoll {
   );
 }
 
-/** Meters (or seconds for Forced/Geometric) that the rollFunc covers. */
+/** Domain that the rollFunc covers — in metres for Straight / Bezier, in
+ *  degrees of ridden angle for Curved, in seconds (or metres) for
+ *  Forced/Geometric depending on argument. The UI uses this to size the
+ *  domain field. */
 function rollFuncExtent(section: SectionWithRoll): number {
   switch (section.type) {
     case SecType.Straight:
-    case SecType.Curved:
       return section.length;
+    case SecType.Curved:
+      return section.fAngle;
     case SecType.Forced:
     case SecType.Geometric:
       return section.extent;
     case SecType.Bezier: {
-      const [p0, , , p3] = section.controlPoints;
+      const [p0, , , p3] = firstCubicOf(section);
       // Chord distance as an arc-length proxy. Good enough for UX here; the
       // integrator re-derives true arc length from the curve at recompute.
       const dx = p3[0] - p0[0];

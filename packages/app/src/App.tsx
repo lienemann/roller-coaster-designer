@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { SecType } from '@roller-coaster-designer/core';
+import { SecType, firstCubicOf, replaceFirstCubic } from '@roller-coaster-designer/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -106,7 +106,7 @@ export function App(): JSX.Element {
     if (selectedSectionIndex === null) return null;
     const sec = project?.tracks[0]?.sections[selectedSectionIndex];
     if (sec?.type !== SecType.Bezier) return null;
-    return sec.controlPoints;
+    return firstCubicOf(sec);
   }, [project, selectedSectionIndex]);
 
   const sectionStartTimes = useMemo<number[]>(() => {
@@ -185,7 +185,10 @@ export function App(): JSX.Element {
           bezierHandles={bezierHandles}
           onBezierHandleChange={(index, pos) => {
             if (!bezierHandles) return;
-            const next: [
+            if (selectedSectionIndex === null) return;
+            const sec = project?.tracks[0]?.sections[selectedSectionIndex];
+            if (sec?.type !== SecType.Bezier) return;
+            const cps: [
               [number, number, number],
               [number, number, number],
               [number, number, number],
@@ -196,8 +199,10 @@ export function App(): JSX.Element {
               [...bezierHandles[2]],
               [...bezierHandles[3]],
             ];
-            next[index] = pos;
-            patchSelectedSection({ controlPoints: next });
+            cps[index] = pos;
+            patchSelectedSection({
+              segments: replaceFirstCubic(sec.segments, cps[0], cps[1], cps[2], cps[3]),
+            });
           }}
         />
         {/* Compact viewport toolbar. Stacks vertically on narrow widths

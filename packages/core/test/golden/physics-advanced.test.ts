@@ -30,10 +30,11 @@ const cases: GoldenCase[] = [
     track: makeTrack('08-curved-leadin-leadout', [
       anchorAt([0, 10, 0]),
       curved({
-        length: 30,
-        yawRate: Math.PI / 3 / 30,
-        leadIn: 6,
-        leadOut: 6,
+        fAngle: 60,
+        fRadius: 30,
+        fDirection: 90,
+        fLeadIn: 15,
+        fLeadOut: 15,
       }),
     ]),
     invariants: [
@@ -55,9 +56,10 @@ const cases: GoldenCase[] = [
     track: makeTrack('09-curved-with-banking', [
       anchorAt([0, 10, 0]),
       curved({
-        length: 20,
-        yawRate: Math.PI / 4 / 20,
-        rollFunc: linearRoll(20, 0, Math.PI / 4),
+        fAngle: 45,
+        fRadius: 20,
+        fDirection: 90,
+        rollFunc: linearRoll(45, 0, Math.PI / 4),
       }),
     ]),
     invariants: [
@@ -99,7 +101,9 @@ const cases: GoldenCase[] = [
       // Geometric sections take the pitchFunc as "pitch at arg"; evalFuncRate
       // returns the derivative = rate per unit arg. Linear ramp 0→angle gives
       // a constant rate. Use 30° total pitch over 12 m of arc.
-      geometric({ extent: 12, pitchRate: (Math.PI / 6) / 12 }),
+      // ~30° of pitch over 12 m at v=15 m/s ⇒ 12/15 ≈ 0.8 s ⇒ ~37.5°/s.
+      // (FVD++'s Geometric pitch rate is degrees per second; matched here.)
+      geometric({ extent: 12, pitchRate: 37.5 }),
     ]),
     invariants: [
       [
@@ -118,13 +122,29 @@ const cases: GoldenCase[] = [
         30,
         multiSubfuncRoll([
           // First 10 m: hold level.
-          { degree: 0, length: 10, startValue: 0, endValue: 0, arg1: 0, centerArg: 0, tensionArg: 0 },
+          {
+            degree: 0,
+            length: 10,
+            startValue: 0,
+            endValue: 0,
+            arg1: 0,
+            centerArg: 0,
+            tensionArg: 0,
+          },
           // Next 15 m: cubic ramp to π.
           cubicSubFunc({ length: 15, startValue: 0, endValue: Math.PI }),
           // Final 5 m: hold. Each subfunc contributes via evalRoll(). A
           // "continue at π" hold is `0 → 0` — the second subfunc already
           // contributed π as its running value.
-          { degree: 0, length: 5, startValue: 0, endValue: 0, arg1: 0, centerArg: 0, tensionArg: 0 },
+          {
+            degree: 0,
+            length: 5,
+            startValue: 0,
+            endValue: 0,
+            arg1: 0,
+            centerArg: 0,
+            tensionArg: 0,
+          },
         ]),
       ),
     ]),

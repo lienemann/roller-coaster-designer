@@ -13,7 +13,14 @@
 //     produces enough steps per meter to diff reliably, slow enough that a
 //     short section doesn't blow past in a handful of nodes.
 
-import { EDegree, EFuncType, Orientation, SecType, TrackStyle, Argument } from '../../src/model/enums.js';
+import {
+  EDegree,
+  EFuncType,
+  Orientation,
+  SecType,
+  TrackStyle,
+  Argument,
+} from '../../src/model/enums.js';
 import { createEmptyFunc, type Func } from '../../src/model/function.js';
 import { type Section } from '../../src/model/section.js';
 import { createLinearSubFunc, type SubFunc } from '../../src/model/subfunction.js';
@@ -51,9 +58,7 @@ export function anchorAt(
 
 export function flatRoll(length: number, value = 0): Func {
   const f = createEmptyFunc(EFuncType.Roll, 'Roll');
-  f.subfuncs.push(
-    createLinearSubFunc({ length, startValue: value, endValue: value }),
-  );
+  f.subfuncs.push(createLinearSubFunc({ length, startValue: value, endValue: value }));
   return f;
 }
 
@@ -94,27 +99,39 @@ export function straight(length: number, rollFunc?: Func): Section {
   };
 }
 
+/**
+ * Curved section, FVD++ shape. Loop = `{ fAngle: 360, fRadius: R, fDirection: 0 }`.
+ * Level turn = `{ fAngle: 90, fRadius: R, fDirection: 90 }`.
+ *
+ * `rollFunc` is parameterised by ridden angle in degrees (length-units == fAngle),
+ * matching FVD++. A `flatRoll(fAngle, 0)` default keeps the rider level.
+ */
 export function curved(options: {
-  length: number;
-  pitchRate?: number;
-  yawRate?: number;
-  leadIn?: number;
-  leadOut?: number;
+  fAngle: number;
+  fRadius: number;
+  fDirection?: number;
+  fLeadIn?: number;
+  fLeadOut?: number;
   rollFunc?: Func;
   name?: string;
 }): Section {
   return {
     type: SecType.Curved,
     name: options.name ?? 'curved',
-    length: options.length,
-    pitchRate: options.pitchRate ?? 0,
-    yawRate: options.yawRate ?? 0,
-    leadIn: options.leadIn ?? 0,
-    leadOut: options.leadOut ?? 0,
-    rollFunc: options.rollFunc ?? flatRoll(options.length, 0),
+    fAngle: options.fAngle,
+    fRadius: options.fRadius,
+    fDirection: options.fDirection ?? 90,
+    fLeadIn: options.fLeadIn ?? 0,
+    fLeadOut: options.fLeadOut ?? 0,
+    rollFunc: options.rollFunc ?? flatRoll(options.fAngle, 0),
   };
 }
 
+/**
+ * Author a single-cubic Bezier the friendly way: pass 4 control points and
+ * the helper builds the 2-segment chain `BezierSection.segments` expects.
+ * For multi-segment authoring, build segments by hand.
+ */
 export function bezier(options: {
   controlPoints: [
     [number, number, number],
@@ -125,17 +142,15 @@ export function bezier(options: {
   rollFunc?: Func;
   name?: string;
 }): Section {
-  // A linear roll over the straight-line gap length is a reasonable default
-  // — the integrator samples rollFunc by arc length inside the section.
-  const gap = Math.hypot(
-    options.controlPoints[3][0] - options.controlPoints[0][0],
-    options.controlPoints[3][1] - options.controlPoints[0][1],
-    options.controlPoints[3][2] - options.controlPoints[0][2],
-  );
+  const [p0, p1, p2, p3] = options.controlPoints;
+  const gap = Math.hypot(p3[0] - p0[0], p3[1] - p0[1], p3[2] - p0[2]);
   return {
     type: SecType.Bezier,
     name: options.name ?? 'bezier',
-    controlPoints: options.controlPoints,
+    segments: [
+      { P1: [...p0], Kp1: [...p0], Kp2: [...p0] },
+      { P1: [...p3], Kp1: [...p1], Kp2: [...p2] },
+    ],
     rollFunc: options.rollFunc ?? flatRoll(Math.max(gap, 0.01), 0),
     smoothStart: false,
     smoothEnd: false,
@@ -178,26 +193,29 @@ export function forced(options: {
 
 export function geometric(options: {
   extent: number;
+  /** Pitch rate in deg/F_HZ-tick at the start; flat rate by default. */
   pitchRate?: number;
+  /** Yaw rate in deg/F_HZ-tick at the start; flat rate by default. */
   yawRate?: number;
   rollFunc?: Func;
 }): Section {
-  // Ramp from 0 → pitchRate*extent over the section length so evalFuncRate
-  // (which takes the SubFunc derivative) returns a constant rate.
+  // The integrator samples pitchFunc/yawFunc as cumulative-value-at-arg and
+  // divides by F_HZ for the per-tick delta. A flat rate ⇒ constant value
+  // across the section.
   const pitchFunc = createEmptyFunc(EFuncType.Pitch, 'Pitch');
   pitchFunc.subfuncs.push(
     createLinearSubFunc({
       length: options.extent,
-      startValue: 0,
-      endValue: (options.pitchRate ?? 0) * options.extent,
+      startValue: options.pitchRate ?? 0,
+      endValue: options.pitchRate ?? 0,
     }),
   );
   const yawFunc = createEmptyFunc(EFuncType.Yaw, 'Yaw');
   yawFunc.subfuncs.push(
     createLinearSubFunc({
       length: options.extent,
-      startValue: 0,
-      endValue: (options.yawRate ?? 0) * options.extent,
+      startValue: options.yawRate ?? 0,
+      endValue: options.yawRate ?? 0,
     }),
   );
   return {
@@ -205,6 +223,7 @@ export function geometric(options: {
     name: 'geometric',
     extent: options.extent,
     argument: Argument.Distance,
+    orientation: Orientation.Euler,
     rollFunc: options.rollFunc ?? flatRoll(options.extent, 0),
     pitchFunc,
     yawFunc,

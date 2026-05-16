@@ -25,7 +25,7 @@ import {
   type StraightSection,
 } from '../../model/section.js';
 import { type SubFunc } from '../../model/subfunction.js';
-import { type Track } from '../../model/track.js';
+import { type Smoother, type Track } from '../../model/track.js';
 import { integrateTrack } from '../../physics/integrate.js';
 
 import { FvdBuilder } from './builder.js';
@@ -35,23 +35,22 @@ const RAD = 180 / Math.PI; // model uses radians; FVD++ stores degrees.
 /**
  * Serialise a `Project` to legacy `.fvd` bytes (FVD++ 0.77 format).
  *
- * Round-trip caveats (the reader symmetrically drops the same):
- *   - UI state (drawTrack, drawHeartline, isWireframe, povPos) is emitted
- *     as FVD++'s constructor defaults.
- *   - 48-byte QColor blob is emitted as zeros — Qt treats invalid QColors
- *     as black, matching FVD++'s initial state.
- *   - Smoothers are emitted as smootherCount=0 because our
- *     (fromSection, toSection, strength) → FVD++'s node-index tuple
- *     requires re-running the integrator and there's no public reverse.
- *   - Curved sections collapse pitchRate + yawRate to a single
- *     fDirection in {0°, 90°}, the only modes that round-trip exactly.
- *     Combined-pitch-yaw curves lose the minor axis.
- *   - NoLimitsCSV sections are emitted with size=0; our model only stores
- *     a csvRef placeholder, not the inline node array.
+ * Lossless round-trip surface:
+ *   - All section fields (including `bSpeed`, `fVel`, `orientation`,
+ *     `fAngle`/`fRadius`/`fDirection`, Bezier multi-segment chains via
+ *     `fvdSegments` + `fvdSupports`, NoLimitsCSV inline `nodes`).
+ *   - 48-byte QColor blob, smoothers, UI flags (drawTrack, drawHeartline,
+ *     isWireframe, povPos), anchor display forces — all preserved via the
+ *     `track.fvdDisplay` and `smoother.fvd` opaque round-trip slices that
+ *     the reader populates.
  *
- * Closures are materialised as regular `BEZ` sections before write — the
- * integrator's effective control points are baked in so FVD++ sees a
- * normal Bezier.
+ * Closures (our T2 first-class type) are materialised as regular `BEZ`
+ * sections before write — FVD++ has no closure concept, so the
+ * integrator's effective control points are baked in.
+ *
+ * For projects authored in-app (no `fvdDisplay`), the writer emits
+ * FVD++'s constructor defaults: drawTrack=true, QColor blob = zeros,
+ * povPos = (0, 0).
  */
 export function writeFvd(project: Project): Uint8Array {
   const expanded = expandClosures(project);
@@ -103,10 +102,18 @@ function expandClosures(project: Project): Project {
       anchor.position[1] - anchorDir[1] * closure.exitHandleLength,
       anchor.position[2] - anchorDir[2] * closure.exitHandleLength,
     ];
+    // Materialise the closure as a 2-segment Bezier chain matching
+    // FVD++'s shape. The single cubic from p0..p3 becomes:
+    //   segments[0]: anchor = p0, Kp1/Kp2 sentinels (set to p0 itself).
+    //   segments[1]: anchor = p3, Kp1 = p1 (outgoing handle from p0),
+    //                Kp2 = p2 (incoming handle to p3).
     const bezier: BezierSection = {
       type: SecType.Bezier,
       name: closure.name,
-      controlPoints: [p0, p1, p2, p3],
+      segments: [
+        { P1: [...p0], Kp1: [...p0], Kp2: [...p0] },
+        { P1: [...p3], Kp1: [...p1], Kp2: [...p2] },
+      ],
       rollFunc: closure.rollFunc,
       smoothStart: true,
       smoothEnd: true,
@@ -122,24 +129,26 @@ function expandClosures(project: Project): Project {
 function writeTrack(w: FvdBuilder, track: Track): void {
   w.writeTag('TRC');
   w.writeLstr(track.name);
-  w.writeZeros(48); // QColor blob — opaque to us; spec §3.1
+  // QColor blob: hex-decode from `fvdDisplay.colorsHex` when we have it
+  // (round-trip path), else 48 zero bytes (in-app authoring).
+  writeColorsHex(w, track.fvdDisplay?.colorsHex);
   const anchor = ensureAnchor(track);
   w.writeReversedVec3(anchor.position[0], anchor.position[1], anchor.position[2]);
   w.writeF32(anchor.roll * RAD);
   w.writeF32(anchor.pitch * RAD);
   w.writeF32(anchor.yaw * RAD);
   w.writeF32(anchor.speed);
-  w.writeF32(0); // anchor.forceNormal — display state
-  w.writeF32(0); // anchor.forceLateral — display state
+  w.writeF32(track.fvdDisplay?.anchorForceNormal ?? 0);
+  w.writeF32(track.fvdDisplay?.anchorForceLateral ?? 0);
   w.writeF32(track.heart);
   w.writeF32(track.friction);
   w.writeF32(track.resistance);
-  w.writeBool(true); // drawTrack — UI default
-  w.writeI32(0); // drawHeartline — UI default
+  w.writeBool(track.fvdDisplay?.drawTrack ?? true);
+  w.writeI32(track.fvdDisplay?.drawHeartline ?? 0);
   w.writeI32(track.style as number);
-  w.writeBool(false); // isWireframe — UI default
-  w.writeF32(0); // povPos.x — UI default
-  w.writeF32(0); // povPos.y — UI default
+  w.writeBool(track.fvdDisplay?.isWireframe ?? false);
+  w.writeF32(track.fvdDisplay?.povPos?.[0] ?? 0);
+  w.writeF32(track.fvdDisplay?.povPos?.[1] ?? 0);
 
   // Section count excludes the anchor (which is part of the header on disk).
   const real = track.sections.slice(1);
@@ -147,8 +156,38 @@ function writeTrack(w: FvdBuilder, track: Track): void {
   for (const section of real) {
     writeSection(w, section);
   }
-  w.writeI32(0); // smootherCount — skipped (see writeFvd doc)
+  // Smoothers: write the FVD bytes verbatim when present; skip when we
+  // have no preserved data (the user-authored side hasn't been mapped
+  // back to FVD node indices yet — that lands with the on-write
+  // sectionStartNodes lookup once we wire it).
+  const fvdSmoothers = track.smoothers.filter((s) => s.fvd !== undefined);
+  w.writeI32(fvdSmoothers.length);
+  for (const s of fvdSmoothers) {
+    writeSmoother(w, s);
+  }
   w.writeTag('EOT');
+}
+
+function writeColorsHex(w: FvdBuilder, hex: string | undefined): void {
+  if (hex?.length !== 96) {
+    w.writeZeros(48);
+    return;
+  }
+  for (let i = 0; i < 48; i += 1) {
+    const byte = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    w.writeU8(Number.isFinite(byte) ? byte : 0);
+  }
+}
+
+function writeSmoother(w: FvdBuilder, s: Smoother): void {
+  const fvd = s.fvd;
+  if (!fvd) throw new Error('writeSmoother: missing fvd round-trip data');
+  w.writeLstr(fvd.name);
+  w.writeI32(fvd.fromNode);
+  w.writeI32(fvd.toNode);
+  w.writeI32(fvd.length);
+  w.writeI32(fvd.iterations);
+  w.writeBool(fvd.active);
 }
 
 function ensureAnchor(track: Track): AnchorSection {
@@ -182,42 +221,32 @@ function writeSection(w: FvdBuilder, section: Section): void {
 
 function writeStraight(w: FvdBuilder, section: StraightSection): void {
   w.writeTag('STR');
-  w.writeBool(false); // bSpeed — energy-driven
+  w.writeBool(section.bSpeed ?? true); // FVD++'s default for new sections is true (energy-driven)
   w.writeLstr(section.name);
-  w.writeF32(0); // fVel — ignored on energy-driven load
+  w.writeF32(section.fVel ?? 0);
   w.writeF32(section.length);
   writeFunc(w, section.rollFunc);
 }
 
 function writeCurved(w: FvdBuilder, section: CurvedSection): void {
   w.writeTag('CUR');
-  w.writeBool(false); // bSpeed
+  w.writeBool(section.bSpeed ?? true);
   w.writeLstr(section.name);
-  w.writeF32(0); // fVel
-  // Pick the dominant axis; collapse the minor one. Pure-yaw → fDirection=90°
-  // (level turn); pure-pitch → fDirection=0° (vertical loop). Combined
-  // curves lose their minor axis (rare in practice).
-  const yawDom = Math.abs(section.yawRate) >= Math.abs(section.pitchRate);
-  const rate = yawDom ? section.yawRate : section.pitchRate;
-  const fAngleDeg = rate * section.length * RAD;
-  const fRadius = rate !== 0 ? 1 / Math.abs(rate) : 0;
-  const fDirection = yawDom ? 90 : 0;
-  w.writeF32(fAngleDeg);
-  w.writeF32(fRadius);
-  w.writeF32(fDirection);
-  const leadDeg = (metres: number): number =>
-    fRadius > 0 ? Math.abs(metres / fRadius) * RAD : 0;
-  w.writeF32(leadDeg(section.leadIn));
-  w.writeF32(leadDeg(section.leadOut));
-  w.writeBool(false); // bOrientation — EULER default
+  w.writeF32(section.fVel ?? 0);
+  w.writeF32(section.fAngle);
+  w.writeF32(section.fRadius);
+  w.writeF32(section.fDirection);
+  w.writeF32(section.fLeadIn);
+  w.writeF32(section.fLeadOut);
+  w.writeBool((section.orientation ?? Orientation.Euler) === Orientation.Quaternion);
   writeFunc(w, section.rollFunc);
 }
 
 function writeForced(w: FvdBuilder, section: ForcedSection): void {
   w.writeTag('FRC');
-  w.writeBool(false); // bSpeed
+  w.writeBool(section.bSpeed ?? true);
   w.writeLstr(section.name);
-  w.writeF32(0); // fVel
+  w.writeF32(section.fVel ?? 0);
   w.writeBool(section.orientation === Orientation.Quaternion);
   w.writeBool(section.argument === Argument.Distance);
   writeFunc(w, section.rollFunc);
@@ -232,10 +261,10 @@ function writeForced(w: FvdBuilder, section: ForcedSection): void {
 
 function writeGeometric(w: FvdBuilder, section: GeometricSection): void {
   w.writeTag('GEO');
-  w.writeBool(false); // bSpeed
+  w.writeBool(section.bSpeed ?? true);
   w.writeLstr(section.name);
-  w.writeF32(0); // fVel
-  w.writeBool(false); // bOrientation — EULER default
+  w.writeF32(section.fVel ?? 0);
+  w.writeBool(section.orientation === Orientation.Quaternion);
   w.writeBool(section.argument === Argument.Distance);
   writeFunc(w, section.rollFunc);
   writeFunc(w, section.pitchFunc);
@@ -266,31 +295,34 @@ function writeGeometric(w: FvdBuilder, section: GeometricSection): void {
 function writeBezier(w: FvdBuilder, section: BezierSection): void {
   w.writeTag('BEZ');
   w.writeLstr(section.name);
-  const [p0, p1, p2, p3] = section.controlPoints;
-  w.writeI32(2);
-  writeBezierEntry(w, p0, p0, p0); // segment[0]: anchor + sentinel handles
-  writeBezierEntry(w, p3, p1, p2); // segment[1]: anchor + real handles
-  w.writeI32(0); // supList — UI-only, empty
-}
-
-function writeBezierEntry(
-  w: FvdBuilder,
-  p1: readonly [number, number, number],
-  kp1: readonly [number, number, number],
-  kp2: readonly [number, number, number],
-): void {
-  w.writeReversedVec3(p1[0], p1[1], p1[2]);
-  w.writeReversedVec3(kp1[0], kp1[1], kp1[2]);
-  w.writeReversedVec3(kp2[0], kp2[1], kp2[2]);
-  w.writeBool(false); // contRoll
-  w.writeBool(false); // relRoll
-  w.writeF32(0); // roll — our rollFunc lives elsewhere
+  // Single source of truth: the chain we walked at integrate time is the
+  // chain we emit. So the disk file reproduces the same geometry on any
+  // FVD-compatible reader.
+  w.writeI32(section.segments.length);
+  for (const seg of section.segments) {
+    w.writeReversedVec3(seg.P1[0], seg.P1[1], seg.P1[2]);
+    w.writeReversedVec3(seg.Kp1[0], seg.Kp1[1], seg.Kp1[2]);
+    w.writeReversedVec3(seg.Kp2[0], seg.Kp2[1], seg.Kp2[2]);
+    w.writeBool(seg.contRoll ?? false);
+    w.writeBool(seg.relRoll ?? false);
+    w.writeF32(seg.roll ?? 0);
+  }
+  const sups = section.supports ?? [];
+  w.writeI32(sups.length);
+  for (const sup of sups) {
+    w.writeReversedVec3(sup[0], sup[1], sup[2]);
+  }
 }
 
 function writeNoLimitsCsv(w: FvdBuilder, section: NoLimitsCSVSection): void {
   w.writeTag('CSV');
-  w.writeI32(0);
-  void section;
+  const nodes = section.nodes ?? [];
+  w.writeI32(nodes.length);
+  for (const n of nodes) {
+    w.writeVec3(n.pos[0], n.pos[1], n.pos[2]);
+    w.writeVec3(n.dir[0], n.dir[1], n.dir[2]);
+    w.writeVec3(n.lat[0], n.lat[1], n.lat[2]);
+  }
 }
 
 function writeFunc(w: FvdBuilder, func: Func): void {

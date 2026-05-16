@@ -19,10 +19,7 @@ const GOLDEN_DIR = fileURLToPath(new URL('./data/basic', import.meta.url));
 const cases: GoldenCase[] = [
   {
     name: '01-horizontal-straight',
-    track: makeTrack('01-horizontal-straight', [
-      anchorAt([0, 10, 0], { speed: 12 }),
-      straight(40),
-    ]),
+    track: makeTrack('01-horizontal-straight', [anchorAt([0, 10, 0], { speed: 12 }), straight(40)]),
     invariants: [
       [
         'forceNormal ≈ 1g throughout',
@@ -94,7 +91,7 @@ const cases: GoldenCase[] = [
     name: '04-flat-yaw-quarter-turn',
     track: makeTrack('04-flat-yaw-quarter-turn', [
       anchorAt([0, 10, 0]),
-      curved({ length: 20, yawRate: Math.PI / 2 / 20 }),
+      curved({ fAngle: 90, fRadius: 20, fDirection: 90 }),
     ]),
     invariants: [
       [
@@ -121,7 +118,7 @@ const cases: GoldenCase[] = [
     name: '05-pitch-quarter-up',
     track: makeTrack('05-pitch-quarter-up', [
       anchorAt([0, 10, 0], { speed: 25 }),
-      curved({ length: 20, pitchRate: Math.PI / 2 / 20 }),
+      curved({ fAngle: 90, fRadius: 20, fDirection: 0 }),
     ]),
     invariants: [
       [

@@ -114,6 +114,18 @@ export class FvdCursor {
     return out;
   }
 
+  /** Convenience: read `n` raw bytes and return them as a lowercase hex
+   *  string (length = 2·n). Used for the QColor blob — easier to put in
+   *  the JSON round-trip format than a `Uint8Array`. */
+  readRawHex(n: number): string {
+    const bytes = this.readRaw(n);
+    let out = '';
+    for (const b of bytes) {
+      out += b < 16 ? `0${b.toString(16)}` : b.toString(16);
+    }
+    return out;
+  }
+
   /** ASCII tag (3 or 4 bytes) — used for "FVD", "TRC", "EOT", "EOP",
    *  "STR"…"CSV", "FUNC". No length prefix. */
   readTag(length: number): string {
@@ -129,10 +141,11 @@ export class FvdCursor {
   readLstr(): string {
     const len = this.readI32();
     if (len < 0 || len > this.remaining) {
-      throw new WebFvdError(
-        'io.fvdMalformed',
-        { reason: 'string-length-overflow', length: len, remaining: this.remaining },
-      );
+      throw new WebFvdError('io.fvdMalformed', {
+        reason: 'string-length-overflow',
+        length: len,
+        remaining: this.remaining,
+      });
     }
     const bytes = this.buffer.subarray(this.offset, this.offset + len);
     this.offset += len;
@@ -149,16 +162,13 @@ export class FvdCursor {
 
   private requireRemaining(n: number, what: string): void {
     if (n < 0 || this.offset + n > this.buffer.byteLength) {
-      throw new WebFvdError(
-        'io.fvdMalformed',
-        {
-          reason: 'unexpected-eof',
-          field: what,
-          offset: this.offset,
-          need: n,
-          remaining: this.remaining,
-        },
-      );
+      throw new WebFvdError('io.fvdMalformed', {
+        reason: 'unexpected-eof',
+        field: what,
+        offset: this.offset,
+        need: n,
+        remaining: this.remaining,
+      });
     }
   }
 }

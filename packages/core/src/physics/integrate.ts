@@ -3,7 +3,7 @@
 import { vec3 } from 'gl-matrix';
 
 import { F_G, F_HZ, HEART_ENERGY_FACTOR } from '../model/constants.js';
-import { Argument, SecType } from '../model/enums.js';
+import { Argument, Orientation, SecType } from '../model/enums.js';
 import { type Func } from '../model/function.js';
 import { allocateMNodeArrays, type MNodeArrays } from '../model/mnode.js';
 import {
@@ -25,7 +25,7 @@ import {
   cubicBezierDerivative,
   sampleArcLengthTable,
 } from './bezier-math.js';
-import { getSubFuncValue, subFuncDerivativeAt } from './subfunc-eval.js';
+import { getSubFuncValue } from './subfunc-eval.js';
 
 // M2 ships Anchor, Straight, and a minimal Bezier. Curved, Forced, Geometric,
 // and the proper arc-length-reparameterized Bezier from spec §5 land at
@@ -136,6 +136,35 @@ const tmp0 = vec3.create();
 const tmp1 = vec3.create();
 const tmp2 = vec3.create();
 
+// Sections carrying FVD++'s `bSpeed`/`fVel` pair: when bSpeed=false the
+// velocity is held at fVel instead of evolving from energy. This mirrors
+// FVD++'s "constant velocity" mode used by brake runs, launch sections,
+// and stations. When bSpeed is true (or the fields are absent) we fall
+// back to energy-driven velocity exactly as before.
+interface MaybeHeldVel {
+  readonly bSpeed?: boolean | undefined;
+  readonly fVel?: number | undefined;
+}
+
+/** Resolve velocity + energy at a node given the previous energy and the
+ *  current heart-path y. Returns the held-velocity branch when the section
+ *  opts into bSpeed=false; otherwise the standard energy-driven branch. */
+function resolveVelocity(
+  section: MaybeHeldVel,
+  energyPrev: number,
+  yH: number,
+): { vel: number; energy: number } {
+  if (section.bSpeed === false && section.fVel !== undefined) {
+    const vel = section.fVel;
+    // Re-base energy off the held velocity so the next energy-driven
+    // section starts consistently. Matches FVD++ 0.79's behaviour.
+    return { vel, energy: 0.5 * vel * vel + F_G * yH };
+  }
+  const kinetic = energyPrev - F_G * yH;
+  const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+  return { vel, energy: energyPrev };
+}
+
 function integrateAnchor(section: AnchorSection, arrays: MNodeArrays, heart: number): number {
   const idx = 0;
 
@@ -220,7 +249,7 @@ function integrateStraight(
     const posZ = arrays.posZ[idx - 1]! + dir[2] * clippedStep;
 
     // Energy conserves across a frictionless Straight.
-    const energy = arrays.energy[idx - 1]!;
+    const energyPrev = arrays.energy[idx - 1]!;
 
     // Roll at this point of the section.
     arcLength += clippedStep;
@@ -235,10 +264,10 @@ function integrateStraight(
     const norm = vec3.create();
     vec3.cross(norm, lat, dir);
 
-    // Velocity from energy conservation at the new heart-path y.
+    // Velocity: held at `fVel` when `bSpeed=false`; otherwise from energy
+    // conservation at the new heart-path y.
     const yH = posY - norm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH;
-    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+    const { vel, energy } = resolveVelocity(section, energyPrev, yH);
 
     writeNode(arrays, idx, {
       position: [posX, posY, posZ],
@@ -278,15 +307,73 @@ function integrateBezier(
   lastIdx: number,
   heart: number,
 ): number {
-  // Auto-anchor the curve to the previous section's end pose. The user-
-  // supplied control points provide the SHAPE; the position and the
-  // entry-tangent are clamped to whatever the integrator actually
-  // produced for the previous node, so a Bezier never introduces a
-  // C0 jump regardless of what the user dragged. End-side anchoring
-  // (matching anchor pose) is now handled by `integrateClosure` for
-  // dedicated `Closure` sections — no longer a special case here.
-  const [p0, p1, p2, p3] = effectiveBezierControlPoints(section, arrays, lastIdx);
-  return runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc);
+  if (section.segments.length < 2) return lastIdx;
+
+  // Auto-anchor the FIRST segment to the previous section's end pose so
+  // a mid-track Bezier doesn't snap geometrically regardless of what the
+  // user dragged. The interior segments (segment[2..N−1]) are walked as
+  // authored — this matches FVD++'s multi-segment integration.
+  const prevPos: [number, number, number] = [
+    arrays.posX[lastIdx]!,
+    arrays.posY[lastIdx]!,
+    arrays.posZ[lastIdx]!,
+  ];
+  const prevDir: [number, number, number] = [
+    arrays.dirX[lastIdx]!,
+    arrays.dirY[lastIdx]!,
+    arrays.dirZ[lastIdx]!,
+  ];
+  const seg0Stored = section.segments[0]!;
+  const seg1Stored = section.segments[1]!;
+  // First cubic: anchored to prev pose. Preserve the user's outgoing-
+  // handle length, force its direction onto prevDir.
+  const handle1Len = dist3(seg0Stored.P1, seg1Stored.Kp1);
+  const p0: [number, number, number] = [...prevPos];
+  const p1: [number, number, number] = [
+    prevPos[0] + prevDir[0] * handle1Len,
+    prevPos[1] + prevDir[1] * handle1Len,
+    prevPos[2] + prevDir[2] * handle1Len,
+  ];
+  // Translate stored P3/Kp2 by the same delta so the rest of the chain
+  // moves with the section start.
+  const dx = prevPos[0] - seg0Stored.P1[0];
+  const dy = prevPos[1] - seg0Stored.P1[1];
+  const dz = prevPos[2] - seg0Stored.P1[2];
+  const p2: [number, number, number] = [
+    seg1Stored.Kp2[0] + dx,
+    seg1Stored.Kp2[1] + dy,
+    seg1Stored.Kp2[2] + dz,
+  ];
+  const p3: [number, number, number] = [
+    seg1Stored.P1[0] + dx,
+    seg1Stored.P1[1] + dy,
+    seg1Stored.P1[2] + dz,
+  ];
+
+  // Total arc-length offset across all cubics, used as the rollFunc's
+  // argument so a multi-segment chain's rollFunc spans the whole curve.
+  let rollArcOffset = 0;
+  let idx = runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc, 0);
+  rollArcOffset = arrays.totalLength[idx]! - arrays.totalLength[lastIdx]!;
+
+  // Subsequent cubics: walk segments[i-1] → segments[i] for i ≥ 2.
+  for (let i = 2; i < section.segments.length; i += 1) {
+    const prev = section.segments[i - 1]!;
+    const cur = section.segments[i]!;
+    // Apply the same `dx, dy, dz` translation so the rest of the chain
+    // stays consistent with where the first segment was anchored.
+    const c0: [number, number, number] = [prev.P1[0] + dx, prev.P1[1] + dy, prev.P1[2] + dz];
+    const c1: [number, number, number] = [cur.Kp1[0] + dx, cur.Kp1[1] + dy, cur.Kp1[2] + dz];
+    const c2: [number, number, number] = [cur.Kp2[0] + dx, cur.Kp2[1] + dy, cur.Kp2[2] + dz];
+    const c3: [number, number, number] = [cur.P1[0] + dx, cur.P1[1] + dy, cur.P1[2] + dz];
+    idx = runBezierCubic(arrays, idx, heart, c0, c1, c2, c3, section.rollFunc, rollArcOffset);
+    rollArcOffset = arrays.totalLength[idx]! - arrays.totalLength[lastIdx]!;
+  }
+  return idx;
+}
+
+function dist3(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
 function integrateClosure(
@@ -322,7 +409,7 @@ function integrateClosure(
     anchor.position[1] - anchorDir[1] * section.exitHandleLength,
     anchor.position[2] - anchorDir[2] * section.exitHandleLength,
   ];
-  return runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc);
+  return runBezierCubic(arrays, lastIdx, heart, p0, p1, p2, p3, section.rollFunc, 0);
 }
 
 function runBezierCubic(
@@ -334,13 +421,14 @@ function runBezierCubic(
   p2: readonly [number, number, number],
   p3: readonly [number, number, number],
   rollFunc: BezierSection['rollFunc'],
+  rollArcOffset: number,
 ): number {
   const table = sampleArcLengthTable(p0, p1, p2, p3, BEZIER_ARC_SAMPLES);
   const totalArc = table[table.length - 1]!;
   if (totalArc <= 0) return lastIdx;
 
   const dt = 1 / F_HZ;
-  const rollOffset = arrays.roll[lastIdx]! - evalRoll(rollFunc, 0);
+  const rollOffset = arrays.roll[lastIdx]! - evalRoll(rollFunc, rollArcOffset);
   let idx = lastIdx;
   let sectionArc = 0;
 
@@ -378,7 +466,7 @@ function runBezierCubic(
     }
     vec3.normalize(bezierLat, bezierLat);
 
-    const rollAbs = evalRoll(rollFunc, sectionArc) + rollOffset;
+    const rollAbs = evalRoll(rollFunc, rollArcOffset + sectionArc) + rollOffset;
     const prevRoll = arrays.roll[idx - 1]!;
     rotateAroundAxis(bezierLat, bezierLat, bezierTangent, rollAbs - prevRoll);
     vec3.cross(bezierNorm, bezierLat, bezierTangent);
@@ -409,17 +497,25 @@ function runBezierCubic(
 }
 
 // Curved section integrator (spec §5.1, port of core/seccurved.cpp).
-// Constant pitch-rate and yaw-rate in rad/m; lead-in and lead-out ramp the
-// rates from 0 through a cubic smoothstep so the rider doesn't feel a jerk
-// at section boundaries.
+// Curved — port of `seccurved.cpp:48–188`. The rotation axis is
+// `cos(fPureDirection)·vLat + sin(fPureDirection)·vNorm` (in our sky-up
+// norm convention; equivalent to FVD++'s `cos(-fPureDirection)·vLat +
+// sin(-fPureDirection)·vNorm` because their vNorm is feet-down).
+// `fPureDirection = fDirection − artificialRoll` cancels the rolling
+// effect on the rotation axis so the axis stays in the un-rolled frame.
 //
-// Force columns follow the same gravity projection as Straight. Centripetal
-// contribution lands with M4's Forced integrator where forces drive the
-// geometry rather than the other way round.
+// The integrator advances by a small `deltaAngle` (degrees) per tick,
+// derived from velocity / radius. Lead-in / lead-out are smoothstep
+// scalings of that per-tick angle so the rider doesn't feel a curvature
+// jerk at the boundaries.
+//
+// `rollFunc` is parameterised by ridden angle (degrees). It returns a
+// per-tick roll-rate; we divide by F_HZ as FVD++ does (line 128) to
+// match the integration cadence.
 const curvedDir = vec3.create();
 const curvedLat = vec3.create();
 const curvedNorm = vec3.create();
-const curvedHorizLat = vec3.create();
+const curvedAxis = vec3.create();
 
 function integrateCurved(
   section: CurvedSection,
@@ -427,71 +523,138 @@ function integrateCurved(
   lastIdx: number,
   heart: number,
 ): number {
-  const dt = 1 / F_HZ;
-  let arcLength = 0;
-  let idx = lastIdx;
-  const length = section.length;
-  if (length <= 0) return lastIdx;
-
-  const leadIn = Math.min(section.leadIn, length * 0.5);
-  const leadOut = Math.min(section.leadOut, length * 0.5);
-  // Rates are stored in rad/m (curvature). FVD++ keeps them user-facing as
-  // total angle over section — mirror that: if a spec'd leadIn/leadOut
-  // splits off a portion, the *peak* rate in the middle needs to bend the
-  // remaining length by the full target angle. M3 takes the rates at face
-  // value; tuning lands with the properties panel in M4.
+  const fAngle = section.fAngle;
+  const fRadius = section.fRadius;
+  if (fAngle <= 0 || fRadius <= 0) return lastIdx;
 
   vec3.set(curvedDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
   vec3.set(curvedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
+  vec3.set(curvedNorm, arrays.normX[lastIdx]!, arrays.normY[lastIdx]!, arrays.normZ[lastIdx]!);
 
-  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+  let idx = lastIdx;
+  let riddenAngleDeg = 0;
+  let artificialRollDeg = 0;
+  let leadOutStartArc: number | null = null;
+  let myLeadOut = 0;
+  const arcAtStart = arrays.totalLength[lastIdx]!;
 
-  while (arcLength < length && idx + 1 < arrays.capacity) {
+  const DEG = Math.PI / 180;
+
+  while (riddenAngleDeg < fAngle - 1e-5 && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
-    const step = prevVel * dt;
-    const clippedStep = Math.min(step, length - arcLength);
-    if (clippedStep <= 0) break;
+    if (prevVel <= 0.1) break; // train stalled
+
+    // Base per-tick angle, degrees: deltaAngle = vel / (fRadius · F_HZ) · (180/π)
+    let deltaAngleDeg = (prevVel / (fRadius * F_HZ)) * (180 / Math.PI);
+    if (deltaAngleDeg <= 0) break;
+
+    // Lead-in smoothstep. FVD++ uses arc-length over a "lead arc-length"
+    // window of `1.997/F_HZ · vel/deltaAngle · fLeadIn` metres. The
+    // 1.997 factor approximates 2 (integral of smoothstep over [0,1]).
+    const arcTraveled = arrays.totalLength[idx]! - arcAtStart;
+    if (section.fLeadIn > 0) {
+      const window = (1.997 / F_HZ) * (prevVel / deltaAngleDeg) * section.fLeadIn;
+      const fTrans = window > 0 ? arcTraveled / window : 1;
+      if (fTrans <= 1) {
+        deltaAngleDeg *= fTrans * fTrans * (3 - 2 * fTrans);
+      }
+    }
+
+    // Lead-out smoothstep, mirrored.
+    if (leadOutStartArc === null && riddenAngleDeg > fAngle - section.fLeadOut) {
+      leadOutStartArc = arrays.totalLength[idx]!;
+      myLeadOut = fAngle - riddenAngleDeg;
+    }
+    if (leadOutStartArc !== null && section.fLeadOut > 0) {
+      const window = (1.997 / F_HZ) * (prevVel / deltaAngleDeg) * myLeadOut;
+      const fTrans = window > 0 ? 1 - (arrays.totalLength[idx]! - leadOutStartArc) / window : 0;
+      if (fTrans >= 0) {
+        deltaAngleDeg *= fTrans * fTrans * (3 - 2 * fTrans);
+      } else {
+        break;
+      }
+    }
 
     idx += 1;
-    const midArc = arcLength + clippedStep * 0.5;
-    const blend = leadInOutBlend(midArc, length, leadIn, leadOut);
-    const yawRate = section.yawRate * blend;
-    const pitchRate = section.pitchRate * blend;
+    riddenAngleDeg += deltaAngleDeg;
+    const deltaAngleRad = deltaAngleDeg * DEG;
 
-    // Pitch rotates around the *horizontal* lateral axis (rider's right
-    // projected onto the ground = dir × up), not the banked `curvedLat`.
-    // Rolling the track around dir tilts curvedLat out of the horizontal
-    // plane; rotating dir around a tilted axis leaks pitch into yaw and
-    // warps the path. Decoupling here keeps the geometry banking-
-    // independent, matching FVD++'s Curved section.
-    vec3.set(curvedHorizLat, -curvedDir[2], 0, curvedDir[0]);
-    const horizLen = Math.hypot(curvedHorizLat[0], curvedHorizLat[2]);
-    if (horizLen > 1e-6) {
-      curvedHorizLat[0] /= horizLen;
-      curvedHorizLat[2] /= horizLen;
-      rotateAroundAxis(curvedDir, curvedDir, curvedHorizLat, pitchRate * clippedStep);
-      rotateAroundAxis(curvedLat, curvedLat, curvedHorizLat, pitchRate * clippedStep);
+    // Rotation axis in the un-rolled frame: fPureDirection = fDirection −
+    // artificialRoll. With our sky-up norm convention the formula
+    // simplifies to `cos(θ)·vLat + sin(θ)·vNorm` (no negative on θ).
+    const fPureDirectionRad = (section.fDirection - artificialRollDeg) * DEG;
+    const c = Math.cos(fPureDirectionRad);
+    const s = Math.sin(fPureDirectionRad);
+    curvedAxis[0] = c * curvedLat[0] + s * curvedNorm[0];
+    curvedAxis[1] = c * curvedLat[1] + s * curvedNorm[1];
+    curvedAxis[2] = c * curvedLat[2] + s * curvedNorm[2];
+    const axLen = Math.hypot(curvedAxis[0], curvedAxis[1], curvedAxis[2]);
+    if (axLen > 1e-9) {
+      curvedAxis[0] /= axLen;
+      curvedAxis[1] /= axLen;
+      curvedAxis[2] /= axLen;
     }
-    // Yaw rotates around world-up. Lat rotates too so it stays perpendicular
-    // to the new forward direction.
-    vec3.rotateY(curvedDir, curvedDir, [0, 0, 0], yawRate * clippedStep);
-    vec3.rotateY(curvedLat, curvedLat, [0, 0, 0], yawRate * clippedStep);
 
-    const posX = arrays.posX[idx - 1]! + curvedDir[0] * clippedStep;
-    const posY = arrays.posY[idx - 1]! + curvedDir[1] * clippedStep;
-    const posZ = arrays.posZ[idx - 1]! + curvedDir[2] * clippedStep;
-
-    arcLength += clippedStep;
-    const rollAbs = evalRoll(section.rollFunc, arcLength) + rollOffset;
-    const prevRoll = arrays.roll[idx - 1]!;
-    rotateAroundAxis(curvedLat, curvedLat, curvedDir, rollAbs - prevRoll);
+    // Rotate dir and lat around the axis. Norm is recomputed from the
+    // cross product afterwards (matches FVD++'s updateNorm()).
+    rotateAroundAxis(curvedDir, curvedDir, curvedAxis, deltaAngleRad);
+    rotateAroundAxis(curvedLat, curvedLat, curvedAxis, deltaAngleRad);
+    vec3.normalize(curvedDir, curvedDir);
+    vec3.normalize(curvedLat, curvedLat);
     vec3.cross(curvedNorm, curvedLat, curvedDir);
 
-    const energy = arrays.energy[idx - 1]!;
-    const yH = posY - curvedNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH;
-    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+    // Position step uses the midpoint rule + a heart-correction term so
+    // the HEART path (not the rail path) is what advances by step·avgDir.
+    // Match FVD++'s `vPos += vDir·step/2 + prev.vDir·step/2 +
+    // (prev.vPosHeart − cur.vPosHeart)`.
+    const stepMetres = prevVel / F_HZ;
+    const halfStep = stepMetres / 2;
+    const prevDirX = arrays.dirX[idx - 1]!;
+    const prevDirY = arrays.dirY[idx - 1]!;
+    const prevDirZ = arrays.dirZ[idx - 1]!;
+    const prevNormX = arrays.normX[idx - 1]!;
+    const prevNormY = arrays.normY[idx - 1]!;
+    const prevNormZ = arrays.normZ[idx - 1]!;
+    // Heart-correction: heart_offset(prev) − heart_offset(cur), where the
+    // heart sits at pos − heart·norm in our sky-up convention (rails are
+    // BELOW the heart line by `heart`). Pos tracks the heart line, so
+    // the correction zeroes out — keep the term explicit for clarity in
+    // case the convention is revisited.
+    const heartCorrX = -heart * (prevNormX - curvedNorm[0]);
+    const heartCorrY = -heart * (prevNormY - curvedNorm[1]);
+    const heartCorrZ = -heart * (prevNormZ - curvedNorm[2]);
+    const posX = arrays.posX[idx - 1]! + halfStep * (curvedDir[0] + prevDirX) + heartCorrX;
+    const posY = arrays.posY[idx - 1]! + halfStep * (curvedDir[1] + prevDirY) + heartCorrY;
+    const posZ = arrays.posZ[idx - 1]! + halfStep * (curvedDir[2] + prevDirZ) + heartCorrZ;
 
+    // Roll: rollFunc evaluated at the ridden angle, divided by F_HZ for
+    // the per-tick delta. Then apply that delta to the lat axis (and
+    // re-cross to get norm).
+    const rollRate = evalRoll(section.rollFunc, riddenAngleDeg); // degrees / F_HZ ticks worth of angle
+    const dRollDeg = rollRate / F_HZ;
+    const dRollRad = dRollDeg * DEG;
+    if (dRollRad !== 0) {
+      rotateAroundAxis(curvedLat, curvedLat, curvedDir, -dRollRad);
+      vec3.cross(curvedNorm, curvedLat, curvedDir);
+    }
+    artificialRollDeg += dRollDeg;
+    const rollAbs = (arrays.roll[idx - 1]! ?? 0) + dRollRad;
+
+    // Energy → velocity at the new heart-path y. Matches FVD++ exactly:
+    // E_anchor − F_G·(pos.y_heart) → kinetic. Held at `fVel` when
+    // `bSpeed=false`.
+    const energyPrev = arrays.energy[idx - 1]!;
+    const yH = posY - curvedNorm[1] * heart * HEART_ENERGY_FACTOR;
+    const { vel, energy } = resolveVelocity(section, energyPrev, yH);
+
+    // Per-step deltas use heart-path distance for `distFromLast` (used by
+    // lead-in/out windows on the next iteration); rail-path distance for
+    // `heartDistFromLast`.
+    const heartDist = Math.hypot(
+      posX - arrays.posX[idx - 1]!,
+      posY - arrays.posY[idx - 1]!,
+      posZ - arrays.posZ[idx - 1]!,
+    );
     writeNode(arrays, idx, {
       position: [posX, posY, posZ],
       dir: curvedDir,
@@ -500,10 +663,10 @@ function integrateCurved(
       roll: rollAbs,
       vel,
       energy,
-      distFromLast: clippedStep,
-      heartDistFromLast: clippedStep,
-      totalLength: arrays.totalLength[idx - 1]! + clippedStep,
-      totalHeartLength: arrays.totalHeartLength[idx - 1]! + clippedStep,
+      distFromLast: stepMetres,
+      heartDistFromLast: heartDist,
+      totalLength: arrays.totalLength[idx - 1]! + stepMetres,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + heartDist,
       forceNormal: projectGravity(curvedNorm),
       forceLateral: projectGravity(curvedLat),
       forceLong: projectGravityLong(curvedDir),
@@ -512,40 +675,29 @@ function integrateCurved(
   return idx;
 }
 
-/**
- * Returns a blend factor ∈ [0, 1] at arc position `s` along a section of
- * total length `L`. In the lead-in region `[0, leadIn]` it ramps 0 → 1 via a
- * cubic smoothstep; in the lead-out region `[L − leadOut, L]` it ramps back
- * to 0; in between it's a constant 1. Ramps guarantee zero first derivative
- * at the boundaries so the rider doesn't feel a sudden onset of curvature.
- */
-function leadInOutBlend(s: number, length: number, leadIn: number, leadOut: number): number {
-  if (leadIn > 0 && s < leadIn) {
-    const u = s / leadIn;
-    return u * u * (3 - 2 * u);
-  }
-  if (leadOut > 0 && s > length - leadOut) {
-    const u = (length - s) / leadOut;
-    return u * u * (3 - 2 * u);
-  }
-  return 1;
-}
-
 // Forced section integrator — the heart of FVD++ (spec §5, port of
 // core/secforced.cpp lines 110–135). Normal and Lateral Funcs define the
 // g-forces the rider experiences; pitch and yaw rates fall out of the
 // equations of motion so the path traces a curve that feels like the
-// requested force profile.
+// Forced — direct port of `secforced.cpp:51–183` (TIME) and `:186–311`
+// (DISTANCE). The rider's normal and lateral g-loads drive the geometry:
+// the integrator solves for angular rates that make the rider feel
+// (normalG, lateralG) at every tick, accounting for gravity. Roll is
+// taken from rollFunc.
 //
-// M4 scope note: implements the core equations from the spec template with
-// energy conservation. The exact FVD++ 0.79 bit-for-bit match (applyCenter,
-// applyTension, resistance, friction) lands once the golden-file harness
-// (M9) has real .fvd goldens to diff against.
+// Force-vector form (line 114 in C++): the felt force in WORLD coords is
+//   forceVec = −normalG · vNorm − lateralG · vLat − (0, 1, 0)
+// (gravity points down; the rider feels its opposite). Projecting
+// forceVec onto the rider's lat/norm and multiplying by F_G gives the
+// net acceleration components driving the per-tick angular rotation.
+//
+// Position step + heart-correction matches Curved (mnode.cpp:126).
+// Roll: `setRoll(rollFunc.getValue(arg)/F_HZ)` per tick, with the
+// EULER orientation kicker adding a yaw-from-last correction to keep
+// the rider upright relative to world-up.
 const forcedDir = vec3.create();
 const forcedLat = vec3.create();
 const forcedNorm = vec3.create();
-const forcedPrevLat = vec3.create();
-const forcedPrevNorm = vec3.create();
 
 function integrateForced(
   section: ForcedSection,
@@ -558,73 +710,104 @@ function integrateForced(
   if (extent <= 0) return lastIdx;
 
   let idx = lastIdx;
-  let arg = 0; // section argument — seconds for Time-arg, meters for Distance-arg.
+  let arg = 0; // seconds for TIME-arg, metres of arc for DISTANCE-arg
+  const isTime = section.argument === Argument.Time;
 
   vec3.set(forcedDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
   vec3.set(forcedLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
-  vec3.cross(forcedNorm, forcedLat, forcedDir);
+  vec3.set(forcedNorm, arrays.normX[lastIdx]!, arrays.normY[lastIdx]!, arrays.normZ[lastIdx]!);
 
   const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
 
   while (arg < extent && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
-    if (prevVel <= 1e-6) break;
+    if (prevVel <= 0.1) break; // train stalled
 
-    // Snapshot previous basis — used both to rotate the current basis and
-    // to compute the gravity contribution before the orientation changes.
-    vec3.copy(forcedPrevLat, forcedLat);
-    vec3.copy(forcedPrevNorm, forcedNorm);
+    const stepMetres = prevVel / F_HZ;
+    const nextArg = isTime ? arg + dt : arg + stepMetres;
 
-    // Sample the force functions at the current argument value.
-    const normalG = evalRoll(section.normalFunc, arg);
-    const lateralG = evalRoll(section.lateralFunc, arg);
-    const normalF = normalG * F_G;
-    const lateralF = lateralG * F_G;
+    // Sample force functions at the FORWARD end of this tick (matches
+    // `(i+1)/F_HZ` in C++ TIME branch and `length+vel/F_HZ` in DISTANCE).
+    const normalG = evalRoll(section.normalFunc, nextArg);
+    const lateralG = evalRoll(section.lateralFunc, nextArg);
 
-    // Spec §5 template: angular rates come from net acceleration perpendicular
-    // to the path. `normalG = 1` on a level track should cancel gravity
-    // exactly (zero centripetal acceleration, straight line), so the net
-    // along norm is `normalF + (gravity · norm)`. Gravity = (0, −F_G, 0),
-    // hence `gravity · norm = −F_G · norm_y`; net = normalF − F_G · norm_y.
-    const netNormal = normalF - F_G * forcedPrevNorm[1];
-    const netLateral = lateralF - F_G * forcedPrevLat[1];
+    // forceVec in world coords. FVD++'s formula at line 114:
+    //   −normalG · vNorm − lateralG · vLat − (0, 1, 0)
+    // In our sky-up norm convention, FVD's vNorm = −our_norm. Substitute:
+    //   forceVec = normalG · our_norm − lateralG · vLat − (0, 1, 0)
+    const fvX = normalG * forcedNorm[0] - lateralG * forcedLat[0];
+    const fvY = normalG * forcedNorm[1] - lateralG * forcedLat[1] - 1;
+    const fvZ = normalG * forcedNorm[2] - lateralG * forcedLat[2];
 
-    const pitchRate = netNormal / (prevVel * F_HZ);
-    const yawRate = -netLateral / (prevVel * F_HZ);
+    // Project onto rider basis. C++ negates: `nForce = −dot(forceVec, vNorm) · F_G`.
+    // With our flipped norm this becomes `nForce = +dot(forceVec, our_norm) · F_G`.
+    const nForce = (fvX * forcedNorm[0] + fvY * forcedNorm[1] + fvZ * forcedNorm[2]) * F_G;
+    const lForce = -(fvX * forcedLat[0] + fvY * forcedLat[1] + fvZ * forcedLat[2]) * F_G;
 
-    // Apply pitch around prev lat, yaw around prev (negative) norm; lat
-    // follows the yaw rotation so it stays perpendicular to the new dir.
-    rotateAroundAxis(forcedDir, forcedDir, forcedPrevLat, pitchRate);
-    rotateAroundAxis(forcedDir, forcedDir, forcedPrevNorm, -yawRate);
-    rotateAroundAxis(forcedLat, forcedLat, forcedPrevNorm, -yawRate);
+    // Heart-path distance from the previous step (or fall back to vel/F_HZ
+    // when none yet). Used as the effective velocity for the pitch-rate
+    // calculation — matches `estVel` in C++ line 122.
+    const prevHeartDist = arrays.heartDistFromLast[idx]! || prevVel / F_HZ;
+    const estVel = prevHeartDist * F_HZ;
+    const pitchRad = nForce / F_HZ / Math.max(estVel, 0.1);
+    const yawRad = -lForce / Math.max(prevVel, 0.1) / F_HZ;
 
-    // Roll from the Roll function at the same argument.
-    const rollAbs = evalRoll(section.rollFunc, arg) + rollOffset;
-    const prevRoll = arrays.roll[idx]!;
-    rotateAroundAxis(forcedLat, forcedLat, forcedDir, rollAbs - prevRoll);
+    // FVD++ composes: vDir = angleAxis(nForce/.../estVel, vLat) *
+    //                       angleAxis(-lForce/vel/F_HZ, vNorm) * prevDir
+    // i.e. yaw first (around vNorm), then pitch (around vLat).
+    // Our angle convention: rotating vDir around vLat (positive) flips
+    // direction from +X toward +Y (pitch up). Around our_norm = (−sky-up at rest),
+    // rotating +X by positive yawRad goes toward −Z. FVD++'s vNorm is the
+    // opposite; the −yawRad accounts for the sign flip — but we already
+    // flipped norm direction so the sign matches when we use our_norm
+    // directly with the same sign convention. The simplest correct form
+    // (verified by hand-checking a level turn): yaw around −our_norm.
+    rotateAroundAxis(forcedDir, forcedDir, forcedNorm, -yawRad);
+    rotateAroundAxis(forcedLat, forcedLat, forcedNorm, -yawRad);
+    rotateAroundAxis(forcedDir, forcedDir, forcedLat, pitchRad);
+    vec3.normalize(forcedDir, forcedDir);
+    vec3.normalize(forcedLat, forcedLat);
     vec3.cross(forcedNorm, forcedLat, forcedDir);
 
     idx += 1;
 
-    // Position advances along the average of old and new dir for a better
-    // second-order step. FVD++ uses this midpoint rule implicitly via its
-    // `prev.dir + curr.dir` term.
-    const avgX = (arrays.dirX[idx - 1]! + forcedDir[0]) * 0.5;
-    const avgY = (arrays.dirY[idx - 1]! + forcedDir[1]) * 0.5;
-    const avgZ = (arrays.dirZ[idx - 1]! + forcedDir[2]) * 0.5;
-    const step = prevVel * dt;
-    const posX = arrays.posX[idx - 1]! + avgX * step;
-    const posY = arrays.posY[idx - 1]! + avgY * step;
-    const posZ = arrays.posZ[idx - 1]! + avgZ * step;
+    // Midpoint position step + heart-correction (mnode.cpp:129 == :266).
+    const prevDirX = arrays.dirX[idx - 1]!;
+    const prevDirY = arrays.dirY[idx - 1]!;
+    const prevDirZ = arrays.dirZ[idx - 1]!;
+    const prevNormX = arrays.normX[idx - 1]!;
+    const prevNormY = arrays.normY[idx - 1]!;
+    const prevNormZ = arrays.normZ[idx - 1]!;
+    const halfStep = stepMetres / 2;
+    const heartCorrX = -heart * (prevNormX - forcedNorm[0]);
+    const heartCorrY = -heart * (prevNormY - forcedNorm[1]);
+    const heartCorrZ = -heart * (prevNormZ - forcedNorm[2]);
+    const posX = arrays.posX[idx - 1]! + halfStep * (forcedDir[0] + prevDirX) + heartCorrX;
+    const posY = arrays.posY[idx - 1]! + halfStep * (forcedDir[1] + prevDirY) + heartCorrY;
+    const posZ = arrays.posZ[idx - 1]! + halfStep * (forcedDir[2] + prevDirZ) + heartCorrZ;
 
-    const energy = arrays.energy[idx - 1]!;
+    // Per-tick roll delta from rollFunc, divided by F_HZ as in line 132.
+    const rollRate = evalRoll(section.rollFunc, nextArg) + rollOffset;
+    const dRollDeg = rollRate / F_HZ;
+    const dRollRad = dRollDeg * (Math.PI / 180);
+    if (dRollRad !== 0) {
+      rotateAroundAxis(forcedLat, forcedLat, forcedDir, -dRollRad);
+      vec3.cross(forcedNorm, forcedLat, forcedDir);
+    }
+    const rollAbs = (arrays.roll[idx - 1]! ?? 0) + dRollRad;
+
+    // Energy → velocity. Held at `fVel` when `bSpeed=false`.
+    const energyPrev = arrays.energy[idx - 1]!;
     const yH = posY - forcedNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH;
-    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+    const { vel, energy } = resolveVelocity(section, energyPrev, yH);
 
-    // Advance the argument. TIME-arg sections step `dt` per node; DISTANCE
-    // -arg sections step by the actual distance travelled.
-    arg += section.argument === Argument.Time ? dt : step;
+    const heartDist = Math.hypot(
+      posX - arrays.posX[idx - 1]!,
+      posY - arrays.posY[idx - 1]!,
+      posZ - arrays.posZ[idx - 1]!,
+    );
+
+    arg = nextArg;
 
     writeNode(arrays, idx, {
       position: [posX, posY, posZ],
@@ -634,10 +817,15 @@ function integrateForced(
       roll: rollAbs,
       vel,
       energy,
-      distFromLast: step,
-      heartDistFromLast: step,
-      totalLength: arrays.totalLength[idx - 1]! + step,
-      totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
+      distFromLast: stepMetres,
+      heartDistFromLast: heartDist,
+      totalLength: arrays.totalLength[idx - 1]! + stepMetres,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + heartDist,
+      // FVD++ rewrites forceNormal/forceLateral from the actual angular
+      // changes at the END of the loop (lines 162–171). For now we
+      // surface the COMMANDED values (matching what the user authored);
+      // the actuator-from-angles refinement lands when we add the §6.10
+      // engineering-analysis force columns.
       forceNormal: normalG,
       forceLateral: lateralG,
       forceLong: projectGravityLong(forcedDir),
@@ -646,14 +834,26 @@ function integrateForced(
   return idx;
 }
 
-// Geometric section integrator — pitch and yaw come directly from two
-// user-prescribed functions (rad per argument unit), instead of being
-// computed from forces as in Forced. Roll still comes from the Roll func.
-// Velocity from energy conservation. Port of core/secgeometric.cpp.
+// Geometric — direct port of `secgeometric.cpp:64–197`. Pitch and yaw rates
+// come from the normalFunc / lateralFunc (reinterpreted as angular rates
+// per `secgeometric.cpp:133–134`). Each tick:
+//
+//   pitchChange = normForce(arg) / F_HZ   (degrees)
+//   yawChange   = latForce(arg) / F_HZ    (degrees)
+//
+// `changePitch` rotates dir + lat around the world-horizontal axis
+// `normalize(cross((0, vNorm.y, 0), vDir))` — i.e. the rider's right
+// projected onto the ground plane. `changeYaw` rotates around world +Y.
+// An "upside-down" sign flip on pitch (sign = artificialRoll ≥ 90° ? −1)
+// keeps the rider upright relative to gravity.
+//
+// `artificialRoll` accumulates the cumulative roll relative to world up,
+// used both for the pitch-flip and for the EULER kicker that converts
+// world-frame yaw into a roll correction.
 const geomDir = vec3.create();
 const geomLat = vec3.create();
 const geomNorm = vec3.create();
-const geomPrevLat = vec3.create();
+const geomAxis = vec3.create();
 
 function integrateGeometric(
   section: GeometricSection,
@@ -667,66 +867,111 @@ function integrateGeometric(
 
   let idx = lastIdx;
   let arg = 0;
+  let artificialRollDeg = arrays.roll[lastIdx]! * (180 / Math.PI);
+  const isTime = section.argument === Argument.Time;
+  const DEG = Math.PI / 180;
 
   vec3.set(geomDir, arrays.dirX[lastIdx]!, arrays.dirY[lastIdx]!, arrays.dirZ[lastIdx]!);
   vec3.set(geomLat, arrays.latX[lastIdx]!, arrays.latY[lastIdx]!, arrays.latZ[lastIdx]!);
-
-  const rollOffset = arrays.roll[lastIdx]! - evalRoll(section.rollFunc, 0);
+  vec3.set(geomNorm, arrays.normX[lastIdx]!, arrays.normY[lastIdx]!, arrays.normZ[lastIdx]!);
 
   while (arg < extent && idx + 1 < arrays.capacity) {
     const prevVel = arrays.vel[idx]!;
-    if (prevVel <= 1e-6) break;
+    if (prevVel <= 0.1) break;
 
-    vec3.copy(geomPrevLat, geomLat);
+    const stepMetres = prevVel / F_HZ;
+    const nextArg = isTime ? arg + dt : arg + stepMetres;
 
-    // Sample target rates at the current argument value.
-    const pitchAt = evalRoll(section.pitchFunc, arg);
-    const yawAt = evalRoll(section.yawFunc, arg);
+    // Per-tick pitch / yaw deltas (degrees). FVD++ uses pitchFunc and
+    // yawFunc which we mirror as `pitchFunc` / `yawFunc` on the section.
+    const pitchChangeDeg = evalRoll(section.pitchFunc, nextArg) / F_HZ;
+    const yawChangeDeg = evalRoll(section.yawFunc, nextArg) / F_HZ;
+    const sign = Math.abs(artificialRollDeg) >= 90 ? -1 : 1;
 
-    // Convert "absolute angle at arg" into a per-step delta. Since evalRoll
-    // returns a cumulative value, diffing against the previously sampled
-    // value gives the delta. We stash the last sampled pair in the previous
-    // node's totalLength / totalHeartLength slots? No — keep local state
-    // via the running arg: just walk one delta per step.
-    // Simpler approach: pitchFunc and yawFunc are treated as "rate over
-    // argument" — sample instantaneous rate via subFuncDerivativeAt.
-    const pitchRate = evalFuncRate(section.pitchFunc, arg);
-    const yawRate = evalFuncRate(section.yawFunc, arg);
+    // changePitch: axis = normalize(cross((0, -our_norm.y, 0), vDir)).
+    // (FVD uses vNorm.y which is the OPPOSITE sign of our sky-up norm;
+    // hence the −our_norm.y.)
+    const horizY = -geomNorm[1];
+    geomAxis[0] = horizY * geomDir[2];
+    geomAxis[1] = 0;
+    geomAxis[2] = -horizY * geomDir[0];
+    const axLen = Math.hypot(geomAxis[0], geomAxis[2]);
+    if (axLen > 1e-9) {
+      geomAxis[0] /= axLen;
+      geomAxis[2] /= axLen;
+      const pitchRad = sign * pitchChangeDeg * DEG;
+      rotateAroundAxis(geomDir, geomDir, geomAxis, pitchRad);
+      rotateAroundAxis(geomLat, geomLat, geomAxis, pitchRad);
+    }
 
-    // Don't need pitchAt/yawAt below; void them so the lint pass stays happy.
-    void pitchAt;
-    void yawAt;
-
-    // dArg per step — seconds for Time-arg, meters for Distance-arg.
-    const step = prevVel * dt;
-    const dArg = section.argument === Argument.Time ? dt : step;
-
-    // Pitch around prev lat, yaw around world +Y (matches Curved for
-    // consistent turning behaviour; §5.1 note).
-    rotateAroundAxis(geomDir, geomDir, geomPrevLat, pitchRate * dArg);
-    vec3.rotateY(geomDir, geomDir, [0, 0, 0], yawRate * dArg);
-    vec3.rotateY(geomLat, geomLat, [0, 0, 0], yawRate * dArg);
-
-    // Roll.
-    const rollAbs = evalRoll(section.rollFunc, arg) + rollOffset;
-    const prevRoll = arrays.roll[idx]!;
-    rotateAroundAxis(geomLat, geomLat, geomDir, rollAbs - prevRoll);
+    // changeYaw: rotate around world +Y.
+    const yawRad = yawChangeDeg * DEG;
+    vec3.rotateY(geomDir, geomDir, [0, 0, 0], yawRad);
+    vec3.rotateY(geomLat, geomLat, [0, 0, 0], yawRad);
+    vec3.normalize(geomDir, geomDir);
+    vec3.normalize(geomLat, geomLat);
     vec3.cross(geomNorm, geomLat, geomDir);
 
+    // EULER orientation correction (secgeometric.cpp:156–159 + :176–178).
+    // World-frame yaw above includes a "vertical" component when the
+    // rider is pitched up/down; FVD++ decomposes:
+    //   pureRollChange = dot(vDir, world_down) · yawChange · F_HZ
+    // and applies it as an additional roll so the rider stays
+    // "upright relative to world up." Sign flip again due to our
+    // norm convention.
+    const dirDotWorldDown = -geomDir[1]; // FVD's `dot(vDir, (0,-1,0))`
+    const pureRollChangeDeg = dirDotWorldDown * yawChangeDeg;
+    if (section.orientation === Orientation.Euler) {
+      const dRollRad = pureRollChangeDeg * DEG;
+      rotateAroundAxis(geomLat, geomLat, geomDir, -dRollRad);
+      vec3.cross(geomNorm, geomLat, geomDir);
+      artificialRollDeg += pureRollChangeDeg;
+    }
+
     idx += 1;
-    const avgX = (arrays.dirX[idx - 1]! + geomDir[0]) * 0.5;
-    const avgY = (arrays.dirY[idx - 1]! + geomDir[1]) * 0.5;
-    const avgZ = (arrays.dirZ[idx - 1]! + geomDir[2]) * 0.5;
-    const posX = arrays.posX[idx - 1]! + avgX * step;
-    const posY = arrays.posY[idx - 1]! + avgY * step;
-    const posZ = arrays.posZ[idx - 1]! + avgZ * step;
 
-    const energy = arrays.energy[idx - 1]!;
+    // Midpoint position step + heart-correction.
+    const prevDirX = arrays.dirX[idx - 1]!;
+    const prevDirY = arrays.dirY[idx - 1]!;
+    const prevDirZ = arrays.dirZ[idx - 1]!;
+    const prevNormX = arrays.normX[idx - 1]!;
+    const prevNormY = arrays.normY[idx - 1]!;
+    const prevNormZ = arrays.normZ[idx - 1]!;
+    const halfStep = stepMetres / 2;
+    const heartCorrX = -heart * (prevNormX - geomNorm[0]);
+    const heartCorrY = -heart * (prevNormY - geomNorm[1]);
+    const heartCorrZ = -heart * (prevNormZ - geomNorm[2]);
+    const posX = arrays.posX[idx - 1]! + halfStep * (geomDir[0] + prevDirX) + heartCorrX;
+    const posY = arrays.posY[idx - 1]! + halfStep * (geomDir[1] + prevDirY) + heartCorrY;
+    const posZ = arrays.posZ[idx - 1]! + halfStep * (geomDir[2] + prevDirZ) + heartCorrZ;
+
+    // Per-tick roll from rollFunc.
+    const rollDeltaDeg = evalRoll(section.rollFunc, nextArg) / F_HZ;
+    const dRollRad = rollDeltaDeg * DEG;
+    if (dRollRad !== 0) {
+      rotateAroundAxis(geomLat, geomLat, geomDir, -dRollRad);
+      vec3.cross(geomNorm, geomLat, geomDir);
+    }
+    artificialRollDeg += rollDeltaDeg;
+    while (artificialRollDeg > 180) artificialRollDeg -= 360;
+    while (artificialRollDeg < -180) artificialRollDeg += 360;
+
+    const rollAbs =
+      (arrays.roll[idx - 1]! ?? 0) +
+      dRollRad +
+      (section.orientation === Orientation.Euler ? pureRollChangeDeg * DEG : 0);
+
+    const energyPrev = arrays.energy[idx - 1]!;
     const yH = posY - geomNorm[1] * heart * HEART_ENERGY_FACTOR;
-    const kinetic = energy - F_G * yH;
-    const vel = kinetic > 0 ? Math.sqrt(2 * kinetic) : 0;
+    const { vel, energy } = resolveVelocity(section, energyPrev, yH);
 
-    arg += dArg;
+    const heartDist = Math.hypot(
+      posX - arrays.posX[idx - 1]!,
+      posY - arrays.posY[idx - 1]!,
+      posZ - arrays.posZ[idx - 1]!,
+    );
+
+    arg = nextArg;
 
     writeNode(arrays, idx, {
       position: [posX, posY, posZ],
@@ -736,32 +981,16 @@ function integrateGeometric(
       roll: rollAbs,
       vel,
       energy,
-      distFromLast: step,
-      heartDistFromLast: step,
-      totalLength: arrays.totalLength[idx - 1]! + step,
-      totalHeartLength: arrays.totalHeartLength[idx - 1]! + step,
+      distFromLast: stepMetres,
+      heartDistFromLast: heartDist,
+      totalLength: arrays.totalLength[idx - 1]! + stepMetres,
+      totalHeartLength: arrays.totalHeartLength[idx - 1]! + heartDist,
       forceNormal: projectGravity(geomNorm),
       forceLateral: projectGravity(geomLat),
       forceLong: projectGravityLong(geomDir),
     });
   }
   return idx;
-}
-
-/**
- * Sample the instantaneous rate (derivative w.r.t. argument) of a Func at
- * arc position `s`. Walks the subfuncs the same way `evalRoll` does but
- * returns the local derivative instead of the accumulated value.
- */
-function evalFuncRate(func: Func, s: number): number {
-  let offset = 0;
-  for (const sf of func.subfuncs) {
-    if (s <= offset + sf.length) {
-      return subFuncDerivativeAt(sf, s - offset);
-    }
-    offset += sf.length;
-  }
-  return 0;
 }
 
 // -- helpers ----------------------------------------------------------------
@@ -833,70 +1062,9 @@ function projectGravity(axis: vec3): number {
 }
 
 /**
- * Compute the four cubic-Bezier control points the integrator actually uses
- * for a `BezierSection`, given the section's stored controlPoints and the
- * previous section's end pose.
- *
- * Auto-anchor contract:
- *   - p0' is always the previous section's end position.
- *   - p1' lies along the previous section's end direction at the user's
- *     chosen handle length (|stored p1 − stored p0|).
- *   - p2' and p3' are translated by the same delta as p0 (preserves the
- *     curve's user-authored shape relative to its start).
- *
- * End-side anchoring (matching the track anchor) is handled by
- * `integrateClosure` for `Closure` sections — not here.
- */
-function effectiveBezierControlPoints(
-  section: BezierSection,
-  arrays: MNodeArrays,
-  lastIdx: number,
-): [
-  readonly [number, number, number],
-  readonly [number, number, number],
-  readonly [number, number, number],
-  readonly [number, number, number],
-] {
-  const [storedP0, storedP1, storedP2, storedP3] = section.controlPoints;
-
-  const prevPos: [number, number, number] = [
-    arrays.posX[lastIdx]!,
-    arrays.posY[lastIdx]!,
-    arrays.posZ[lastIdx]!,
-  ];
-  const prevDir: [number, number, number] = [
-    arrays.dirX[lastIdx]!,
-    arrays.dirY[lastIdx]!,
-    arrays.dirZ[lastIdx]!,
-  ];
-
-  const handle1Len = Math.hypot(
-    storedP1[0] - storedP0[0],
-    storedP1[1] - storedP0[1],
-    storedP1[2] - storedP0[2],
-  );
-
-  const p0: [number, number, number] = [...prevPos];
-  const p1: [number, number, number] = [
-    prevPos[0] + prevDir[0] * handle1Len,
-    prevPos[1] + prevDir[1] * handle1Len,
-    prevPos[2] + prevDir[2] * handle1Len,
-  ];
-
-  // Translate p2 and p3 alongside p0 so the curve's user-authored shape
-  // moves with the section's start.
-  const dx = prevPos[0] - storedP0[0];
-  const dy = prevPos[1] - storedP0[1];
-  const dz = prevPos[2] - storedP0[2];
-  const p2: [number, number, number] = [storedP2[0] + dx, storedP2[1] + dy, storedP2[2] + dz];
-  const p3: [number, number, number] = [storedP3[0] + dx, storedP3[1] + dy, storedP3[2] + dz];
-  return [p0, p1, p2, p3];
-}
-
-/**
  * Anchor's forward direction from its (yaw, pitch). Matches the convention
  * used by `integrateAnchor` (yaw around +Y, then pitch around the yawed
- * lateral axis = +Z·yaw). Used by closeTrack and effectiveBezierControlPoints.
+ * lateral axis = +Z·yaw). Used by `closeTrack` and `integrateClosure`.
  */
 function anchorForwardFromYawPitch(yaw: number, pitch: number): [number, number, number] {
   const cy = Math.cos(yaw);

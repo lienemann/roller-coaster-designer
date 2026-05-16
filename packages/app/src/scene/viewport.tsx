@@ -675,8 +675,23 @@ export function Viewport({
     const scene = new Scene();
     scene.background = new Color(0x0b0b0b);
 
-    const grid = new GridHelper(200, 40, 0x333333, 0x222222);
-    scene.add(grid);
+    // Two-layer grid matching FVD++'s look: a fine 1 m grid behind a heavier
+    // 10 m grid. Centre lines (X and Z axes) on the major grid pop a little
+    // so the rider can read scale at a glance.
+    //   fine:  200 × 200 m at 1 m  → 200 divisions
+    //   major: 200 × 200 m at 10 m → 20 divisions, bright centre line
+    const fineGrid = new GridHelper(200, 200, 0x222222, 0x1a1a1a);
+    fineGrid.material.transparent = true;
+    fineGrid.material.opacity = 0.55;
+    fineGrid.renderOrder = -2;
+    scene.add(fineGrid);
+
+    const majorGrid = new GridHelper(200, 20, 0x6a6a6a, 0x3a3a3a);
+    majorGrid.material.transparent = true;
+    majorGrid.material.opacity = 0.85;
+    majorGrid.position.y = 0.002; // tiny lift so it wins z-fights with fine
+    majorGrid.renderOrder = -1;
+    scene.add(majorGrid);
 
     // A wide invisible plane that only renders cast shadows. Keeps the
     // grid visible (no solid ground competing for attention) while giving

@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { SEC_TYPE_NAMES, SecType, type Section } from '@roller-coaster-designer/core';
-import { useCallback } from 'react';
+import {
+  SEC_TYPE_NAMES,
+  SecType,
+  lintFvdCompatibility,
+  sectionHasFvdCompatIssue,
+  type FvdCompatNote,
+  type Section,
+} from '@roller-coaster-designer/core';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAppStore } from '../state/store.js';
@@ -19,13 +26,22 @@ export function SectionsPanel(): JSX.Element {
   const selectSection = useAppStore((s) => s.selectSection);
   const addStraight = useAppStore((s) => s.addStraightSection);
   const addCurved = useAppStore((s) => s.addCurvedSection);
+  const addLoop = useAppStore((s) => s.addLoopSection);
   const addBezier = useAppStore((s) => s.addBezierSection);
   const removeSection = useAppStore((s) => s.removeSection);
   const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
+  const insertAfterSelection = useAppStore((s) => s.insertAfterSelection);
+  const setInsertAfterSelection = useAppStore((s) => s.setInsertAfterSelection);
 
   const sections = project?.tracks[0]?.sections ?? [];
   const hasClosure = sections.some((s) => s.type === SecType.Closure);
   const canAdd = project !== null && sections.length > 0;
+  // Per-section FVD compatibility audit. Memoised so the marker stays
+  // stable while the user clicks around without editing the project.
+  const compatNotes: FvdCompatNote[] = useMemo(
+    () => (project ? lintFvdCompatibility(project) : []),
+    [project],
+  );
   // Closure needs at least the anchor + one non-anchor section before it
   // can re-enter the anchor tangentially.
   const canClose = project !== null && sections.length >= 2 && !hasClosure;
@@ -61,6 +77,11 @@ export function SectionsPanel(): JSX.Element {
         )}
         {sections.map((section, i) => {
           const isSelected = i === selectedIndex;
+          const incompatible = sectionHasFvdCompatIssue(compatNotes, 0, i);
+          const issueTitle = compatNotes
+            .filter((n) => n.sectionIndex === i)
+            .map((n) => n.message)
+            .join('\n');
           return (
             <li
               key={i}
@@ -83,6 +104,13 @@ export function SectionsPanel(): JSX.Element {
                 <span className="mr-2 text-neutral-500">{i + 1}.</span>
                 <span>{section.name || sectionTypeName(section)}</span>
                 <span className="ml-2 text-neutral-500">{sectionTypeName(section)}</span>
+                {incompatible && (
+                  <span
+                    className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle"
+                    title={issueTitle}
+                    aria-label={t('common:sections.fvdIncompatible')}
+                  />
+                )}
               </span>
               {i > 0 && (
                 <button
@@ -101,12 +129,22 @@ export function SectionsPanel(): JSX.Element {
       </ol>
 
       <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
+        <label className="flex items-center gap-2 px-1 text-[11px] text-neutral-400">
+          <input
+            type="checkbox"
+            checked={insertAfterSelection}
+            onChange={(e) => setInsertAfterSelection(e.target.checked)}
+            className="h-3 w-3"
+          />
+          {t('common:sections.insertAfterSelection')}
+        </label>
         <AddButton
           onClick={addStraight}
           disabled={!canAdd}
           label={t('common:sections.addStraight')}
         />
         <AddButton onClick={addCurved} disabled={!canAdd} label={t('common:sections.addCurved')} />
+        <AddButton onClick={addLoop} disabled={!canAdd} label={t('common:sections.addLoop')} />
         <AddButton onClick={addBezier} disabled={!canAdd} label={t('common:sections.addBezier')} />
         {/* Close Track lives with the add buttons: it appends a closure
             Bezier back to the anchor. Same button row, different glyph. */}

@@ -19,6 +19,8 @@ import {
 import { createEmptyFunc, type Func } from '../../model/function.js';
 import { type Project } from '../../model/project.js';
 import {
+  firstCubicOf,
+  segmentsFromCubic,
   type AnchorSection,
   type BezierSection,
   type ClosureSection,
@@ -114,29 +116,50 @@ describe('writeFvd — round-trip', () => {
     expect(straight.name).toBe('Run 1');
   });
 
-  it('round-trips a pure-yaw Curved (level turn)', () => {
-    const length = 20;
-    const yawRate = Math.PI / 2 / length;
+  it('round-trips a vertical loop (Curved with fDirection=0)', () => {
     const project = wrapProject([
       makeAnchor(),
       {
         type: SecType.Curved,
-        name: 'Turn',
-        length,
-        pitchRate: 0,
-        yawRate,
-        leadIn: 0,
-        leadOut: 0,
-        rollFunc: emptyRollFunc(length),
+        name: 'Loop',
+        fAngle: 360,
+        fRadius: 8,
+        fDirection: 0,
+        fLeadIn: 0,
+        fLeadOut: 0,
+        rollFunc: emptyRollFunc(360),
       } satisfies CurvedSection,
     ]);
     const out = roundtrip(project);
     const curved = out.tracks[0]!.sections[1]!;
     expect(curved.type).toBe(SecType.Curved);
     if (curved.type !== SecType.Curved) return;
-    expect(curved.length).toBeCloseTo(length, 3);
-    expect(curved.yawRate).toBeCloseTo(yawRate, 5);
-    expect(curved.pitchRate).toBeCloseTo(0, 5);
+    expect(curved.fAngle).toBeCloseTo(360, 3);
+    expect(curved.fRadius).toBeCloseTo(8, 3);
+    expect(curved.fDirection).toBeCloseTo(0, 3);
+  });
+
+  it('round-trips a level turn (Curved with fDirection=90)', () => {
+    const project = wrapProject([
+      makeAnchor(),
+      {
+        type: SecType.Curved,
+        name: 'Turn',
+        fAngle: 90,
+        fRadius: 20,
+        fDirection: 90,
+        fLeadIn: 10,
+        fLeadOut: 10,
+        rollFunc: emptyRollFunc(90),
+      } satisfies CurvedSection,
+    ]);
+    const out = roundtrip(project);
+    const curved = out.tracks[0]!.sections[1]!;
+    expect(curved.type).toBe(SecType.Curved);
+    if (curved.type !== SecType.Curved) return;
+    expect(curved.fAngle).toBeCloseTo(90, 3);
+    expect(curved.fDirection).toBeCloseTo(90, 3);
+    expect(curved.fLeadIn).toBeCloseTo(10, 3);
   });
 
   it('round-trips a Forced section', () => {
@@ -170,9 +193,7 @@ describe('writeFvd — round-trip', () => {
   it('round-trips a Geometric section', () => {
     const length = 8;
     const pitchFunc = createEmptyFunc(EFuncType.Pitch, 'Pitch');
-    pitchFunc.subfuncs.push(
-      createLinearSubFunc({ length, startValue: 0, endValue: (Math.PI / 6) }),
-    );
+    pitchFunc.subfuncs.push(createLinearSubFunc({ length, startValue: 0, endValue: Math.PI / 6 }));
     const yawFunc = createEmptyFunc(EFuncType.Yaw, 'Yaw');
     yawFunc.subfuncs.push(createLinearSubFunc({ length, startValue: 0, endValue: 0 }));
     const project = wrapProject([
@@ -181,6 +202,7 @@ describe('writeFvd — round-trip', () => {
         type: SecType.Geometric,
         name: 'Geo',
         argument: Argument.Distance,
+        orientation: Orientation.Euler,
         extent: length,
         rollFunc: emptyRollFunc(length),
         pitchFunc,
@@ -197,7 +219,12 @@ describe('writeFvd — round-trip', () => {
   });
 
   it('round-trips a Bezier section preserving all four control points', () => {
-    const cp: BezierSection['controlPoints'] = [
+    const cp: [
+      [number, number, number],
+      [number, number, number],
+      [number, number, number],
+      [number, number, number],
+    ] = [
       [0, 10, 0],
       [5, 15, 1],
       [10, 12, 2],
@@ -208,7 +235,7 @@ describe('writeFvd — round-trip', () => {
       {
         type: SecType.Bezier,
         name: 'Bend',
-        controlPoints: cp,
+        segments: segmentsFromCubic(cp[0], cp[1], cp[2], cp[3]),
         rollFunc: emptyRollFunc(20),
         smoothStart: false,
         smoothEnd: false,
@@ -218,9 +245,10 @@ describe('writeFvd — round-trip', () => {
     const bez = out.tracks[0]!.sections[1]!;
     expect(bez.type).toBe(SecType.Bezier);
     if (bez.type !== SecType.Bezier) return;
+    const got = firstCubicOf(bez);
     for (let i = 0; i < 4; i += 1) {
       for (let axis = 0; axis < 3; axis += 1) {
-        expect(bez.controlPoints[i]![axis]).toBeCloseTo(cp[i]![axis], 4);
+        expect(got[i]![axis]).toBeCloseTo(cp[i]![axis]!, 4);
       }
     }
   });
@@ -274,9 +302,9 @@ describe('writeFvd — round-trip', () => {
       ...open,
       tracks: [closeTrack(open.tracks[0]!)],
     };
-    expect(
-      closed.tracks[0]!.sections[closed.tracks[0]!.sections.length - 1]!.type,
-    ).toBe(SecType.Closure);
+    expect(closed.tracks[0]!.sections[closed.tracks[0]!.sections.length - 1]!.type).toBe(
+      SecType.Closure,
+    );
 
     const out = roundtrip(closed);
     // The closure round-trips as a Bezier — FVD++ has no closure concept.
@@ -285,9 +313,10 @@ describe('writeFvd — round-trip', () => {
     expect(last.type).toBe(SecType.Bezier);
     if (last.type !== SecType.Bezier) return;
     // p3 should be at the anchor position (within float32 precision).
-    expect(last.controlPoints[3][0]).toBeCloseTo(10, 2);
-    expect(last.controlPoints[3][1]).toBeCloseTo(20, 2);
-    expect(last.controlPoints[3][2]).toBeCloseTo(30, 2);
+    const lastCubic = firstCubicOf(last);
+    expect(lastCubic[3][0]).toBeCloseTo(10, 2);
+    expect(lastCubic[3][1]).toBeCloseTo(20, 2);
+    expect(lastCubic[3][2]).toBeCloseTo(30, 2);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   createEmptyProject,
   createLinearSubFunc,
   regenerateClosure,
+  segmentsFromCubic,
   type AnchorSection,
   type BezierSection,
   type CurvedSection,
@@ -73,8 +74,15 @@ export interface AppState {
   /** Section editing on the first track. */
   readonly addStraightSection: () => void;
   readonly addCurvedSection: () => void;
+  readonly addLoopSection: () => void;
   readonly addBezierSection: () => void;
   readonly removeSection: (index: number) => void;
+
+  /** When true, new sections insert after the currently-selected section
+   *  instead of at the end. Mirrors FVD++'s "insert at cursor" affordance —
+   *  handy for splicing a curve in the middle of an existing layout. */
+  readonly insertAfterSelection: boolean;
+  readonly setInsertAfterSelection: (flag: boolean) => void;
 
   /** Selection drives the properties panel. M4+ also drives viewport handles. */
   readonly selectedSectionIndex: number | null;
@@ -178,8 +186,9 @@ export const useAppStore = create<AppState>((set) => ({
       };
     }),
 
-  addStraightSection: () => set((state) => appendSection(state, makeDefaultStraight())),
-  addCurvedSection: () => set((state) => appendSection(state, makeDefaultCurved())),
+  addStraightSection: () => set((state) => insertSection(state, makeDefaultStraight())),
+  addCurvedSection: () => set((state) => insertSection(state, makeDefaultCurved())),
+  addLoopSection: () => set((state) => insertSection(state, makeDefaultLoop())),
   addBezierSection: () =>
     set((state) => {
       // Take the last computed node's pose so the new bezier starts where
@@ -187,7 +196,7 @@ export const useAppStore = create<AppState>((set) => ({
       // Falls back to the hardcoded default if no geometry exists yet.
       const track = state.tracks[0];
       if (!track || track.nodeCount < 2) {
-        return appendSection(state, makeDefaultBezier());
+        return insertSection(state, makeDefaultBezier());
       }
       const n = track.nodeCount;
       const p = [
@@ -210,18 +219,21 @@ export const useAppStore = create<AppState>((set) => ({
       const sec: BezierSection = {
         type: SecType.Bezier,
         name: 'Bezier',
-        controlPoints: [
+        segments: segmentsFromCubic(
           [p[0], p[1], p[2]],
           [p[0] + ux * 5, p[1] + uy * 5, p[2] + uz * 5],
           [p[0] + ux * 10, p[1] + uy * 10, p[2] + uz * 10],
           [p[0] + ux * 15, p[1] + uy * 15, p[2] + uz * 15],
-        ],
+        ),
         rollFunc: createEmptyFunc(EFuncType.Roll),
         smoothStart: true,
         smoothEnd: true,
       };
-      return appendSection(state, sec);
+      return insertSection(state, sec);
     }),
+
+  insertAfterSelection: false,
+  setInsertAfterSelection: (flag) => set({ insertAfterSelection: flag }),
 
   removeSection: (index) =>
     set((state) => {
@@ -294,14 +306,15 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       environment: {
         ...state.environment,
-        floorTileMeters: Number.isFinite(meters) && meters > 0 ? meters : state.environment.floorTileMeters,
+        floorTileMeters:
+          Number.isFinite(meters) && meters > 0 ? meters : state.environment.floorTileMeters,
       },
     })),
 }));
 
 // --- helpers ---------------------------------------------------------------
 
-function appendSection(state: AppState, section: Section): Partial<AppState> {
+function insertSection(state: AppState, section: Section): Partial<AppState> {
   if (!state.project) return state;
   const tracks = state.project.tracks.length === 0 ? [makeStarterTrack()] : state.project.tracks;
   const first = tracks[0]!;
@@ -314,11 +327,22 @@ function appendSection(state: AppState, section: Section): Partial<AppState> {
   if (section.type === SecType.Closure && closureIdx !== -1) {
     return state; // silently no-op; the UI guards against this too.
   }
-  const nextSections =
-    closureIdx === -1
-      ? [...first.sections, section]
-      : [...first.sections.slice(0, closureIdx), section, ...first.sections.slice(closureIdx)];
-  const focusIdx = closureIdx === -1 ? nextSections.length - 1 : closureIdx;
+  // Insert position: when "insert after selection" is on and the user has a
+  // section selected (not the anchor — anchor is index 0 and inserting at 1
+  // is fine), splice right after it. Otherwise append at the end (still
+  // before the closure, if any).
+  const sel = state.selectedSectionIndex;
+  const endIdx = closureIdx === -1 ? first.sections.length : closureIdx;
+  const insertAt =
+    state.insertAfterSelection && sel !== null && sel >= 0 && sel < endIdx
+      ? Math.min(sel + 1, endIdx)
+      : endIdx;
+  const nextSections = [
+    ...first.sections.slice(0, insertAt),
+    section,
+    ...first.sections.slice(insertAt),
+  ];
+  const focusIdx = insertAt;
   // After splicing in front of an existing closure, refresh the closure's
   // handle lengths so it stays aligned with the new upstream end pose.
   const rebuilt = regenerateClosure({ ...first, sections: nextSections });
@@ -368,16 +392,37 @@ function makeDefaultStraight(): StraightSection {
 }
 
 function makeDefaultCurved(): CurvedSection {
+  // Default to a gentle 45° level turn at 20 m radius.
+  const fAngle = 45;
   const rollFunc = createEmptyFunc(EFuncType.Roll);
-  rollFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0 }));
+  rollFunc.subfuncs.push(createLinearSubFunc({ length: fAngle, startValue: 0, endValue: 0 }));
   return {
     type: SecType.Curved,
     name: 'Curve',
-    length: 20,
-    pitchRate: 0,
-    yawRate: Math.PI / 4 / 20, // 45° over 20 m
-    leadIn: 3,
-    leadOut: 3,
+    fAngle,
+    fRadius: 20,
+    fDirection: 90, // 90 = level turn; 0 = vertical loop
+    fLeadIn: 10,
+    fLeadOut: 10,
+    rollFunc,
+  };
+}
+
+/** A full 360° vertical loop. `fDirection=0` makes the rotation axis
+ *  horizontal-lateral, so the train pitches up + over + down. Modest
+ *  lead-in/out so the entry is comfortable. */
+function makeDefaultLoop(): CurvedSection {
+  const fAngle = 360;
+  const rollFunc = createEmptyFunc(EFuncType.Roll);
+  rollFunc.subfuncs.push(createLinearSubFunc({ length: fAngle, startValue: 0, endValue: 0 }));
+  return {
+    type: SecType.Curved,
+    name: 'Loop',
+    fAngle,
+    fRadius: 8,
+    fDirection: 0,
+    fLeadIn: 30,
+    fLeadOut: 30,
     rollFunc,
   };
 }
@@ -386,12 +431,7 @@ function makeDefaultBezier(): BezierSection {
   return {
     type: SecType.Bezier,
     name: 'Bezier',
-    controlPoints: [
-      [0, 0, 0],
-      [5, 0, 0],
-      [10, 2, 0],
-      [15, 2, 0],
-    ],
+    segments: segmentsFromCubic([0, 0, 0], [5, 0, 0], [10, 2, 0], [15, 2, 0]),
     rollFunc: createEmptyFunc(EFuncType.Roll),
     smoothStart: true,
     smoothEnd: true,

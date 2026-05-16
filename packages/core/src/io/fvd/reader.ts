@@ -34,15 +34,24 @@
 //     funcs).
 
 import { WebFvdError } from '../../errors.js';
-import { Argument, EDegree, EFuncType, Orientation, SecType, TrackStyle } from '../../model/enums.js';
+import {
+  Argument,
+  EDegree,
+  EFuncType,
+  Orientation,
+  SecType,
+  TrackStyle,
+} from '../../model/enums.js';
 import { type Func, createEmptyFunc } from '../../model/function.js';
 import { createEmptyProject, type Project } from '../../model/project.js';
 import {
   type AnchorSection,
   type BezierSection,
+  type BezierSegment,
   type CurvedSection,
   type ForcedSection,
   type GeometricSection,
+  type NoLimitsCSVNode,
   type NoLimitsCSVSection,
   type Section,
   type StraightSection,
@@ -94,18 +103,16 @@ export function parseFvd(bytes: Uint8Array): FvdParseResult {
 
   const magic = cursor.readTag(PROJECT_MAGIC.length);
   if (magic !== PROJECT_MAGIC) {
-    throw new WebFvdError(
-      'io.fvdMalformed',
-      { reason: 'bad-magic', got: magic, expected: PROJECT_MAGIC },
-    );
+    throw new WebFvdError('io.fvdMalformed', {
+      reason: 'bad-magic',
+      got: magic,
+      expected: PROJECT_MAGIC,
+    });
   }
 
   const version = cursor.readTag(VERSION_LENGTH);
   if (version !== 'v0.77' && version !== 'v0.30') {
-    throw new WebFvdError(
-      'schema.versionUnsupported',
-      { got: version, expected: 'v0.77' },
-    );
+    throw new WebFvdError('schema.versionUnsupported', { got: version, expected: 'v0.77' });
   }
   const legacy = version === 'v0.30';
 
@@ -123,10 +130,11 @@ export function parseFvd(bytes: Uint8Array): FvdParseResult {
       break;
     }
     if (tag !== TRACK_TAG) {
-      throw new WebFvdError(
-        'io.fvdMalformed',
-        { reason: 'unexpected-tag', got: tag, expected: `${TRACK_TAG}|${PROJECT_END_TAG}` },
-      );
+      throw new WebFvdError('io.fvdMalformed', {
+        reason: 'unexpected-tag',
+        got: tag,
+        expected: `${TRACK_TAG}|${PROJECT_END_TAG}`,
+      });
     }
     const track = readTrack(cursor, legacy, warnings);
     project.tracks.push(track);
@@ -145,27 +153,26 @@ function readTrack(cursor: FvdCursor, legacy: boolean, warnings: string[]): Trac
   }
 
   const name = cursor.readLstr();
-  // 3 × QColor = 48 bytes, opaque to us (spec §3.1).
-  cursor.skip(48);
+  // 3 × QColor = 48 bytes — preserve opaquely as hex so a round-trip
+  // doesn't lose the user's colour choices (FVD++ uses Qt's internal
+  // QColor layout; we don't reinterpret).
+  const colorsHex = cursor.readRawHex(48);
   const startPos = cursor.readReversedVec3();
   const anchorRollDeg = cursor.readF32();
   const startPitchDeg = cursor.readF32();
   const startYawDeg = cursor.readF32();
   const anchorVel = cursor.readF32();
-  // anchor.forceNormal / forceLateral — display state, not part of the
-  // anchor pose. The integrator computes them from gravity. Skip them in
-  // the model but read past them for offset correctness.
-  cursor.readF32(); // forceNormal
-  cursor.readF32(); // forceLateral
+  const anchorForceNormal = cursor.readF32();
+  const anchorForceLateral = cursor.readF32();
   const heart = cursor.readF32();
   const friction = cursor.readF32();
   const resistance = cursor.readF32();
-  cursor.readBool(); // drawTrack — UI state
-  cursor.readI32(); // drawHeartline — UI state
+  const drawTrack = cursor.readBool();
+  const drawHeartline = cursor.readI32();
   const styleId = cursor.readI32();
-  cursor.readBool(); // isWireframe — UI state
-  cursor.readF32(); // povPos.x — UI state
-  cursor.readF32(); // povPos.y — UI state
+  const isWireframe = cursor.readBool();
+  const povPosX = cursor.readF32();
+  const povPosY = cursor.readF32();
 
   const sectionCount = cursor.readI32();
   if (sectionCount < 0 || sectionCount > 1_000_000) {
@@ -193,8 +200,7 @@ function readTrack(cursor: FvdCursor, legacy: boolean, warnings: string[]): Trac
   }
   const smoothers: Smoother[] = [];
   for (let i = 0; i < smootherCount; i += 1) {
-    const sm = readSmoother(cursor);
-    if (sm !== null) smoothers.push(sm);
+    smoothers.push(readSmoother(cursor));
   }
 
   const closing = cursor.readTag(3);
@@ -214,6 +220,15 @@ function readTrack(cursor: FvdCursor, legacy: boolean, warnings: string[]): Trac
     resistance,
     sections,
     smoothers,
+    fvdDisplay: {
+      colorsHex,
+      drawTrack,
+      drawHeartline,
+      isWireframe,
+      povPos: [povPosX, povPosY],
+      anchorForceNormal,
+      anchorForceLateral,
+    },
   };
 }
 
@@ -245,53 +260,44 @@ function readSection(cursor: FvdCursor, legacy: boolean, warnings: string[]): Se
 }
 
 function readStraight(cursor: FvdCursor): StraightSection {
-  cursor.readBool(); // bSpeed — display intent, not pose
+  const bSpeed = cursor.readBool();
   const name = cursor.readLstr();
-  cursor.readF32(); // fVel — pose carried by the integrator
+  const fVel = cursor.readF32();
   const length = cursor.readF32();
   const rollFunc = readFunc(cursor, EFuncType.Roll);
-  return { type: SecType.Straight, name, length, rollFunc };
+  return { type: SecType.Straight, name, length, rollFunc, bSpeed, fVel };
 }
 
 function readCurved(cursor: FvdCursor): CurvedSection {
-  cursor.readBool(); // bSpeed
+  const bSpeed = cursor.readBool();
   const name = cursor.readLstr();
-  cursor.readF32(); // fVel
-  const angleDeg = cursor.readF32();
-  const radius = cursor.readF32();
-  cursor.readF32(); // fDirection — degrees of helix tilt; not yet modeled
-  const leadInDeg = cursor.readF32();
-  const leadOutDeg = cursor.readF32();
-  cursor.readBool(); // bOrientation — solver flag, not pose
+  const fVel = cursor.readF32();
+  const fAngle = cursor.readF32();
+  const fRadius = cursor.readF32();
+  const fDirection = cursor.readF32();
+  const fLeadIn = cursor.readF32();
+  const fLeadOut = cursor.readF32();
+  const orientation = cursor.readBool() ? Orientation.Quaternion : Orientation.Euler;
 
   const rollFunc = readFunc(cursor, EFuncType.Roll);
-
-  // FVD++ stores the curve as total angle + radius; our model uses
-  // length + pitchRate + yawRate. Convert: arc length = radius·angle (rad);
-  // until we model fDirection, treat the curve as pure-yaw (level turn).
-  const angleRad = angleDeg * DEG;
-  const length = Math.abs(radius * angleRad);
-  const yawRate = length > 0 ? angleRad / length : 0;
-
-  // fLeadIn/fLeadOut are degrees of ridden angle; convert to a metres-based
-  // lead distance via the same arc-length relation.
-  const leadIn = Math.abs(radius * leadInDeg * DEG);
-  const leadOut = Math.abs(radius * leadOutDeg * DEG);
 
   return {
     type: SecType.Curved,
     name,
-    length,
-    pitchRate: 0,
-    yawRate,
-    leadIn,
-    leadOut,
+    fAngle,
+    fRadius,
+    fDirection,
+    fLeadIn,
+    fLeadOut,
     rollFunc,
+    bSpeed,
+    fVel,
+    orientation,
   };
 }
 
 function readForced(cursor: FvdCursor, legacy: boolean, warnings: string[]): ForcedSection {
-  const name = readForcedHeader(cursor, legacy, warnings, 'FRC');
+  const { name, bSpeed, fVel } = readForcedHeader(cursor, legacy, warnings, 'FRC');
   const orientation = cursor.readBool() ? Orientation.Quaternion : Orientation.Euler;
   const argument = cursor.readBool() ? Argument.Distance : Argument.Time;
 
@@ -299,9 +305,6 @@ function readForced(cursor: FvdCursor, legacy: boolean, warnings: string[]): For
   const normalFunc = readFunc(cursor, EFuncType.Normal);
   const lateralFunc = readFunc(cursor, EFuncType.Lateral);
 
-  // iTime is integer milliseconds; convert to seconds for our extent. If
-  // the section is DISTANCE-argument, FVD++ still stores the value in the
-  // iTime slot and reinterprets at integration time — preserve as-is.
   const extentRaw = readForcedExtent(cursor);
   const extent = argument === Argument.Time ? extentRaw / 1000 : extentRaw;
 
@@ -314,12 +317,14 @@ function readForced(cursor: FvdCursor, legacy: boolean, warnings: string[]): For
     rollFunc,
     normalFunc,
     lateralFunc,
+    bSpeed,
+    fVel,
   };
 }
 
 function readGeometric(cursor: FvdCursor, warnings: string[]): GeometricSection {
-  const name = readForcedHeader(cursor, false, warnings, 'GEO');
-  cursor.readBool(); // orientation — not part of geometric model surface
+  const { name, bSpeed, fVel } = readForcedHeader(cursor, false, warnings, 'GEO');
+  const orientation = cursor.readBool() ? Orientation.Quaternion : Orientation.Euler;
   const argument = cursor.readBool() ? Argument.Distance : Argument.Time;
 
   const rollFunc = readFunc(cursor, EFuncType.Roll);
@@ -333,10 +338,13 @@ function readGeometric(cursor: FvdCursor, warnings: string[]): GeometricSection 
     type: SecType.Geometric,
     name,
     argument,
+    orientation,
     extent,
     rollFunc,
     pitchFunc,
     yawFunc,
+    bSpeed,
+    fVel,
   };
 }
 
@@ -355,17 +363,18 @@ function readForcedHeader(
   legacy: boolean,
   warnings: string[],
   tag: 'FRC' | 'GEO',
-): string {
-  cursor.readBool(); // bSpeed
+): { name: string; bSpeed: boolean; fVel: number } {
+  const bSpeed = cursor.readBool();
   const name = cursor.readLstr();
+  let fVel = 0;
   if (!(legacy && tag === 'FRC')) {
-    cursor.readF32(); // fVel
+    fVel = cursor.readF32();
   } else {
     warnings.push(
       'fvd: legacy v0.30 forced section omits fVel; defaulting to 0 for the rest of this track',
     );
   }
-  return name;
+  return { name, bSpeed, fVel };
 }
 
 function readForcedExtent(cursor: FvdCursor): number {
@@ -380,48 +389,33 @@ function readBezier(cursor: FvdCursor): BezierSection {
     throw new WebFvdError('io.fvdMalformed', { reason: 'absurd-bezier-count', bezCount });
   }
 
-  // FVD++ stores the spline as a list of `bezier_t` entries each holding
-  // a junction anchor and the two handle-control-points used by the cubic
-  // *ending* at that anchor (mnode.cpp:169–176):
+  // FVD++ stores the spline as a list of `bezier_t` entries (mnode.cpp:169–176):
   //   segment[i].P1  = anchor at i
   //   segment[i].Kp1 = outgoing handle from segment[i-1].P1
   //   segment[i].Kp2 = incoming handle into segment[i].P1
-  // segment[0]'s Kp1/Kp2 are sentinels (no cubic ends there).
-  //
-  // Our `BezierSection` carries one cubic. We reconstruct it from the
-  // FIRST cubic in the chain: segment[0].P1 (start), segment[1].Kp1 +
-  // segment[1].Kp2 (handles), segment[1].P1 (end). Multi-segment chains
-  // lose everything past the first cubic — TODO when we extend
-  // BezierSection to a polyline.
-  let p0: [number, number, number] = [0, 0, 0];
-  let p1: [number, number, number] = [0, 0, 0];
-  let p2: [number, number, number] = [0, 0, 0];
-  let p3: [number, number, number] = [0, 0, 0];
-
+  // The cubic between segment[i-1] and segment[i] is sampled by
+  // `runBezierCubic` in the integrator. Our `BezierSection.segments` is
+  // the single source of truth — the same chain that gets read here is
+  // walked by the integrator and emitted by the writer, so a `.fvd`
+  // round-trip is identical in geometry, physics, and NL2 output.
+  const segments: BezierSegment[] = [];
   for (let i = 0; i < bezCount; i += 1) {
-    const segP1 = cursor.readReversedVec3();
-    const segKp1 = cursor.readReversedVec3();
-    const segKp2 = cursor.readReversedVec3();
-    cursor.readBool(); // contRoll
-    cursor.readBool(); // relRoll
-    cursor.readF32(); // roll
-
-    if (i === 0) p0 = segP1;
-    if (i === 1) {
-      p1 = segKp1;
-      p2 = segKp2;
-      p3 = segP1;
-    }
+    const P1 = cursor.readReversedVec3();
+    const Kp1 = cursor.readReversedVec3();
+    const Kp2 = cursor.readReversedVec3();
+    const contRoll = cursor.readBool();
+    const relRoll = cursor.readBool();
+    const roll = cursor.readF32();
+    segments.push({ P1, Kp1, Kp2, contRoll, relRoll, roll });
   }
-  // bezCount === 1: only the start anchor was stored. Treat as a
-  // degenerate point — the curve has no length. Leave p1..p3 at origin.
 
   const supCount = cursor.readI32();
   if (supCount < 0 || supCount > 100_000) {
     throw new WebFvdError('io.fvdMalformed', { reason: 'absurd-supcount', supCount });
   }
+  const supports: [number, number, number][] = [];
   for (let i = 0; i < supCount; i += 1) {
-    cursor.readReversedVec3(); // discard support points; UI-only
+    supports.push(cursor.readReversedVec3());
   }
 
   // Roll sub-curve isn't separately stored — the roll values live on each
@@ -432,10 +426,11 @@ function readBezier(cursor: FvdCursor): BezierSection {
   return {
     type: SecType.Bezier,
     name,
-    controlPoints: [p0, p1, p2, p3],
+    segments,
     rollFunc,
     smoothStart: false,
     smoothEnd: false,
+    ...(supports.length > 0 ? { supports } : {}),
   };
 }
 
@@ -444,16 +439,22 @@ function readNoLimitsCsv(cursor: FvdCursor): NoLimitsCSVSection {
   if (size < 0 || size > 10_000_000) {
     throw new WebFvdError('io.fvdMalformed', { reason: 'absurd-csv-node-count', size });
   }
-  // The file embeds the CSV-imported nodes inline (36 bytes each). For now
-  // we just skip them and store a placeholder ref — full ingestion is part
-  // of the M5 NoLimitsCSV integrator port. This still validates the bytes.
+  // The file embeds the CSV-imported nodes inline (36 bytes each):
+  // pos / dir / lat as three back-to-back BE f32-vec3s in x,y,z order
+  // (secnlcsv.cpp:140–150; per-component writeBytes calls).
+  const nodes: NoLimitsCSVNode[] = [];
   for (let i = 0; i < size; i += 1) {
-    cursor.skip(36);
+    nodes.push({
+      pos: cursor.readVec3(),
+      dir: cursor.readVec3(),
+      lat: cursor.readVec3(),
+    });
   }
   return {
     type: SecType.NoLimitsCSV,
     name: 'NoLimitsCSV',
     csvRef: `embedded:${size}-nodes`,
+    ...(nodes.length > 0 ? { nodes } : {}),
   };
 }
 
@@ -507,18 +508,23 @@ function subfuncDegreeFromId(id: number): EDegree {
   return EDegree.Linear;
 }
 
-function readSmoother(cursor: FvdCursor): Smoother | null {
-  cursor.readLstr(); // name — UI label; not part of model
+function readSmoother(cursor: FvdCursor): Smoother {
+  const name = cursor.readLstr();
   const fromNode = cursor.readI32();
-  cursor.readI32(); // toNode (-1 = until end)
-  cursor.readI32(); // length (smoothing window in nodes)
-  cursor.readI32(); // iterations
-  cursor.readBool(); // active
+  const toNode = cursor.readI32();
+  const length = cursor.readI32();
+  const iterations = cursor.readI32();
+  const active = cursor.readBool();
 
-  // Our model carries `(fromSection, toSection, strength)` while FVD++'s
-  // smoothers operate in node space. Without re-integrating we cannot
-  // map node indices → section indices here, so we drop the entry rather
-  // than fabricate a wrong section pair. The FVD round-trip writer (M9
-  // tail) will rebuild these.
-  return fromNode < 0 ? null : null;
+  // Our smoothing pass consumes (fromSection, toSection, strength). We
+  // can't map node indices to section indices without re-integrating, so
+  // we surface zero values for those and preserve the FVD bytes verbatim
+  // in `fvd`. The writer prefers `fvd` when present so a round-trip is
+  // exact.
+  return {
+    fromSection: 0,
+    toSection: 0,
+    strength: 0,
+    fvd: { name, fromNode, toNode, length, iterations, active },
+  };
 }

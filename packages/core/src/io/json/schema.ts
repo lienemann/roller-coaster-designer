@@ -74,6 +74,14 @@ const colorField = z
   .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a #rrggbb hex string.')
   .optional();
 
+// Per-section velocity-mode fields shared by Straight / Curved / Forced /
+// Geometric. Defaulted on missing input so a project authored without them
+// validates as if the user never opted into the held-velocity branch.
+const speedFields = {
+  bSpeed: z.boolean().optional(),
+  fVel: finiteNumber.optional(),
+};
+
 // Section variants. Using z.discriminatedUnion on the numeric `type` field
 // gives Zod O(1) dispatch and keeps error paths precise.
 const anchorSchema = z.object({
@@ -93,18 +101,21 @@ const straightSchema = z.object({
   color: colorField,
   length: finiteNumber.nonnegative(),
   rollFunc: funcSchema,
+  ...speedFields,
 });
 
 const curvedSchema = z.object({
   type: z.literal(SecType.Curved),
   name: z.string(),
   color: colorField,
-  length: finiteNumber.nonnegative(),
-  pitchRate: finiteNumber,
-  yawRate: finiteNumber,
-  leadIn: finiteNumber.nonnegative(),
-  leadOut: finiteNumber.nonnegative(),
+  orientation: orientationSchema.optional(),
+  fAngle: finiteNumber.nonnegative(),
+  fRadius: finiteNumber.positive(),
+  fDirection: finiteNumber,
+  fLeadIn: finiteNumber.nonnegative(),
+  fLeadOut: finiteNumber.nonnegative(),
   rollFunc: funcSchema,
+  ...speedFields,
 });
 
 const forcedSchema = z.object({
@@ -117,6 +128,7 @@ const forcedSchema = z.object({
   rollFunc: funcSchema,
   normalFunc: funcSchema,
   lateralFunc: funcSchema,
+  ...speedFields,
 });
 
 const geometricSchema = z.object({
@@ -124,20 +136,38 @@ const geometricSchema = z.object({
   name: z.string(),
   color: colorField,
   argument: argumentSchema,
+  orientation: orientationSchema,
   extent: finiteNumber.nonnegative(),
   rollFunc: funcSchema,
   pitchFunc: funcSchema,
   yawFunc: funcSchema,
+  ...speedFields,
+});
+
+const bezierSegmentSchema = z.object({
+  P1: vec3,
+  Kp1: vec3,
+  Kp2: vec3,
+  contRoll: z.boolean().optional(),
+  relRoll: z.boolean().optional(),
+  roll: finiteNumber.optional(),
 });
 
 const bezierSchema = z.object({
   type: z.literal(SecType.Bezier),
   name: z.string(),
   color: colorField,
-  controlPoints: z.tuple([vec3, vec3, vec3, vec3]),
+  segments: z.array(bezierSegmentSchema).min(2),
   rollFunc: funcSchema,
   smoothStart: z.boolean(),
   smoothEnd: z.boolean(),
+  supports: z.array(vec3).optional(),
+});
+
+const noLimitsCsvNodeSchema = z.object({
+  pos: vec3,
+  dir: vec3,
+  lat: vec3,
 });
 
 const noLimitsCsvSchema = z.object({
@@ -145,6 +175,7 @@ const noLimitsCsvSchema = z.object({
   name: z.string(),
   color: colorField,
   csvRef: z.string(),
+  nodes: z.array(noLimitsCsvNodeSchema).optional(),
 });
 
 const closureSchema = z.object({
@@ -171,7 +202,29 @@ export const smootherSchema = z.object({
   fromSection: z.number().int().nonnegative(),
   toSection: z.number().int().nonnegative(),
   strength: finiteNumber.min(0).max(1),
+  fvd: z
+    .object({
+      name: z.string(),
+      fromNode: z.number().int(),
+      toNode: z.number().int(),
+      length: z.number().int(),
+      iterations: z.number().int(),
+      active: z.boolean(),
+    })
+    .optional(),
 });
+
+const fvdTrackDisplaySchema = z
+  .object({
+    colorsHex: z.string().regex(/^[0-9a-f]*$/),
+    drawTrack: z.boolean(),
+    drawHeartline: z.number().int(),
+    isWireframe: z.boolean(),
+    povPos: vec2,
+    anchorForceNormal: finiteNumber,
+    anchorForceLateral: finiteNumber,
+  })
+  .partial();
 
 export const trackSchema = z
   .object({
@@ -182,6 +235,7 @@ export const trackSchema = z
     resistance: finiteNumber.nonnegative(),
     sections: z.array(sectionSchema),
     smoothers: z.array(smootherSchema),
+    fvdDisplay: fvdTrackDisplaySchema.optional(),
   })
   .refine(
     // Invariant: at most one Closure section per track and, if present,
@@ -209,14 +263,18 @@ export const projectSchema = z.object({
 // Outer file wrapper — the first two fields identify the format and version
 // ahead of any data so the reader can dispatch migrations before schema
 // validation (spec §8.1).
-export const webFvdFileV2Schema = z.object({
+export const webFvdFileV4Schema = z.object({
   format: z.literal('webfvd'),
-  version: z.literal(2),
+  version: z.literal(4),
   project: projectSchema,
 });
 
-export type WebFvdFileV2 = z.infer<typeof webFvdFileV2Schema>;
+export type WebFvdFileV4 = z.infer<typeof webFvdFileV4Schema>;
 
 // Back-compat aliases so existing callers don't all need to rename at once.
-export const webFvdFileV1Schema = webFvdFileV2Schema;
-export type WebFvdFileV1 = WebFvdFileV2;
+export const webFvdFileV1Schema = webFvdFileV4Schema;
+export type WebFvdFileV1 = WebFvdFileV4;
+export const webFvdFileV2Schema = webFvdFileV4Schema;
+export type WebFvdFileV2 = WebFvdFileV4;
+export const webFvdFileV3Schema = webFvdFileV4Schema;
+export type WebFvdFileV3 = WebFvdFileV4;
