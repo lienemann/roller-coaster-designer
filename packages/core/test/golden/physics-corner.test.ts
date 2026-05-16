@@ -19,11 +19,7 @@ const GOLDEN_DIR = fileURLToPath(new URL('./data/corner', import.meta.url));
 const cases: GoldenCase[] = [
   {
     name: '16-zero-length-straight',
-    track: makeTrack('16-zero-length-straight', [
-      anchorAt([0, 10, 0]),
-      straight(0),
-      straight(5),
-    ]),
+    track: makeTrack('16-zero-length-straight', [anchorAt([0, 10, 0]), straight(0), straight(5)]),
     invariants: [
       [
         'the zero-length Straight emits no nodes past the anchor',
@@ -65,7 +61,7 @@ const cases: GoldenCase[] = [
     track: makeTrack('18-leadin-dominates', [
       anchorAt([0, 10, 0]),
       // leadIn + leadOut > length: the integrator clamps them to length/2.
-      curved({ length: 6, yawRate: Math.PI / 4 / 6, leadIn: 10, leadOut: 10 }),
+      curved({ fAngle: 45, fRadius: 6, fDirection: 90, fLeadIn: 50, fLeadOut: 50 }),
     ]),
     invariants: [
       [
@@ -114,10 +110,7 @@ describe('golden — corner cases', () => {
   }
 
   it('20-closeTrack rejects an already-closed track', () => {
-    const start = makeTrack('already-closed', [
-      anchorAt([0, 10, 0]),
-      straight(1, flatRoll(1, 0)),
-    ]);
+    const start = makeTrack('already-closed', [anchorAt([0, 10, 0]), straight(1, flatRoll(1, 0))]);
     const closed = closeTrack(start);
     // Closing a track that already has a closure throws — the model
     // invariant is "at most one Closure per track". To refresh the

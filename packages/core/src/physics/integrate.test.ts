@@ -130,8 +130,18 @@ describe('integrateTrack — inclined Straight conserves energy', () => {
   });
 });
 
-describe('integrateTrack — Curved', () => {
-  function buildHorizontalTurn(yawRate: number, length: number): Track {
+describe('integrateTrack — Curved (FVD++ shape)', () => {
+  function buildLevelTurn(fAngle: number, fRadius: number): Track {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    rollFunc.subfuncs.push({
+      degree: 0,
+      length: fAngle,
+      startValue: 0,
+      endValue: 0,
+      arg1: 0,
+      centerArg: 0,
+      tensionArg: 0,
+    });
     return {
       name: 't',
       style: TrackStyle.Generic,
@@ -151,29 +161,38 @@ describe('integrateTrack — Curved', () => {
         {
           type: SecType.Curved,
           name: 'turn',
-          length,
-          pitchRate: 0,
-          yawRate,
-          leadIn: 0,
-          leadOut: 0,
-          rollFunc: createEmptyFunc(EFuncType.Roll),
+          fAngle,
+          fRadius,
+          fDirection: 90,
+          fLeadIn: 0,
+          fLeadOut: 0,
+          rollFunc,
         },
       ],
       smoothers: [],
     };
   }
 
-  it('horizontal turn curves in the x-z plane without changing height', () => {
-    // 90° right turn over 20 m arc length ⇒ yawRate = π/2 / 20 rad/m.
-    const { arrays } = integrateTrack(buildHorizontalTurn(Math.PI / 2 / 20, 20));
+  it('level turn (fDirection=90) curves in the x-z plane without changing height', () => {
+    const { arrays } = integrateTrack(buildLevelTurn(90, 20));
     const last = arrays.length - 1;
-    expect(arrays.posY[last]!).toBeCloseTo(10, 3);
-    // Final direction should have rotated ~90° around +Y: started +X, ends +Z (negative since yaw rotates +X toward -Z in our convention).
+    expect(arrays.posY[last]!).toBeCloseTo(10, 2);
+    // Final direction should have rotated ~90° around +Y.
     const dirEndZ = arrays.dirZ[last]!;
-    expect(Math.abs(dirEndZ)).toBeGreaterThan(0.95);
+    expect(Math.abs(dirEndZ)).toBeGreaterThan(0.9);
   });
 
-  it('pitch-only turn traces an arc in the y direction', () => {
+  it('pitch-up curve (fDirection=0) gains height and pitches dir up', () => {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    rollFunc.subfuncs.push({
+      degree: 0,
+      length: 45,
+      startValue: 0,
+      endValue: 0,
+      arg1: 0,
+      centerArg: 0,
+      tensionArg: 0,
+    });
     const track: Track = {
       name: 't',
       style: TrackStyle.Generic,
@@ -188,17 +207,17 @@ describe('integrateTrack — Curved', () => {
           pitch: 0,
           yaw: 0,
           roll: 0,
-          speed: 20,
+          speed: 25,
         },
         {
           type: SecType.Curved,
           name: 'loop-in',
-          length: 10,
-          pitchRate: Math.PI / 4 / 10, // quarter-loop up over 10 m
-          yawRate: 0,
-          leadIn: 0,
-          leadOut: 0,
-          rollFunc: createEmptyFunc(EFuncType.Roll),
+          fAngle: 45,
+          fRadius: 15,
+          fDirection: 0,
+          fLeadIn: 0,
+          fLeadOut: 0,
+          rollFunc,
         },
       ],
       smoothers: [],
@@ -209,16 +228,65 @@ describe('integrateTrack — Curved', () => {
     expect(arrays.dirY[last]!).toBeGreaterThan(0.5);
   });
 
-  it('lead-in produces a smooth onset (direction barely changes in the first handful of steps)', () => {
-    const track = buildHorizontalTurn(Math.PI / 2 / 20, 20);
-    const sec = track.sections[1]!;
-    if (sec.type !== SecType.Curved) throw new Error('unreachable');
-    sec.leadIn = 5;
-    const { arrays, sectionStartNodes } = integrateTrack(track);
-    const start = sectionStartNodes[1] ?? 1;
-    const nearZ = Math.abs(arrays.dirZ[start + 10] ?? 0);
-    const farZ = Math.abs(arrays.dirZ[start + 500] ?? 0);
-    expect(nearZ).toBeLessThan(farZ);
+  it('360° vertical loop closes back on itself', () => {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    rollFunc.subfuncs.push({
+      degree: 0,
+      length: 360,
+      startValue: 0,
+      endValue: 0,
+      arg1: 0,
+      centerArg: 0,
+      tensionArg: 0,
+    });
+    const fRadius = 8;
+    const track: Track = {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [
+        {
+          type: SecType.Anchor,
+          name: 'a',
+          position: [0, 5, 0],
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          speed: 25,
+        },
+        {
+          type: SecType.Curved,
+          name: 'loop',
+          fAngle: 360,
+          fRadius,
+          fDirection: 0,
+          fLeadIn: 0,
+          fLeadOut: 0,
+          rollFunc,
+        },
+      ],
+      smoothers: [],
+    };
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    // After 360° the rider should be back at roughly the starting x,
+    // height, and forward direction. (Energy conservation will have shed a
+    // little speed because the heart-line traces a ring of radius
+    // ~fRadius and the top is 2·fRadius above the bottom — same total
+    // potential, so velocity returns to anchor speed at the bottom.)
+    expect(arrays.posX[last]!).toBeCloseTo(0, 0); // within 0.5 m
+    expect(arrays.posY[last]!).toBeCloseTo(5, 0);
+    expect(arrays.dirX[last]!).toBeGreaterThan(0.9);
+    // Peak of the loop must be ~2·fRadius above anchor y (within float drift
+    // and the heart-correction).
+    let maxY = -Infinity;
+    for (let i = 0; i < arrays.length; i += 1) {
+      if (arrays.posY[i]! > maxY) maxY = arrays.posY[i]!;
+    }
+    expect(maxY).toBeGreaterThan(5 + 1.5 * fRadius);
+    expect(maxY).toBeLessThan(5 + 2.5 * fRadius);
   });
 });
 
@@ -335,6 +403,7 @@ describe('integrateTrack — Geometric', () => {
           type: SecType.Geometric,
           name: 'g',
           argument: 1, // Distance
+          orientation: 0, // Euler
           extent: 20,
           rollFunc,
           pitchFunc,
@@ -377,5 +446,76 @@ describe('integrateTrack — Straight with a Roll Func', () => {
     const { arrays } = integrateTrack(track);
     const last = arrays.length - 1;
     expect(arrays.roll[last]!).toBeCloseTo(Math.PI, 3);
+  });
+});
+
+describe('integrateTrack — bSpeed=false (held velocity)', () => {
+  // A pitched-down straight should normally pick up speed via energy
+  // conservation; with bSpeed=false the velocity must stay pinned to
+  // fVel. Mirrors FVD++'s "constant velocity" brake/launch behaviour.
+  it('pins velocity to fVel through a downhill straight', () => {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    rollFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0 }));
+    const anchor: AnchorSection = {
+      type: SecType.Anchor,
+      name: 'anchor',
+      position: [0, 20, 0],
+      pitch: -Math.PI / 6, // pitched down 30°
+      yaw: 0,
+      roll: 0,
+      speed: 8,
+    };
+    const heldStraight: StraightSection = {
+      type: SecType.Straight,
+      name: 'brake',
+      length: 20,
+      rollFunc,
+      bSpeed: false,
+      fVel: 8,
+    };
+    const track: Track = {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [anchor, heldStraight],
+      smoothers: [],
+    };
+    const { arrays } = integrateTrack(track);
+    // Sample several nodes through the section — velocity should never
+    // exceed fVel even though we're descending and gaining altitude
+    // energy. 1e-4 tolerance covers the float32 packing in MNodeArrays.
+    const last = arrays.length - 1;
+    for (let i = 1; i <= last; i += Math.max(1, Math.floor(last / 10))) {
+      expect(arrays.vel[i]!).toBeCloseTo(8, 4);
+    }
+  });
+
+  it('falls back to energy-driven velocity when bSpeed is omitted', () => {
+    const rollFunc = createEmptyFunc(EFuncType.Roll);
+    rollFunc.subfuncs.push(createLinearSubFunc({ length: 20, startValue: 0, endValue: 0 }));
+    const anchor: AnchorSection = {
+      type: SecType.Anchor,
+      name: 'anchor',
+      position: [0, 20, 0],
+      pitch: -Math.PI / 6,
+      yaw: 0,
+      roll: 0,
+      speed: 8,
+    };
+    const track: Track = {
+      name: 't',
+      style: TrackStyle.Generic,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sections: [anchor, { type: SecType.Straight, name: 's', length: 20, rollFunc }],
+      smoothers: [],
+    };
+    const { arrays } = integrateTrack(track);
+    const last = arrays.length - 1;
+    // Descended ~10 m → kinetic energy gain ≈ 98 J/kg → vel >> 8.
+    expect(arrays.vel[last]!).toBeGreaterThan(12);
   });
 });

@@ -9,14 +9,14 @@ import { parseWebFvdJson } from './reader.js';
 
 const VALID_MINIMAL = JSON.stringify({
   format: 'webfvd',
-  version: 2,
+  version: 4,
   project: { texturePath: '', tracks: [] },
 });
 
 describe('parseWebFvdJson — happy path', () => {
   it('accepts the minimal empty project', () => {
     const { project, fromVersion } = parseWebFvdJson(VALID_MINIMAL);
-    expect(fromVersion).toBe(2);
+    expect(fromVersion).toBe(4);
     expect(project.tracks).toEqual([]);
   });
 
@@ -86,7 +86,7 @@ describe('parseWebFvdJson — error paths', () => {
 
   it('throws schema.invalid when the format marker is missing', () => {
     try {
-      parseWebFvdJson(JSON.stringify({ version: 2, project: { texturePath: '', tracks: [] } }));
+      parseWebFvdJson(JSON.stringify({ version: 3, project: { texturePath: '', tracks: [] } }));
       expect.fail('expected to throw');
     } catch (err) {
       expect(err).toBeInstanceOf(WebFvdError);
@@ -99,7 +99,7 @@ describe('parseWebFvdJson — error paths', () => {
       parseWebFvdJson(
         JSON.stringify({
           format: 'not-webfvd',
-          version: 2,
+          version: 3,
           project: { texturePath: '', tracks: [] },
         }),
       );
@@ -121,14 +121,14 @@ describe('parseWebFvdJson — error paths', () => {
       expect(err).toBeInstanceOf(WebFvdError);
       expect((err as WebFvdError).code).toBe('schema.versionUnsupported');
       expect((err as WebFvdError).context.got).toBe(99);
-      expect((err as WebFvdError).context.expected).toBe(2);
+      expect((err as WebFvdError).context.expected).toBe(4);
     }
   });
 
   it('throws schema.invalid when the project shape is wrong', () => {
     try {
       parseWebFvdJson(
-        JSON.stringify({ format: 'webfvd', version: 2, project: { texturePath: 42, tracks: [] } }),
+        JSON.stringify({ format: 'webfvd', version: 3, project: { texturePath: 42, tracks: [] } }),
       );
       expect.fail('expected to throw');
     } catch (err) {

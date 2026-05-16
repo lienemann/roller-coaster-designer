@@ -1,29 +1,13 @@
 {
   "nodeCount": 52,
-  "sectionStartNodes": [
-    0,
-    1,
-    2
-  ],
+  "sectionStartNodes": [0, 1, 2],
   "sampled": [
     {
       "i": 0,
       "t": 0,
-      "pos": [
-        0,
-        10,
-        0
-      ],
-      "dir": [
-        1,
-        0,
-        0
-      ],
-      "lat": [
-        0,
-        0,
-        1
-      ],
+      "pos": [0, 10, 0],
+      "dir": [1, 0, 0],
+      "lat": [0, 0, 1],
       "vel": 20,
       "forceNormal": 1,
       "forceLateral": 0,
@@ -35,21 +19,9 @@
   "last": {
     "i": 51,
     "t": 0.051,
-    "pos": [
-      1.005,
-      10,
-      0
-    ],
-    "dir": [
-      1,
-      0,
-      0
-    ],
-    "lat": [
-      0,
-      0,
-      1
-    ],
+    "pos": [1.005, 10, 0],
+    "dir": [1, 0, 0],
+    "lat": [0, 0, 1],
     "vel": 20,
     "forceNormal": 1,
     "forceLateral": 0,

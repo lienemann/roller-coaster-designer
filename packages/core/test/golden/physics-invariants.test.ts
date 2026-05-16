@@ -30,20 +30,21 @@ describe('physics invariants', () => {
       ]),
       makeTrack('quarter-turn', [
         anchorAt([0, 10, 0], { speed: 15 }),
-        curved({ length: 20, yawRate: Math.PI / 2 / 20 }),
+        curved({ fAngle: 90, fRadius: 20, fDirection: 90 }),
       ]),
       makeTrack('pitched-with-bank', [
         anchorAt([0, 10, 0], { speed: 22 }),
         curved({
-          length: 20,
-          pitchRate: Math.PI / 4 / 20,
-          rollFunc: linearRoll(20, 0, Math.PI / 4),
+          fAngle: 45,
+          fRadius: 20,
+          fDirection: 0,
+          rollFunc: linearRoll(45, 0, 0),
         }),
       ]),
       makeTrack('multi-section', [
         anchorAt([0, 20, 0], { pitch: -Math.PI / 8, speed: 10 }),
         straight(10),
-        curved({ length: 10, pitchRate: Math.PI / 4 / 10 }),
+        curved({ fAngle: 45, fRadius: 10, fDirection: 0 }),
         straight(10),
       ]),
     ];
@@ -96,10 +97,10 @@ describe('physics invariants', () => {
       makeTrack('ortho-check', [
         anchorAt([0, 10, 0]),
         curved({
-          length: 20,
-          pitchRate: Math.PI / 4 / 20,
-          yawRate: Math.PI / 6 / 20,
-          rollFunc: linearRoll(20, 0, Math.PI / 5),
+          fAngle: 55,
+          fRadius: 18,
+          fDirection: 35,
+          rollFunc: linearRoll(55, 0, 0),
         }),
       ]),
     );
@@ -138,16 +139,17 @@ describe('physics invariants', () => {
     const a = integrateTrack(
       makeTrack('yaw-flat', [
         anchorAt([0, 10, 0]),
-        curved({ length: 20, yawRate: Math.PI / 4 / 20 }),
+        curved({ fAngle: 45, fRadius: 20, fDirection: 90 }),
       ]),
     );
     const b = integrateTrack(
       makeTrack('yaw-banked', [
         anchorAt([0, 10, 0]),
         curved({
-          length: 20,
-          yawRate: Math.PI / 4 / 20,
-          rollFunc: linearRoll(20, 0, Math.PI / 4),
+          fAngle: 45,
+          fRadius: 20,
+          fDirection: 90,
+          rollFunc: linearRoll(45, 0, 0),
         }),
       ]),
     );
@@ -164,21 +166,15 @@ describe('physics invariants', () => {
   });
 });
 
-function heartY(
-  arrays: ReturnType<typeof integrateTrack>['arrays'],
-  i: number,
-): number {
+function heartY(arrays: ReturnType<typeof integrateTrack>['arrays'], i: number): number {
   return (arrays.posY[i] ?? 0) - (arrays.normY[i] ?? 0) * 1.1 * HEART_ENERGY_FACTOR;
 }
 
-function energyOf(
-  arrays: ReturnType<typeof integrateTrack>['arrays'],
-  i: number,
-): number {
+function energyOf(arrays: ReturnType<typeof integrateTrack>['arrays'], i: number): number {
   const vel = arrays.vel[i] ?? 0;
   return 0.5 * vel * vel + F_G * heartY(arrays, i);
 }
 
 function dot(a: readonly number[], b: readonly number[]): number {
-  return (a[0]! * b[0]!) + (a[1]! * b[1]!) + (a[2]! * b[2]!);
+  return a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
 }

@@ -24,6 +24,32 @@ interface SectionBase {
   color?: string | undefined;
 }
 
+/**
+ * Velocity-mode parameters carried by Straight / Curved / Forced /
+ * Geometric sections so a `.fvd` import / export is lossless. FVD++'s
+ * `bSpeed` flag toggles between:
+ *   - `bSpeed = true` (default): velocity is energy-driven (current
+ *     integration). `fVel` is recomputed.
+ *   - `bSpeed = false`: velocity is held at `fVel` regardless of energy
+ *     (used for brake-run / station / launch-section workarounds).
+ *
+ * Today our integrators always run the energy-driven path; the held-
+ * velocity branch is the obvious next port but the fields round-trip
+ * regardless so the user's brake sections survive a load/save.
+ */
+export interface FvdSpeedFields {
+  /** FVD++'s `bSpeed`. When set:
+   *   - `true` = energy-driven (current integrator behaviour).
+   *   - `false` = velocity held at `fVel` regardless of energy
+   *     (FVD++'s "constant velocity" mode for brake runs / stations /
+   *     launches).
+   *  Optional — when missing, treated as `true` (energy-driven). */
+  bSpeed?: boolean | undefined;
+  /** Held velocity when `bSpeed = false`, m/s. Ignored when `bSpeed = true`
+   *  or missing. */
+  fVel?: number | undefined;
+}
+
 // Anchor — starting pose of a track. Always the first section.
 // Integrator: trivial (M2).
 export interface AnchorSection extends SectionBase {
@@ -39,26 +65,50 @@ export interface AnchorSection extends SectionBase {
 
 // Straight — constant direction for `length` meters; roll evolves via rollFunc.
 // Integrator: M2 (spec §5.1 Straight row).
-export interface StraightSection extends SectionBase {
+export interface StraightSection extends SectionBase, FvdSpeedFields {
   type: SecType.Straight;
   length: number;
   rollFunc: Func;
 }
 
-// Curved — constant pitch and yaw rates, roll via rollFunc. Integrator: M3.
-export interface CurvedSection extends SectionBase {
+// Curved — constant-radius arc through a chosen rotation axis. Direct port
+// of FVD++'s `seccurved`. The rotation axis is parameterised by
+// `fDirection`: 0° = vertical loop (pitch-up), 90° = level turn (yaw),
+// intermediate = helix / diving turn. A 360° loop is `fAngle=360, fRadius=R,
+// fDirection=0`.
+//
+// Field names match FVD++ exactly so the on-disk `.fvd` round-trip is
+// near-identity. `fAngle`, `fLeadIn`, `fLeadOut`, `fDirection` are stored
+// in degrees; `fRadius` in metres; `rollFunc` is parameterised by ridden
+// angle in degrees (so `rollFunc.subfuncs[k].length` is degrees, not
+// metres). The integrator is `physics/integrate.ts:integrateCurved`.
+export interface CurvedSection extends SectionBase, FvdSpeedFields {
   type: SecType.Curved;
-  length: number;
-  pitchRate: number;
-  yawRate: number;
-  leadIn: number;
-  leadOut: number;
+  /** EULER inserts a yaw-from-up roll correction so the rider stays upright
+   *  relative to world up; QUATERNION leaves the orientation alone.
+   *  Matches FVD++'s `bOrientation` on Curved sections.
+   *  Optional — defaults to EULER when missing. */
+  orientation?: Orientation | undefined;
+  /** Total angle ridden, degrees. Equals the sum of rollFunc subfunc
+   *  lengths (matching FVD++'s `getMaxArgument()`). */
+  fAngle: number;
+  /** Arc radius, metres. */
+  fRadius: number;
+  /** Tilt axis direction in degrees. 0 = vertical loop, 90 = level turn,
+   *  intermediate = helix / diving turn. */
+  fDirection: number;
+  /** Lead-in (smoothstep ease-in) in degrees of ridden angle. */
+  fLeadIn: number;
+  /** Lead-out in degrees of ridden angle. */
+  fLeadOut: number;
+  /** Roll function over ridden angle [0, fAngle] degrees. Returns a
+   *  per-tick roll-rate; the integrator divides by F_HZ. */
   rollFunc: Func;
 }
 
 // Forced — force-driven. Normal and Lateral funcs shape the geometry; the
 // integrator is the reference implementation (spec §5). Integrator: M4.
-export interface ForcedSection extends SectionBase {
+export interface ForcedSection extends SectionBase, FvdSpeedFields {
   type: SecType.Forced;
   argument: Argument;
   orientation: Orientation;
@@ -71,30 +121,59 @@ export interface ForcedSection extends SectionBase {
 
 // Geometric — like Forced but pitch/yaw are prescribed directly instead of
 // computed from forces. Integrator: M5.
-export interface GeometricSection extends SectionBase {
+export interface GeometricSection extends SectionBase, FvdSpeedFields {
   type: SecType.Geometric;
   argument: Argument;
+  /** EULER inserts a yaw-from-up roll correction so the rider stays upright
+   *  relative to world up; QUATERNION leaves the orientation alone. Matches
+   *  FVD++'s `bOrientation` on Geometric sections. */
+  orientation: Orientation;
   extent: number;
   rollFunc: Func;
   pitchFunc: Func;
   yawFunc: Func;
 }
 
-// Bezier — a cubic Bezier reparameterized to arc length. Four control points
-// in world coordinates plus a roll function. Integrator: M5.
+/**
+ * One segment of a Bezier chain. Matches FVD++'s `bezier_t` (mnode.h)
+ * one-to-one:
+ *   - `P1` is the segment's anchor (positional knot).
+ *   - `Kp1` is the OUTGOING handle from the previous anchor.
+ *   - `Kp2` is the INCOMING handle to this anchor.
+ * The cubic that interpolates segment[i−1] → segment[i] uses
+ * (segment[i−1].P1, segment[i].Kp1, segment[i].Kp2, segment[i].P1).
+ * `contRoll` / `relRoll` / `roll` are FVD-rendering annotations we
+ * preserve verbatim but don't yet use functionally — our integration
+ * reads roll from `rollFunc`.
+ */
+export interface BezierSegment {
+  P1: [number, number, number];
+  Kp1: [number, number, number];
+  Kp2: [number, number, number];
+  contRoll?: boolean | undefined;
+  relRoll?: boolean | undefined;
+  roll?: number | undefined;
+}
+
+// Bezier — polyline of cubic segments matching FVD++'s `secbezier` exactly.
+// `segments` is the canonical representation; the integrator walks every
+// pair (segment[i−1] → segment[i]). A "simple" single-cubic Bezier is two
+// segments. There's no separate `controlPoints` field — one source of
+// truth so an FVD round-trip can't diverge from what the integrator sees.
 export interface BezierSection extends SectionBase {
   type: SecType.Bezier;
-  controlPoints: [
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-  ];
+  /** ≥ 2 segments. segments[0]'s Kp1/Kp2 are sentinels (no cubic ends
+   *  at the chain start); segments[N-1].Kp1/Kp2 carry the incoming
+   *  handles for the last cubic. */
+  segments: BezierSegment[];
   rollFunc: Func;
   // FVD++ option flags surfaced at the UI: whether the start/end tangents
   // should blend smoothly into neighbouring sections.
   smoothStart: boolean;
   smoothEnd: boolean;
+  /** Support points (UI-only "rail wiggle" knots in FVD++); preserved
+   *  opaquely for round-trip. Empty/missing on tracks authored in-app. */
+  supports?: [number, number, number][] | undefined;
 }
 
 // Closure — end-of-track segment whose four cubic-Bezier control points are
@@ -122,11 +201,24 @@ export interface ClosureSection extends SectionBase {
   rollFunc: Func;
 }
 
+/** One node of an embedded NoLimits CSV import (FVD++'s `secnlcsv`
+ *  `csvNodes`). Each node is a pose: world position + forward + lateral. */
+export interface NoLimitsCSVNode {
+  pos: [number, number, number];
+  dir: [number, number, number];
+  lat: [number, number, number];
+}
+
 // NoLimitsCSV — an NL2 track imported as pre-sampled nodes. Full port at M5.
 export interface NoLimitsCSVSection extends SectionBase {
   type: SecType.NoLimitsCSV;
   // Relative path or blob identifier for the CSV the user imported.
   csvRef: string;
+  /** Inline node array, populated when imported from a `.fvd` file
+   *  (FVD++ stores it inside the section record). Preserved on
+   *  round-trip; the integrator path lands in the M5 NoLimitsCSV
+   *  integrator port. */
+  nodes?: NoLimitsCSVNode[] | undefined;
 }
 
 export type Section =
@@ -145,4 +237,71 @@ export function isAnchor(section: Section): section is AnchorSection {
 
 export function isClosure(section: Section): section is ClosureSection {
   return section.type === SecType.Closure;
+}
+
+/**
+ * Convenience: extract the FIRST cubic of a Bezier section as four
+ * control points (p0, p1, p2, p3). Use for UI rendering / draggable
+ * handles that surface a single cubic to the user. Multi-segment chains
+ * lose their later cubics through this view; the underlying
+ * `section.segments` is still the source of truth.
+ */
+export function firstCubicOf(
+  section: BezierSection,
+): [
+  [number, number, number],
+  [number, number, number],
+  [number, number, number],
+  [number, number, number],
+] {
+  const seg0 = section.segments[0];
+  const seg1 = section.segments[1];
+  if (!seg0 || !seg1) {
+    return [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ];
+  }
+  return [
+    [...seg0.P1] as [number, number, number],
+    [...seg1.Kp1] as [number, number, number],
+    [...seg1.Kp2] as [number, number, number],
+    [...seg1.P1] as [number, number, number],
+  ];
+}
+
+/**
+ * Build a 2-segment Bezier chain from four control points (p0..p3).
+ * The chain start (segments[0].Kp1/Kp2) gets the sentinel value FVD++
+ * uses (= P1 itself) since no cubic ends at the chain start.
+ */
+export function segmentsFromCubic(
+  p0: readonly [number, number, number],
+  p1: readonly [number, number, number],
+  p2: readonly [number, number, number],
+  p3: readonly [number, number, number],
+): BezierSegment[] {
+  return [
+    { P1: [...p0], Kp1: [...p0], Kp2: [...p0] },
+    { P1: [...p3], Kp1: [...p1], Kp2: [...p2] },
+  ];
+}
+
+/**
+ * Replace the first cubic of a section's chain (segments[0] and
+ * segments[1]) with new control points. Preserves segments[2..N] for
+ * multi-segment chains. Use for UI patches that only edit the first
+ * cubic's handles.
+ */
+export function replaceFirstCubic(
+  segments: BezierSegment[],
+  p0: readonly [number, number, number],
+  p1: readonly [number, number, number],
+  p2: readonly [number, number, number],
+  p3: readonly [number, number, number],
+): BezierSegment[] {
+  const head = segmentsFromCubic(p0, p1, p2, p3);
+  return [...head, ...segments.slice(2)];
 }

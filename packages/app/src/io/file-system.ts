@@ -240,7 +240,10 @@ function downloadBlob(
  * (and the handle could be reused for fast re-saves later); falls back
  * to a download blob.
  */
-export async function exportFvd(project: Project, suggestedName = 'project.fvd'): Promise<SaveResult | null> {
+export async function exportFvd(
+  project: Project,
+  suggestedName = 'project.fvd',
+): Promise<SaveResult | null> {
   const bytes = writeFvd(project);
   const w = globalThis as unknown as FsaWindow;
   if (hasFileSystemAccess()) {

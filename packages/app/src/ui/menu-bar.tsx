@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { WebFvdError } from '@roller-coaster-designer/core';
+import { WebFvdError, lintFvdCompatibility } from '@roller-coaster-designer/core';
 import { type TFunction } from 'i18next';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +87,16 @@ export function MenuBar(): JSX.Element {
 
   const handleExportFvd = useCallback(async () => {
     if (!project) return;
+    // FVD++ compatibility check. If anything would be lost or reinterpreted
+    // on export, surface a confirm before writing — the user can either go
+    // ahead (the export then drops/transforms the flagged fields) or
+    // cancel and adjust the project first.
+    const notes = lintFvdCompatibility(project);
+    if (notes.length > 0) {
+      const lines = notes.map((n) => `• ${n.message}`).join('\n');
+      const proceed = window.confirm(`${t('common:menu.exportFvdWarning')}\n\n${lines}`);
+      if (!proceed) return;
+    }
     try {
       await exportFvd(project);
     } catch (err) {
@@ -159,8 +169,16 @@ export function MenuBar(): JSX.Element {
             title: canSave ? undefined : t('common:menu.saveUnavailable'),
           },
           { label: t('common:menu.saveAs'), onClick: handleSaveAs, disabled: project === null },
-          { label: t('common:menu.exportFvd'), onClick: handleExportFvd, disabled: project === null },
-          { label: t('common:menu.exportNl2'), onClick: handleExportNl2, disabled: project === null },
+          {
+            label: t('common:menu.exportFvd'),
+            onClick: handleExportFvd,
+            disabled: project === null,
+          },
+          {
+            label: t('common:menu.exportNl2'),
+            onClick: handleExportNl2,
+            disabled: project === null,
+          },
           { label: t('common:menu.scene'), onClick: () => setSceneOpen(true) },
           {
             label: t('common:menu.preferences'),

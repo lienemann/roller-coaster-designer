@@ -75,9 +75,7 @@ self.addEventListener('fetch', (event) => {
       // Offline + uncached: fall back to the cached shell so the SPA
       // can boot and show its empty state.
       const fallback = await cache.match('./index.html');
-      return (
-        fallback ?? new Response('Offline', { status: 503, statusText: 'Offline' })
-      );
+      return fallback ?? new Response('Offline', { status: 503, statusText: 'Offline' });
     })(),
   );
 });

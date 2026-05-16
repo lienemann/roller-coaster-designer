@@ -223,7 +223,7 @@ describe('parseFvd — minimal track', () => {
     expect(straight.rollFunc.subfuncs).toHaveLength(1);
   });
 
-  it('parses a Curved section (angle/radius converted to length+yawRate)', () => {
+  it('parses a Curved section round-tripping FVD++ fields directly', () => {
     const w = new FvdWriter()
       .projectHeader()
       .trackHeader({
@@ -258,10 +258,11 @@ describe('parseFvd — minimal track', () => {
     const curved = result.project.tracks[0]!.sections[1]!;
     expect(curved.type).toBe(SecType.Curved);
     if (curved.type !== SecType.Curved) return;
-    // Arc length = radius × angle = 20 × π/2 ≈ 31.42
-    expect(curved.length).toBeCloseTo(20 * (Math.PI / 2), 3);
-    expect(curved.yawRate).toBeCloseTo((Math.PI / 2) / curved.length, 4);
-    expect(curved.pitchRate).toBe(0);
+    expect(curved.fAngle).toBeCloseTo(90, 3);
+    expect(curved.fRadius).toBeCloseTo(20, 3);
+    expect(curved.fDirection).toBeCloseTo(90, 3);
+    expect(curved.fLeadIn).toBe(0);
+    expect(curved.fLeadOut).toBe(0);
   });
 
   it('parses a Forced section', () => {
@@ -349,10 +350,13 @@ describe('parseFvd — minimal track', () => {
     const bez = result.project.tracks[0]!.sections[1]!;
     expect(bez.type).toBe(SecType.Bezier);
     if (bez.type !== SecType.Bezier) return;
-    expect(bez.controlPoints[0]).toEqual([0, 10, 0]);
-    expect(bez.controlPoints[1]).toEqual([5, 10, 0]);
-    expect(bez.controlPoints[2]).toEqual([10, 10, 0]);
-    expect(bez.controlPoints[3]).toEqual([15, 10, 0]);
+    // Two-segment chain: segment[0].P1 = p0; segment[1].P1 = p3,
+    // Kp1 = p1, Kp2 = p2.
+    expect(bez.segments).toHaveLength(2);
+    expect(bez.segments[0]!.P1).toEqual([0, 10, 0]);
+    expect(bez.segments[1]!.P1).toEqual([15, 10, 0]);
+    expect(bez.segments[1]!.Kp1).toEqual([5, 10, 0]);
+    expect(bez.segments[1]!.Kp2).toEqual([10, 10, 0]);
   });
 });
 
@@ -364,20 +368,18 @@ describe('parseFvd — bounds checking', () => {
   });
 
   it('rejects a negative section count', () => {
-    const w = new FvdWriter()
-      .projectHeader()
-      .trackHeader({
-        name: 't',
-        startPos: [0, 0, 0],
-        rollDeg: 0,
-        pitchDeg: 0,
-        yawDeg: 0,
-        velocity: 0,
-        heart: 1.1,
-        friction: 0,
-        resistance: 0,
-        sectionCount: -1,
-      });
+    const w = new FvdWriter().projectHeader().trackHeader({
+      name: 't',
+      startPos: [0, 0, 0],
+      rollDeg: 0,
+      pitchDeg: 0,
+      yawDeg: 0,
+      velocity: 0,
+      heart: 1.1,
+      friction: 0,
+      resistance: 0,
+      sectionCount: -1,
+    });
     expect(() => parseFvd(w.toUint8Array())).toThrow(WebFvdError);
   });
 

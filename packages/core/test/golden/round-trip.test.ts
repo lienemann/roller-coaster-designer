@@ -14,7 +14,7 @@ const goldenText = readFileSync(goldenPath, 'utf8');
 describe('golden: minimal-straight.webfvd.json', () => {
   it('parses to a Project with one Anchor and one Straight', () => {
     const { project, fromVersion } = parseWebFvdJson(goldenText);
-    expect(fromVersion).toBe(2);
+    expect(fromVersion).toBe(4);
     expect(project.tracks).toHaveLength(1);
 
     const track = project.tracks[0]!;

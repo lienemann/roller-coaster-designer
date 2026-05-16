@@ -117,16 +117,25 @@ function captureSnapshot(
   };
 }
 
-function rowAt(
-  arrays: ReturnType<typeof integrateTrack>['arrays'],
-  i: number,
-): GoldenRow {
+function rowAt(arrays: ReturnType<typeof integrateTrack>['arrays'], i: number): GoldenRow {
   return {
     i,
     t: round(i / F_HZ, 6),
-    pos: [round(arrays.posX[i] ?? 0, 6), round(arrays.posY[i] ?? 0, 6), round(arrays.posZ[i] ?? 0, 6)],
-    dir: [round(arrays.dirX[i] ?? 0, 7), round(arrays.dirY[i] ?? 0, 7), round(arrays.dirZ[i] ?? 0, 7)],
-    lat: [round(arrays.latX[i] ?? 0, 7), round(arrays.latY[i] ?? 0, 7), round(arrays.latZ[i] ?? 0, 7)],
+    pos: [
+      round(arrays.posX[i] ?? 0, 6),
+      round(arrays.posY[i] ?? 0, 6),
+      round(arrays.posZ[i] ?? 0, 6),
+    ],
+    dir: [
+      round(arrays.dirX[i] ?? 0, 7),
+      round(arrays.dirY[i] ?? 0, 7),
+      round(arrays.dirZ[i] ?? 0, 7),
+    ],
+    lat: [
+      round(arrays.latX[i] ?? 0, 7),
+      round(arrays.latY[i] ?? 0, 7),
+      round(arrays.latZ[i] ?? 0, 7),
+    ],
     vel: round(arrays.vel[i] ?? 0, 6),
     forceNormal: round(arrays.forceNormal[i] ?? 0, 6),
     forceLateral: round(arrays.forceLateral[i] ?? 0, 6),
