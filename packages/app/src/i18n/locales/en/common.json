@@ -5,7 +5,8 @@
     "noProject": "No project",
     "untitled": "Untitled",
     "currentProject": "Current project",
-    "emptyHint": "Start with File → New, File → Open, or File → Load Demo."
+    "emptyHint": "Start with File → New, File → Open, or File → Load Demo.",
+    "credits": "By Jan Lienemann and Julian Dietsche. Builds on FVD++ by Stephan \"Lenny\" Alt and on KexEdit by IndividualKex."
   },
   "lang": {
     "switch": "Language",

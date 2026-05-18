@@ -5,7 +5,8 @@
     "noProject": "Kein Projekt",
     "untitled": "Unbenannt",
     "currentProject": "Aktuelles Projekt",
-    "emptyHint": "Starte mit Datei → Neu, Datei → Öffnen oder Datei → Demo laden."
+    "emptyHint": "Starte mit Datei → Neu, Datei → Öffnen oder Datei → Demo laden.",
+    "credits": "Von Jan Lienemann und Julian Dietsche. Baut auf FVD++ von Stephan \"Lenny\" Alt und auf KexEdit von IndividualKex auf."
   },
   "lang": {
     "switch": "Sprache",

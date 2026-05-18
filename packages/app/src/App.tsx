@@ -140,6 +140,7 @@ export function App(): JSX.Element {
         <p className="text-sm text-neutral-400">{t('app.tagline')}</p>
         <p className="mt-2 text-xs text-neutral-500">{t('status.scaffold')}</p>
         <p className="mt-4 text-xs text-neutral-500">{t('app.emptyHint')}</p>
+        <p className="mt-6 text-[11px] text-neutral-600">{t('app.credits')}</p>
       </div>
     </div>
   );
