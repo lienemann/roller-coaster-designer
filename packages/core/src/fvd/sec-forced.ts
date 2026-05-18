@@ -4,7 +4,7 @@
 // distance-mode (bArgument==DISTANCE) is a separate path; matches FVD's
 // updateDistanceSection.
 
-import { F_G, F_HZ, F_PI } from './constants.js';
+import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
 import {
   vec3,
@@ -162,7 +162,7 @@ export class SecForced extends Section {
       const lForce = -dotL * F_G;
 
       const estVel =
-        Math.abs(prevNode.fHeartDistFromLast) < Number.EPSILON
+        Math.abs(prevNode.fHeartDistFromLast) < FLOAT_EPSILON
           ? prevNode.fVel
           : prevNode.fHeartDistFromLast * F_HZ;
 
@@ -246,7 +246,7 @@ export class SecForced extends Section {
       let fX: number;
       let fY: number;
       let fZ: number;
-      if (Math.abs(curNode.fAngleFromLast) < Number.EPSILON) {
+      if (Math.abs(curNode.fAngleFromLast) < FLOAT_EPSILON) {
         fX = 0;
         fY = 1;
         fZ = 0;

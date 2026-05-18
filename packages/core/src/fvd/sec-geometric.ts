@@ -2,7 +2,7 @@
 //
 // 1:1 port of reference/openfvd/core/secgeometric.cpp (TIME mode).
 
-import { F_G, F_HZ, F_PI } from './constants.js';
+import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
 import { vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
@@ -210,7 +210,7 @@ export class SecGeometric extends Section {
       let fX: number;
       let fY: number;
       let fZ: number;
-      if (Math.abs(deltaAngle) < Number.EPSILON) {
+      if (Math.abs(deltaAngle) < FLOAT_EPSILON) {
         fX = 0;
         fY = 1;
         fZ = 0;

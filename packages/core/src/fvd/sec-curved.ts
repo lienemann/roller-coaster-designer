@@ -2,7 +2,7 @@
 //
 // 1:1 port of reference/openfvd/core/seccurved.cpp.
 
-import { F_G, F_HZ, F_PI, toRad } from './constants.js';
+import { F_G, F_HZ, F_PI, FLOAT_EPSILON, toRad } from './constants.js';
 import type { Func } from './func.js';
 import {
   vec3,
@@ -68,7 +68,7 @@ export class SecCurved extends Section {
     const tmpPos: Vec3 = vec3();
     const tmpPrev: Vec3 = vec3();
 
-    while (fRiddenAngle < this.fAngle - Number.EPSILON) {
+    while (fRiddenAngle < this.fAngle - FLOAT_EPSILON) {
       let deltaAngle: number;
       let fTrans: number;
       const prevNode = this.lNodes[numNodes - 1]!;
@@ -202,7 +202,7 @@ export class SecCurved extends Section {
       let fX: number;
       let fY: number;
       let fZ: number;
-      if (Math.abs(curNode.fAngleFromLast) < Number.EPSILON) {
+      if (Math.abs(curNode.fAngleFromLast) < FLOAT_EPSILON) {
         fX = 0;
         fY = 1;
         fZ = 0;

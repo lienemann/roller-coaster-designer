@@ -5,7 +5,7 @@
 // (which references `parent.fHeart`). Concrete section types (Straight,
 // Curved, Forced, Geometric, Bezier) extend it.
 
-import { F_PI } from './constants.js';
+import { F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
 import { type Vec3, vec3 } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
@@ -103,7 +103,7 @@ export abstract class Section {
     const dy = cur.vDir.y - prev.vDir.y;
     const dz = cur.vDir.z - prev.vDir.z;
     const diffLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (diffLen <= Number.EPSILON) {
+    if (diffLen <= FLOAT_EPSILON) {
       cur.fDirFromLast = 0;
       cur.fPitchFromLast = 0;
       cur.fYawFromLast = 0;

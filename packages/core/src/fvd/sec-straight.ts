@@ -2,7 +2,7 @@
 //
 // 1:1 port of reference/openfvd/core/secstraight.cpp.
 
-import { F_G, F_HZ } from './constants.js';
+import { F_G, F_HZ, FLOAT_EPSILON } from './constants.js';
 import type { Func } from './func.js';
 import { vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
@@ -42,7 +42,7 @@ export class SecStraight extends Section {
     let lastNode = false;
     let fCurLength = 0;
 
-    while (fCurLength < this.fHLength - Number.EPSILON && !lastNode) {
+    while (fCurLength < this.fHLength - FLOAT_EPSILON && !lastNode) {
       this.lNodes.push(this.lNodes[this.lNodes.length - 1]!.clone());
 
       let dTime: number;
@@ -56,7 +56,7 @@ export class SecStraight extends Section {
         dTime = F_HZ;
       } else {
         lastNode = true;
-        dTime = (curNode.fVel + Number.EPSILON) / (this.fHLength - fCurLength);
+        dTime = (curNode.fVel + FLOAT_EPSILON) / (this.fHLength - fCurLength);
       }
 
       curNode.vPos.x += curNode.vDir.x * (curNode.fVel / dTime);

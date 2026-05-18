@@ -12,7 +12,7 @@
 // Methods preserve FVD method names and signatures so the line numbers in
 // the comments below match reference/openfvd/core/mnode.cpp.
 
-import { F_HZ, F_PI, toRad } from './constants.js';
+import { F_HZ, F_PI, FLOAT_EPSILON, toRad } from './constants.js';
 import {
   type Vec3,
   vec3,
@@ -296,7 +296,7 @@ export class MNode {
     let forceY: number;
     let forceZ: number;
     const temp = Math.cos((Math.abs(this.getPitch()) * F_PI) / 180);
-    if (Math.abs(this.fAngleFromLast) < Number.EPSILON) {
+    if (Math.abs(this.fAngleFromLast) < FLOAT_EPSILON) {
       forceX = 0;
       forceY = 1;
       forceZ = 0;
