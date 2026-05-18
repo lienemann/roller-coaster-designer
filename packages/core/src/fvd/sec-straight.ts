@@ -4,7 +4,7 @@
 
 import { F_G, F_HZ, FLOAT_EPSILON } from './constants.js';
 import type { Func } from './func.js';
-import { vec3Distance } from './fvec.js';
+import { r, vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
 import { type MNode } from './mnode.js';
 import { Section, SecType, TIME, QUATERNION } from './section.js';
@@ -70,13 +70,18 @@ export class SecStraight extends Section {
       curNode.forceNormal = -curNode.vNorm.y;
       curNode.forceLateral = -curNode.vLat.y;
 
-      curNode.fDistFromLast = vec3Distance(
-        curNode.vPosHeart(this.parent.fHeart),
-        prevNode.vPosHeart(this.parent.fHeart),
+      // Float32-rounded heart-line / spine length accumulators — see
+      // sec-curved.ts for the rationale (float64 vs float32 aliasing on
+      // fTotalLength would cause fFillPointList to sample one node off).
+      curNode.fDistFromLast = r(
+        vec3Distance(
+          curNode.vPosHeart(this.parent.fHeart),
+          prevNode.vPosHeart(this.parent.fHeart),
+        ),
       );
-      curNode.fTotalLength += curNode.fDistFromLast;
-      curNode.fHeartDistFromLast = vec3Distance(curNode.vPos, prevNode.vPos);
-      curNode.fTotalHeartLength += curNode.fHeartDistFromLast;
+      curNode.fTotalLength = r(curNode.fTotalLength + curNode.fDistFromLast);
+      curNode.fHeartDistFromLast = r(vec3Distance(curNode.vPos, prevNode.vPos));
+      curNode.fTotalHeartLength = r(curNode.fTotalHeartLength + curNode.fHeartDistFromLast);
 
       curNode.fRollSpeed = this.rollFunc.getValue(fCurLength);
 

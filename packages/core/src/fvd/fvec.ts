@@ -145,6 +145,44 @@ export function vec3RotateAxis(v: Vec3, axis: Vec3, angle: Scalar, out: Vec3 = v
   );
 }
 
+// Mirrors GLM's `glm::angleAxis(angle, k) * v` byte-for-byte (subject to
+// float64 vs float32 — see r() above): build the unit quaternion (cos(θ/2),
+// sin(θ/2)*k), then apply via the cross-cross formulation glm uses in
+// gtc/quaternion.inl. Equivalent to Rodrigues but with a different
+// rounding path that better matches FVD when called in tight integrator
+// loops where the float-precision details accumulate.
+//
+// Reference: glm/gtc/quaternion.inl, operator*(qua<T>, vec3<T>):
+//   vec3 uv  = cross(q.xyz, v);
+//   vec3 uuv = cross(q.xyz, uv);
+//   return v + ((uv * q.w) + uuv) * 2;
+export function vec3RotateAxisGlm(
+  v: Vec3,
+  axis: Vec3,
+  angle: Scalar,
+  out: Vec3 = vec3(),
+): Vec3 {
+  const half = r(angle * 0.5);
+  const s = r(Math.sin(half));
+  const c = r(Math.cos(half));
+  const qx = r(s * axis.x);
+  const qy = r(s * axis.y);
+  const qz = r(s * axis.z);
+  const qw = c;
+  const uvx = r(qy * v.z - qz * v.y);
+  const uvy = r(qz * v.x - qx * v.z);
+  const uvz = r(qx * v.y - qy * v.x);
+  const uuvx = r(qy * uvz - qz * uvy);
+  const uuvy = r(qz * uvx - qx * uvz);
+  const uuvz = r(qx * uvy - qy * uvx);
+  return vec3Set(
+    out,
+    v.x + r(r(uvx * qw + uuvx) * 2),
+    v.y + r(r(uvy * qw + uuvy) * 2),
+    v.z + r(r(uvz * qw + uuvz) * 2),
+  );
+}
+
 // Signed angle between two vectors. FVD uses `glm::angle(a, b)` which is the
 // unsigned acos(dot/|a||b|) — provide both.
 export function vec3UnsignedAngle(a: Vec3, b: Vec3): Scalar {

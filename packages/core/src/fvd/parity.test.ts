@@ -102,14 +102,15 @@ describe('NL2 export parity against FVD++ 0.79 gold output', () => {
       const abs = Math.abs(goldF[i]! - ourF[i]!);
       if (abs > maxAbsErr) maxAbsErr = abs;
     }
-    // Current state of the 1:1 port: max absolute error on any emitted
-    // float is ≈ 0.06 (positions are in meters; up-vectors and coords are
-    // ≤ 1 so they contribute ≪ 0.06). Tighten as integrator parity
-    // hardens. Anything below 0.1 m on a 124 m track is < 0.1 % drift.
-    expect(maxAbsErr).toBeLessThan(0.1);
+    // After float32 emulation on the per-step length accumulator and
+    // glm-style quaternion rotation, peak emitted-float error is ≈ 0.0014
+    // (= 1.4 mm) — i.e. genuine float32 ULP accumulation over the 124 m
+    // track. The gate stays at 5 mm to leave headroom for the up-vector
+    // and coord fields (which are dimensionless and small).
+    expect(maxAbsErr).toBeLessThan(0.005);
   });
 
-  it('peak position error stays below 0.06 m across the whole track', () => {
+  it('peak position error stays below 2 mm across the whole track', () => {
     const file = readFvd(loadGoldenFvd());
     const t = file.tracks[0]!;
     const ours = exportNL2(t, 2.0);
@@ -134,6 +135,6 @@ describe('NL2 export parity against FVD++ 0.79 gold output', () => {
       const d = Math.hypot(g[i]!.x - o[i]!.x, g[i]!.y - o[i]!.y, g[i]!.z - o[i]!.z);
       if (d > max) max = d;
     }
-    expect(max).toBeLessThan(0.06);
+    expect(max).toBeLessThan(0.002);
   });
 });

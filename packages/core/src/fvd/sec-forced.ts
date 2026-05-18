@@ -7,6 +7,7 @@
 import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
 import {
+  r,
   vec3,
   vec3Distance,
   vec3Normalize,
@@ -205,13 +206,15 @@ export class SecForced extends Section {
 
       curNode.updateNorm();
 
-      curNode.fDistFromLast = vec3Distance(
-        curNode.vPosHeart(this.parent.fHeart),
-        prevNode.vPosHeart(this.parent.fHeart),
+      curNode.fDistFromLast = r(
+        vec3Distance(
+          curNode.vPosHeart(this.parent.fHeart),
+          prevNode.vPosHeart(this.parent.fHeart),
+        ),
       );
-      curNode.fTotalLength = prevNode.fTotalLength + curNode.fDistFromLast;
-      curNode.fHeartDistFromLast = vec3Distance(curNode.vPos, prevNode.vPos);
-      curNode.fTotalHeartLength = prevNode.fTotalHeartLength + curNode.fHeartDistFromLast;
+      curNode.fTotalLength = r(prevNode.fTotalLength + curNode.fDistFromLast);
+      curNode.fHeartDistFromLast = r(vec3Distance(curNode.vPos, prevNode.vPos));
+      curNode.fTotalHeartLength = r(prevNode.fTotalHeartLength + curNode.fHeartDistFromLast);
       curNode.fRollSpeed += this.rollFunc.getValue((i + 1) / F_HZ);
 
       this.calcDirFromLast(i + 1);

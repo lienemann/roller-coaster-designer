@@ -4,7 +4,7 @@
 
 import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
-import { vec3Distance } from './fvec.js';
+import { r, vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
 import { type MNode } from './mnode.js';
 import { loadFunc, writeFunc } from './sec-straight.js';
@@ -167,13 +167,15 @@ export class SecGeometric extends Section {
       while (artificialRoll < -180) artificialRoll += 360;
       curNode.updateNorm();
 
-      curNode.fDistFromLast = vec3Distance(
-        curNode.vPosHeart(this.parent.fHeart),
-        prevNode.vPosHeart(this.parent.fHeart),
+      curNode.fDistFromLast = r(
+        vec3Distance(
+          curNode.vPosHeart(this.parent.fHeart),
+          prevNode.vPosHeart(this.parent.fHeart),
+        ),
       );
-      curNode.fTotalLength = prevNode.fTotalLength + curNode.fDistFromLast;
-      curNode.fHeartDistFromLast = vec3Distance(curNode.vPos, prevNode.vPos);
-      curNode.fTotalHeartLength = prevNode.fTotalHeartLength + curNode.fHeartDistFromLast;
+      curNode.fTotalLength = r(prevNode.fTotalLength + curNode.fDistFromLast);
+      curNode.fHeartDistFromLast = r(vec3Distance(curNode.vPos, prevNode.vPos));
+      curNode.fTotalHeartLength = r(prevNode.fTotalHeartLength + curNode.fHeartDistFromLast);
       curNode.fRollSpeed = this.rollFunc.getValue((i + 1) / F_HZ);
 
       if (this.bOrientation === EULER || subDeg === EDegree.ToZero) {

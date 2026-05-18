@@ -5,10 +5,11 @@
 import { F_G, F_HZ, F_PI, FLOAT_EPSILON, toRad } from './constants.js';
 import type { Func } from './func.js';
 import {
+  r,
   vec3,
   vec3Distance,
   vec3Normalize,
-  vec3RotateAxis,
+  vec3RotateAxisGlm,
   type Vec3,
 } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
@@ -113,19 +114,20 @@ export class SecCurved extends Section {
 
       curNode.updateNorm();
 
-      const fPureDirection = this.fDirection - artificialRoll;
-      const cd = Math.cos((-fPureDirection * F_PI) / 180);
-      const sd = Math.sin((-fPureDirection * F_PI) / 180);
-      // seccurved.cpp:119: axis is `cos*vLat + sin*vNorm`. FVD does NOT
-      // normalize — vLat and vNorm are unit and perpendicular (after
-      // updateNorm), so the composite is near-unit. Matching exactly
-      // avoids introducing float drift from a redundant normalize.
-      tmpAxis.x = cd * prevNode2.vLat.x + sd * prevNode2.vNorm.x;
-      tmpAxis.y = cd * prevNode2.vLat.y + sd * prevNode2.vNorm.y;
-      tmpAxis.z = cd * prevNode2.vLat.z + sd * prevNode2.vNorm.z;
+      // Axis construction in C++ float32 (seccurved.cpp:119). Each cast
+      // through r() forces a float32 store at the same boundaries the C++
+      // would have. Without this every binary op accumulates float64
+      // precision, and over the 1700-step curve the result drifts ~3 cm
+      // beyond what FVD computes.
+      const fPureDirection = r(this.fDirection - artificialRoll);
+      const cd = r(Math.cos(r(r(-fPureDirection * F_PI) / 180)));
+      const sd = r(Math.sin(r(r(-fPureDirection * F_PI) / 180)));
+      tmpAxis.x = r(r(cd * prevNode2.vLat.x) + r(sd * prevNode2.vNorm.x));
+      tmpAxis.y = r(r(cd * prevNode2.vLat.y) + r(sd * prevNode2.vNorm.y));
+      tmpAxis.z = r(r(cd * prevNode2.vLat.z) + r(sd * prevNode2.vNorm.z));
 
-      vec3RotateAxis(prevNode2.vDir, tmpAxis, toRad(deltaAngle), curNode.vDir);
-      vec3RotateAxis(prevNode2.vLat, tmpAxis, toRad(deltaAngle), curNode.vLat);
+      vec3RotateAxisGlm(prevNode2.vDir, tmpAxis, toRad(deltaAngle), curNode.vDir);
+      vec3RotateAxisGlm(prevNode2.vLat, tmpAxis, toRad(deltaAngle), curNode.vLat);
       vec3Normalize(curNode.vDir, curNode.vDir);
       vec3Normalize(curNode.vLat, curNode.vLat);
       curNode.updateNorm();
@@ -181,13 +183,19 @@ export class SecCurved extends Section {
 
       curNode.updateRoll();
 
-      curNode.fDistFromLast = vec3Distance(
-        curNode.vPosHeart(this.parent.fHeart),
-        prevNode2.vPosHeart(this.parent.fHeart),
+      // Heart-line and rail-spine distances. fDistFromLast is the heart
+      // distance (used by fFillPointList for export-point sampling), so
+      // its float32-rounded accumulation needs to track FVD exactly —
+      // otherwise we sample one node off the gold output.
+      curNode.fDistFromLast = r(
+        vec3Distance(
+          curNode.vPosHeart(this.parent.fHeart),
+          prevNode2.vPosHeart(this.parent.fHeart),
+        ),
       );
-      curNode.fTotalLength += curNode.fDistFromLast;
-      curNode.fHeartDistFromLast = vec3Distance(curNode.vPos, prevNode2.vPos);
-      curNode.fTotalHeartLength += curNode.fHeartDistFromLast;
+      curNode.fTotalLength = r(curNode.fTotalLength + curNode.fDistFromLast);
+      curNode.fHeartDistFromLast = r(vec3Distance(curNode.vPos, prevNode2.vPos));
+      curNode.fTotalHeartLength = r(curNode.fTotalHeartLength + curNode.fHeartDistFromLast);
 
       this.calcDirFromLast(numNodes);
 
