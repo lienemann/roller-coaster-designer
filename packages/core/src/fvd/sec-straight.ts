@@ -211,7 +211,11 @@ function loadSubfunc(rs: ReadStream, s: SubfuncCls): void {
   const centerArg = rs.readFloat();
   const tensionArg = rs.readFloat();
   const locked = rs.readBool();
-  s.degree = degree;
+  // Go through changeDegree so Freeform's pointList + valueList get
+  // initialised to FVD's defaults — the wire format doesn't store
+  // pointList, so without this Freeform subfuncs load with an empty
+  // valueList and getValue() returns NaN.
+  s.changeDegree(degree);
   s.minArgument = minArg;
   s.maxArgument = maxArg;
   s.startValue = startValue;
