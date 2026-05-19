@@ -157,39 +157,44 @@ export class Subfunc {
     x = this.applyCenter(x);
     x = this.applyTension(x);
 
+    // Each branch's return is wrapped in r() — FVD's getValue is
+    // declared `float`, so the result is rounded to float32 at the
+    // return-store site. Without this the JS double-precision result
+    // accumulates ULP errors per call; over a 1000-step section that
+    // multiplies into mm-scale position drift.
     switch (this.degree) {
       case EDegree.Linear:
-        return this.symArg * x + this.startValue;
+        return r(this.symArg * x + this.startValue);
       case EDegree.Quadratic:
         if (this.isSymmetric()) {
           const xs = 2 * x - 1;
-          return this.symArg * (1 - xs * xs) + this.startValue;
+          return r(this.symArg * (1 - xs * xs) + this.startValue);
         } else if (this.arg1 < 0) {
-          return this.symArg * (1 - (1 - x) * (1 - x)) + this.startValue;
+          return r(this.symArg * (1 - (1 - x) * (1 - x)) + this.startValue);
         } else {
-          return this.symArg * x * x + this.startValue;
+          return r(this.symArg * x * x + this.startValue);
         }
       case EDegree.Cubic:
-        return this.symArg * x * x * (3 + x * -2) + this.startValue;
+        return r(this.symArg * x * x * (3 + x * -2) + this.startValue);
       case EDegree.Quartic: {
         if (!this.isSymmetric()) {
           const sym = this.symArg;
           const a1 = this.arg1;
           const denom = 1 - 2 * a1;
-          return (
+          return r(
             x *
               x *
               (-(6 * sym * a1) / denom +
                 x * ((sym * (4 * a1 + 4)) / denom + x * (-3 * sym / denom))) +
-            this.startValue
+              this.startValue,
           );
         } else {
-          return this.symArg * x * x * (16 + x * (-32 + x * 16)) + this.startValue;
+          return r(this.symArg * x * x * (16 + x * (-32 + x * 16)) + this.startValue);
         }
       }
       case EDegree.Quintic: {
         if (Math.abs(this.arg1) < 0.005) {
-          return this.symArg * x * x * x * (10 + x * (-15 + x * 6)) + this.startValue;
+          return r(this.symArg * x * x * x * (10 + x * (-15 + x * 6)) + this.startValue);
         } else if (this.arg1 < 0) {
           const a = Math.abs(this.arg1 / 10);
           const root = -Math.sqrt(9 + a * (-16 + 16 * a));
@@ -206,7 +211,10 @@ export class Subfunc {
                       (-0.0704 +
                         0.02048 * root +
                         a * (0.1024 - 0.01024 * root + (this.arg1 / 10) * 0.04096))));
-          return (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x + this.arg1 / 10) + this.startValue;
+          return r(
+            (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x + this.arg1 / 10) +
+              this.startValue,
+          );
         } else {
           const a = this.arg1 / 10;
           const root = Math.sqrt(9 + a * (-16 + 16 * a));
@@ -223,16 +231,18 @@ export class Subfunc {
                       (-0.0704 +
                         0.02048 * root +
                         a * (0.1024 - 0.01024 * root - a * 0.04096))));
-          return (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x - a) + this.startValue;
+          return r(
+            (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x - a) + this.startValue,
+          );
         }
       }
       case EDegree.Sinusoidal:
-        return 0.5 * this.symArg * (1 - Math.cos(F_PI * x)) + this.startValue;
+        return r(0.5 * this.symArg * (1 - Math.cos(F_PI * x)) + this.startValue);
       case EDegree.Plateau: {
-        return (
+        return r(
           this.symArg *
             (1 - Math.exp(-this.arg1 * 15 * Math.pow(1 - Math.abs(2 * x - 1), 3))) +
-          this.startValue
+            this.startValue,
         );
       }
       case EDegree.Freeform: {
@@ -247,10 +257,10 @@ export class Subfunc {
         root = root - Math.floor(root);
         const v0 = this.valueList[max | 0] ?? 0;
         if ((max | 0) === this.valueList.length - 1) {
-          return root * this.symArg * v0 + this.startValue;
+          return r(root * this.symArg * v0 + this.startValue);
         } else {
           const v1 = this.valueList[(max | 0) + 1] ?? 0;
-          return (1 - root) * this.symArg * v0 + root * this.symArg * v1 + this.startValue;
+          return r((1 - root) * this.symArg * v0 + root * this.symArg * v1 + this.startValue);
         }
       }
       case EDegree.ToZero: {
@@ -288,7 +298,7 @@ export class Subfunc {
         const aPoly = -2.5 * (d + 6 * (e - 2 * a1));
         const bPoly = 6 * d + 32 * e - 60 * a1;
         const cPoly = -d * 4.5 - 18 * e + 30 * a1;
-        return x * (d + x * (cPoly + x * (bPoly + x * aPoly))) + e;
+        return r(x * (d + x * (cPoly + x * (bPoly + x * aPoly))) + e);
       }
       default:
         throw new Error('unknown degree');

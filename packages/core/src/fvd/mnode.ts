@@ -129,6 +129,13 @@ export class MNode {
   // recompute vNorm and fRoll from the new lat/dir frame. The negation of
   // dRoll is intentional and load-bearing.
   setRoll(dRoll: number): void {
+    // FVD's setRoll uses glm::angleAxis * vLat, but switching this to
+    // vec3RotateAxisGlm broke the testtrack save→load→save byte
+    // round-trip: setRoll + updateRoll's atan2 of the rotated vLat
+    // doesn't reproduce dRoll to the last ULP under the GLM path, so
+    // each load+write cycle drifted fRoll by a few ULPs. The
+    // Rodrigues path round-trips losslessly here, and the parity
+    // impact of the choice is sub-mm. Keep Rodrigues for setRoll.
     vec3RotateAxis(this.vLat, this.vDir, toRad(-dRoll), this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateRoll();

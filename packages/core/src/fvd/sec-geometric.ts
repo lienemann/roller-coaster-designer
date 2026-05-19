@@ -119,16 +119,23 @@ export class SecGeometric extends Section {
       curNode.fVel = prevNode.fVel;
       curNode.fEnergy = prevNode.fEnergy;
 
-      const pitchChange = this.normForce!.getValue((i + 1) / F_HZ) / F_HZ;
-      const yawChange = this.latForce!.getValue((i + 1) / F_HZ) / F_HZ;
+      // FVD stores these as float — `float pitchChange = ... / F_HZ`.
+      // Without r(), the JS evaluator keeps double precision and the
+      // per-step pitch / yaw drift by 1-2 ULP, accumulating to mm-scale
+      // position error over 1000-step sections. Mirrors the float32
+      // store FVD's compiler emits.
+      const pitchChange = r(this.normForce!.getValue((i + 1) / F_HZ) / F_HZ);
+      const yawChange = r(this.latForce!.getValue((i + 1) / F_HZ) / F_HZ);
       const sign = Math.abs(artificialRoll) >= 90 ? -1 : 1;
 
       curNode.changePitch(pitchChange, sign === -1);
       curNode.changeYaw(yawChange);
 
-      const pureYawChange = (1 - Math.abs(curNode.vDir.y)) * yawChange;
-      const pureRollChange = -curNode.vDir.y * yawChange * F_HZ;
-      const deltaAngle = Math.sqrt(pitchChange * pitchChange + pureYawChange * pureYawChange);
+      const pureYawChange = r((1 - Math.abs(curNode.vDir.y)) * yawChange);
+      const pureRollChange = r(-curNode.vDir.y * yawChange * F_HZ);
+      const deltaAngle = r(
+        Math.sqrt(pitchChange * pitchChange + pureYawChange * pureYawChange),
+      );
 
       curNode.setRoll(-pureRollChange / F_HZ);
       artificialRoll -= pureRollChange / F_HZ;
@@ -353,17 +360,19 @@ export class SecGeometric extends Section {
       curNode.fVel = prevNode.fVel;
       curNode.fEnergy = prevNode.fEnergy;
 
-      const pitchChange =
-        this.normForce!.getValue(this.length + curNode.fVel / F_HZ) * (curNode.fVel / F_HZ);
-      const yawChange =
-        this.latForce!.getValue(this.length + curNode.fVel / F_HZ) * (curNode.fVel / F_HZ);
+      const pitchChange = r(
+        this.normForce!.getValue(this.length + curNode.fVel / F_HZ) * (curNode.fVel / F_HZ),
+      );
+      const yawChange = r(
+        this.latForce!.getValue(this.length + curNode.fVel / F_HZ) * (curNode.fVel / F_HZ),
+      );
       const sign = Math.abs(artificialRoll) >= 90 ? -1 : 1;
 
       curNode.changePitch(pitchChange, sign === -1);
       curNode.changeYaw(yawChange);
 
-      const pureYawChange = (1 - Math.abs(curNode.vDir.y)) * yawChange;
-      const pureRollChange = -curNode.vDir.y * yawChange * F_HZ;
+      const pureYawChange = r((1 - Math.abs(curNode.vDir.y)) * yawChange);
+      const pureRollChange = r(-curNode.vDir.y * yawChange * F_HZ);
 
       curNode.setRoll(-pureRollChange / F_HZ);
       artificialRoll -= pureRollChange / F_HZ;
@@ -448,7 +457,9 @@ export class SecGeometric extends Section {
       // secgeometric.cpp:358 — uses `deltaAngle` from pitch/yaw not
       // forceAngle. They're roughly the same; preserve the C++ branch
       // exactly.
-      const deltaAngle = Math.sqrt(pitchChange * pitchChange + pureYawChange * pureYawChange);
+      const deltaAngle = r(
+        Math.sqrt(pitchChange * pitchChange + pureYawChange * pureYawChange),
+      );
       let fX: number;
       let fY: number;
       let fZ: number;
