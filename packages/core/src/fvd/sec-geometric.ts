@@ -49,7 +49,14 @@ export class SecGeometric extends Section {
     }
 
     if (this.bArgument === DISTANCE) {
-      throw new Error('SecGeometric: DISTANCE mode not yet ported');
+      // DISTANCE-mode integrator port pending. Don't throw — the file
+      // load path runs updateSection during loadTRCBody, and we want to
+      // be able to load + save DISTANCE-mode sections losslessly even
+      // before the math lands. Leave lNodes at its single inherited
+      // node so downstream code can skip via `if (s.bArgument === DISTANCE)`.
+      this.length = 0;
+      this.iTime = (this.getMaxArgument() * F_HZ + 0.5) | 0;
+      return node;
     }
 
     node = node > this.lNodes.length - 2 ? this.lNodes.length - 2 : node;

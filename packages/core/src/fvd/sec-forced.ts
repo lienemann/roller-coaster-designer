@@ -71,8 +71,11 @@ export class SecForced extends Section {
     }
 
     if (this.bArgument === DISTANCE) {
-      // Not exercised by testtrack; defer.
-      throw new Error('SecForced: DISTANCE mode not yet ported');
+      // DISTANCE-mode integrator port pending. Match SecGeometric: load
+      // and save are lossless; lNodes stays at the inherited first node.
+      this.length = 0;
+      this.iTime = (this.getMaxArgument() * F_HZ + 0.5) | 0;
+      return node;
     }
 
     node = node > this.lNodes.length - 2 ? this.lNodes.length - 2 : node;
