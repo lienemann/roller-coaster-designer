@@ -236,17 +236,21 @@ export class Subfunc {
         );
       }
       case EDegree.Freeform: {
+        // FVD's getValue does no bounds check (subfunction.cpp:228). On
+        // a freshly-loaded Freeform subfunc valueList is empty (the
+        // wire format omits pointList) so every read is QList OOB —
+        // QList<float> returns 0 in that case, and the evaluator
+        // effectively returns startValue. Match that behavior here:
+        // missing valueList entries read as 0.
         let root = x * (this.valueList.length - 2);
         const max = Math.floor(root) + 0.01;
         root = root - Math.floor(root);
+        const v0 = this.valueList[max | 0] ?? 0;
         if ((max | 0) === this.valueList.length - 1) {
-          return root * this.symArg * this.valueList[max | 0]! + this.startValue;
+          return root * this.symArg * v0 + this.startValue;
         } else {
-          return (
-            (1 - root) * this.symArg * this.valueList[max | 0]! +
-            root * this.symArg * this.valueList[(max | 0) + 1]! +
-            this.startValue
-          );
+          const v1 = this.valueList[(max | 0) + 1] ?? 0;
+          return (1 - root) * this.symArg * v0 + root * this.symArg * v1 + this.startValue;
         }
       }
       case EDegree.ToZero: {

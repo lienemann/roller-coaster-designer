@@ -211,11 +211,14 @@ function loadSubfunc(rs: ReadStream, s: SubfuncCls): void {
   const centerArg = rs.readFloat();
   const tensionArg = rs.readFloat();
   const locked = rs.readBool();
-  // Go through changeDegree so Freeform's pointList + valueList get
-  // initialised to FVD's defaults — the wire format doesn't store
-  // pointList, so without this Freeform subfuncs load with an empty
-  // valueList and getValue() returns NaN.
-  s.changeDegree(degree);
+  // 1:1 port of subfunction.cpp::loadSubFunction (line 317+): direct
+  // field assignment, no changeDegree() call. FVD's wire format never
+  // persists pointList, so a loaded Freeform subfunc has degree=Freeform
+  // but an empty valueList. FVD's evaluator does OOB reads on the empty
+  // QList in that state — in QList<float> those return 0, so a loaded
+  // Freeform subfunc effectively evaluates to startValue everywhere. We
+  // mirror this exactly in subfunction.ts::getValue's Freeform branch.
+  s.degree = degree;
   s.minArgument = minArg;
   s.maxArgument = maxArg;
   s.startValue = startValue;
