@@ -361,6 +361,50 @@ function kinematicsSweep(t: Track): void {
   }
 }
 
+// Scenario 9a: Freeform isolation. Single Geometric section with a
+// Freeform pitch func — default pointList (0.3, 0) and (0.7, 1). Lets
+// us diff per-step pitch values against FVD without any upstream
+// sections muddying the signal.
+function freeformOnly(t: Track): void {
+  addGeo(t, {
+    name: 'freeform-pitch-only',
+    timeSec: 1,
+    fVel: 15,
+    bSpeed: false,
+    bOrientation: QUATERNION,
+    bArgument: TIME,
+    pitch: { degree: EDegree.Freeform, start: 0, symArg: 30 },
+  });
+}
+
+// Scenario 9b: section.length straddling the int(length / mPerNode)
+// boundary so fFillPointList's numNodes truncation can disagree
+// between FVD and us. mPerNode is 2.0 in the export, so the int
+// boundary at numNodes=8 sits around length=16.0. iTime values are
+// chosen so fVel=15 produces a heart-line length that brackets this:
+//   iTime=1060 → ~15.9 m (numNodes=7)
+//   iTime=1080 → ~16.2 m (numNodes=8)
+// Plus a few more straddling 6/7 and 5/6.
+function lengthThreshold(t: Track): void {
+  const sweep: { tag: string; iTime: number }[] = [
+    { tag: 'sub-6-7-lo', iTime: 920 }, //  ~13.8 m → numNodes=6
+    { tag: 'sub-6-7-hi', iTime: 950 }, //  ~14.25 m → numNodes=7
+    { tag: 'sub-7-8-lo', iTime: 1060 }, // ~15.9 m → numNodes=7
+    { tag: 'sub-7-8-hi', iTime: 1080 }, // ~16.2 m → numNodes=8
+  ];
+  for (const { tag, iTime } of sweep) {
+    addGeo(t, {
+      name: tag,
+      timeSec: iTime / 1000,
+      fVel: 15,
+      bSpeed: false,
+      bOrientation: QUATERNION,
+      bArgument: TIME,
+      pitch: { degree: EDegree.Cubic, start: 0, symArg: 15 },
+    });
+  }
+}
+
 // ----- run -----
 
 function buildOne(name: string, populate: (t: Track) => void): void {
@@ -379,5 +423,7 @@ buildOne('geo-warp', warpSweep);
 buildOne('geo-options', optionMatrix);
 buildOne('geo-multisub', multiSubfunc);
 buildOne('geo-kinematics', kinematicsSweep);
+buildOne('geo-freeform-only', freeformOnly);
+buildOne('geo-length-threshold', lengthThreshold);
 // eslint-disable-next-line no-console
 console.log('done.');

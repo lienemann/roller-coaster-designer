@@ -88,19 +88,7 @@ describe('geometric corpus', () => {
       if (hasGolden) {
         it('matches FVD++ gold .nl2elem (count + numerical parity)', () => {
           const t = readFvd(buf).tracks[0]!;
-          // Skip DISTANCE-mode sections in the export — our integrator
-          // doesn't run them yet, so FVD's gold over those sections
-          // doesn't compare meaningfully. The diff is then over the
-          // TIME-mode prefix only.
-          let toIndex = t.lSections.length - 1;
-          for (let i = 0; i < t.lSections.length; i++) {
-            if (t.lSections[i]!.bArgument === DISTANCE) {
-              toIndex = i - 1;
-              break;
-            }
-          }
-          if (toIndex < 0) return;
-          const ours = exportNL2(t, 2.0, 0, toIndex);
+          const ours = exportNL2(t, 2.0, 0, t.lSections.length - 1);
           const gold = readFileSync(goldenPath, 'utf8');
           const ourF = extractFloats(ours);
           const goldF = extractFloats(gold);
@@ -110,9 +98,6 @@ describe('geometric corpus', () => {
           // numerical diff. List of files where this is currently
           // expected; populate as the integrators sharpen.
           const knownLengthMismatch = new Set([
-            // Tracks that include DISTANCE-mode sections — gold covers
-            // every section, we cover only the TIME prefix.
-            'geo-options.fvd',
             // Sampling drift > 1 sample at thresholds — investigated
             // separately.
             'geo-arg1.fvd',
