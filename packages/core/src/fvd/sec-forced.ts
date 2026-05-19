@@ -134,6 +134,7 @@ export class SecForced extends Section {
 
       curNode.forceNormal = nVal;
       curNode.forceLateral = lVal;
+      curNode.forceLong = -prevNode.vDir.y;
 
       const normLen = Math.sqrt(
         prevNode.vNorm.x * prevNode.vNorm.x +
@@ -287,6 +288,7 @@ export class SecForced extends Section {
           : (fX * curNode.vLat.x + fY * curNode.vLat.y + fZ * curNode.vLat.z) / lLen2;
       curNode.forceNormal = -dN2;
       curNode.forceLateral = -dL2;
+      curNode.forceLong = -curNode.vDir.y;
 
       void tmpAxis;
     }

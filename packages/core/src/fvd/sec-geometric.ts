@@ -250,6 +250,7 @@ export class SecGeometric extends Section {
           : (fX * curNode.vLat.x + fY * curNode.vLat.y + fZ * curNode.vLat.z) / latLen;
       curNode.forceNormal = -dotN;
       curNode.forceLateral = -dotL;
+      curNode.forceLong = -curNode.vDir.y;
     }
     while (this.lNodes.length > 1 + i) this.lNodes.splice(1 + i, 1);
     this.length = this.lNodes.length

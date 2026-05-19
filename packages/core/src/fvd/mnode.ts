@@ -42,11 +42,16 @@ export class MNode {
   fVel = 0;
   fEnergy = 0;
 
-  // Forces (rider-frame g multiples)
+  // Forces (rider-frame g multiples). `forceLong` is an addition beyond
+  // FVD++ — it's the gravity component along vDir (i.e. -vDir.y), useful
+  // for the forces graph to surface downhill acceleration / uphill drag.
+  // Not persisted in the .fvd file; computed per-step.
   forceNormal = 0;
   forceLateral = 0;
+  forceLong = 0;
   smoothNormal = 0;
   smoothLateral = 0;
+  smoothLong = 0;
 
   // Per-step deltas
   fDistFromLast = 0;
@@ -347,8 +352,10 @@ export class MNode {
     out.fEnergy = this.fEnergy;
     out.forceNormal = this.forceNormal;
     out.forceLateral = this.forceLateral;
+    out.forceLong = this.forceLong;
     out.smoothNormal = this.smoothNormal;
     out.smoothLateral = this.smoothLateral;
+    out.smoothLong = this.smoothLong;
     out.fDistFromLast = this.fDistFromLast;
     out.fHeartDistFromLast = this.fHeartDistFromLast;
     out.fAngleFromLast = this.fAngleFromLast;

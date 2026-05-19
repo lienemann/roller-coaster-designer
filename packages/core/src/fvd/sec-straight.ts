@@ -69,6 +69,7 @@ export class SecStraight extends Section {
 
       curNode.forceNormal = -curNode.vNorm.y;
       curNode.forceLateral = -curNode.vLat.y;
+      curNode.forceLong = -curNode.vDir.y;
 
       // Float32-rounded heart-line / spine length accumulators — see
       // sec-curved.ts for the rationale (float64 vs float32 aliasing on

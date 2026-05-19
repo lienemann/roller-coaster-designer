@@ -248,6 +248,7 @@ export class SecCurved extends Section {
           : (fX * curNode.vLat.x + fY * curNode.vLat.y + fZ * curNode.vLat.z) / latLen;
       curNode.forceNormal = -dotN;
       curNode.forceLateral = -dotL;
+      curNode.forceLong = -curNode.vDir.y;
 
       numNodes++;
     }
