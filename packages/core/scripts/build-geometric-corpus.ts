@@ -1,16 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Geometric-section test corpus generator. Single-file output:
-//   packages/core/test/golden/data/fvd-corpus/geo-corpus.fvd
+// Geometric-section test corpus generator. Eight small .fvd files so FVD++
+// 0.79 (which crashes on a single ~70-section track) can chew through
+// each scenario in isolation:
 //
-// One Track:
-//   - Anchor at origin, vDir = (0,0,-1), fVel = 15, heart = 1.1
-//   - All scenarios chained into a single section list so FVD++ produces
-//     one .nl2elem golden the parity test can diff against.
+//   geo-degree-roll.fvd       9 sections, one per EDegree, on rollFunc
+//   geo-degree-pitch.fvd      9 sections, one per EDegree, on normForce
+//   geo-degree-yaw.fvd        9 sections, one per EDegree, on latForce
+//   geo-arg1.fvd              11 sections sweeping arg1 across
+//                             Quartic / Quintic / Plateau
+//   geo-warp.fvd              10 sections sweeping centerArg/tensionArg
+//   geo-options.fvd           6 sections covering the bOrientation ×
+//                             bSpeed × bArgument matrix (includes 2
+//                             DISTANCE-mode sections)
+//   geo-multisub.fvd          3 sections with multi-subfunc funcs incl.
+//                             a locked-tail subfunc
+//   geo-kinematics.fvd        6 sections sweeping velocity / time
 //
 // Workflow: run `pnpm tsx scripts/build-geometric-corpus.ts` from
-// packages/core, then open geo-corpus.fvd in FVD++ 0.79, export NL2 XML,
-// and drop geo-corpus.nl2elem next to it.
+// packages/core, open each .fvd in FVD++ 0.79, export the NL2 element
+// XML, drop each .nl2elem next to its source .fvd.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -133,20 +142,6 @@ const ALL_DEGREES: { name: string; degree: EDegree }[] = [
   { name: 'tozero', degree: EDegree.ToZero },
   { name: 'freeform', degree: EDegree.Freeform },
 ];
-
-// A short "rest" section between scenarios: 0.5s, constant velocity,
-// pitch/yaw/roll all zero. Keeps each scenario's starting pose orderly
-// without dramatically changing the cumulative geometry.
-function addRest(track: Track, tag: string): void {
-  addGeo(track, {
-    name: `rest-${tag}`,
-    timeSec: 0.5,
-    fVel: 15,
-    bSpeed: false,
-    bOrientation: QUATERNION,
-    bArgument: TIME,
-  });
-}
 
 // Scenario 1: roll-rate ramps, one section per EDegree. Pitch/yaw stay
 // zero so the rider only banks.
@@ -368,25 +363,21 @@ function kinematicsSweep(t: Track): void {
 
 // ----- run -----
 
-const track = newTrack();
-rollDegreeSweep(track);
-addRest(track, 'after-roll');
-pitchDegreeSweep(track);
-addRest(track, 'after-pitch');
-yawDegreeSweep(track);
-addRest(track, 'after-yaw');
-arg1Sweep(track);
-addRest(track, 'after-arg1');
-warpSweep(track);
-addRest(track, 'after-warp');
-optionMatrix(track);
-addRest(track, 'after-options');
-multiSubfunc(track);
-addRest(track, 'after-multisub');
-kinematicsSweep(track);
+function buildOne(name: string, populate: (t: Track) => void): void {
+  const t = newTrack();
+  populate(t);
+  save(t, name);
+}
 
 // eslint-disable-next-line no-console
 console.log(`Geometric corpus → ${outDir}`);
-save(track, 'geo-corpus');
+buildOne('geo-degree-roll', rollDegreeSweep);
+buildOne('geo-degree-pitch', pitchDegreeSweep);
+buildOne('geo-degree-yaw', yawDegreeSweep);
+buildOne('geo-arg1', arg1Sweep);
+buildOne('geo-warp', warpSweep);
+buildOne('geo-options', optionMatrix);
+buildOne('geo-multisub', multiSubfunc);
+buildOne('geo-kinematics', kinematicsSweep);
 // eslint-disable-next-line no-console
 console.log('done.');
