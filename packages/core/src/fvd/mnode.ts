@@ -20,6 +20,7 @@ import {
   vec3Cross,
   vec3Normalize,
   vec3RotateAxis,
+  vec3RotateAxisGlm,
   vec3Set,
   r,
 } from './fvec.js';
@@ -147,6 +148,13 @@ export class MNode {
   // mnode.cpp:98 — changePitch rotates vDir/vLat around the horizontal
   // axis perpendicular to (0, vNorm.y, 0) and vDir. `inverted` flips the
   // axis when the rider is upside-down (vNorm.y > 0).
+  //
+  // C++ uses `glm::angleAxis(angle, axis) * vec` which constructs a
+  // quaternion and rotates via cross-cross composition. Rodrigues is
+  // mathematically identical but the float32 evaluation order diverges
+  // by ~1 ULP per call — over 1000 steps per Geometric section that
+  // accumulates to centimeters of drift. Use vec3RotateAxisGlm here to
+  // match FVD bit-for-bit (modulo the float32 emulation).
   changePitch(dAngle: number, inverted: boolean): void {
     vec3Set(tmpVec, 0, this.vNorm.y, 0);
     vec3Cross(tmpVec, this.vDir, tmpAxis);
@@ -157,9 +165,9 @@ export class MNode {
       tmpAxis.z = -tmpAxis.z;
     }
     const a = toRad(dAngle);
-    vec3RotateAxis(this.vDir, tmpAxis, a, this.vDir);
+    vec3RotateAxisGlm(this.vDir, tmpAxis, a, this.vDir);
     vec3Normalize(this.vDir, this.vDir);
-    vec3RotateAxis(this.vLat, tmpAxis, a, this.vLat);
+    vec3RotateAxisGlm(this.vLat, tmpAxis, a, this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateNorm();
   }
@@ -168,9 +176,9 @@ export class MNode {
   changeYaw(dAngle: number): void {
     vec3Set(tmpAxis, 0, 1, 0);
     const a = toRad(dAngle);
-    vec3RotateAxis(this.vDir, tmpAxis, a, this.vDir);
+    vec3RotateAxisGlm(this.vDir, tmpAxis, a, this.vDir);
     vec3Normalize(this.vDir, this.vDir);
-    vec3RotateAxis(this.vLat, tmpAxis, a, this.vLat);
+    vec3RotateAxisGlm(this.vLat, tmpAxis, a, this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateNorm();
   }
