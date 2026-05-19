@@ -1402,6 +1402,16 @@ Each track contains project settings, anchor, sections list. Each section: type 
 
 `core/track.cpp` `exportNL2Track` (~line 796). Outputs a specific binary format and/or CSV. Check the actual byte output of FVD++ 0.79 against your output on the golden test coasters. NL2 import files in their editor — you must produce byte-identical files, not "equivalent" ones. Also deferred; see §20b for rationale.
 
+**Export-dialog parity.** The NL2 export needs a UI that mirrors FVD++'s `Export Track` dialog one-for-one. Fields:
+  - **Exporter Type** — dropdown (NoLimits2 Exporter is the only one we ship; future: NL1).
+  - **Export Track** — track picker for multi-track projects.
+  - **Export From Section / Export To Section** — independent dropdowns of section names. **FVD's defaults are sticky across exports**, not "first..last" — the dropdowns retain the last-used indices even when you switch to a file with a different section list, so re-exporting without touching the dropdowns can silently produce a partial track. Replicate this behavior, but add a hint when From/To don't cover the full track.
+  - **Threshold for RelRoll (in °)** — numeric input, default 85.
+  - **Segment Length (in m)** — numeric input, default 2.0. Maps to `mPerNode` passed to `fFillPointList`.
+  - **Export without heartlining the Track** — checkbox, default off.
+
+Until this dialog exists, the parity tests pass `mPerNode = 2.0` and full-track (From=first, To=last). Goldens were initially generated with the sticky-default From/To which produced partial exports for some files; corpus goldens may need regeneration alongside the dialog work.
+
 ### 8.5 NL2 CSV import **[deferred — see §20b]**
 
 `core/nolimitsimporter.cpp` + `core/secnlcsv.cpp`. Creates a section populated from a CSV of pre-computed node data. Deferred alongside the NL1/NL2 exporters.
