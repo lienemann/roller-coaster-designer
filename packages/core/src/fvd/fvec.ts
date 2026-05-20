@@ -182,6 +182,27 @@ function libmCosSmall(x: number): number {
   return Math.fround(1 - Math.fround(Math.fround(x2 / 2) * t2));
 }
 
+// Float-faithful trig wrappers for the integrator's per-step calls
+// where the argument can be outside the libmSinSmall / Cos Taylor
+// window (cumulative pitch can pass ±π/4). C++'s `cosf(float)`
+// effectively does Math.fround(Math.cos(Math.fround(x))); these
+// helpers do the same so JS doubles can't carry sub-ULP detail
+// into the next step.
+export function libmSinF(x: number): number {
+  return libmSinSmall(x);
+}
+export function libmCosF(x: number): number {
+  return libmCosSmall(x);
+}
+export function libmAsinF(x: number): number {
+  // asin is monotonic, no range reduction needed. Float-round input
+  // then result to match C++ asinf(float) storage.
+  return Math.fround(Math.asin(Math.fround(x)));
+}
+export function libmAtan2F(y: number, x: number): number {
+  return Math.fround(Math.atan2(Math.fround(y), Math.fround(x)));
+}
+
 // Mirrors GLM's `glm::angleAxis(angle, k) * v` byte-for-byte (subject to
 // float64 vs float32 — see r() above): build the unit quaternion (cos(θ/2),
 // sin(θ/2)*k), then apply via the cross-cross formulation glm uses in

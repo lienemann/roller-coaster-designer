@@ -4,7 +4,7 @@
 
 import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
-import { r, vec3Distance } from './fvec.js';
+import { libmCosF, libmSinF, r, vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
 import { type MNode } from './mnode.js';
 import { loadFunc, writeFunc } from './sec-straight.js';
@@ -209,7 +209,7 @@ export class SecGeometric extends Section {
       }
 
       this.calcDirFromLast(i + 1);
-      const tempCos = Math.cos((Math.abs(curNode.getPitch()) * F_PI) / 180);
+      const tempCos = libmCosF((Math.abs(curNode.getPitch()) * F_PI) / 180);
       const forceAngle = Math.sqrt(
         tempCos * tempCos * curNode.fYawFromLast * curNode.fYawFromLast +
           curNode.fPitchFromLast * curNode.fPitchFromLast,
@@ -225,8 +225,8 @@ export class SecGeometric extends Section {
         fZ = 0;
       } else {
         const rollRad = (curNode.fRoll * F_PI) / 180;
-        const cosR = Math.cos(rollRad);
-        const sinR = Math.sin(rollRad);
+        const cosR = libmCosF(rollRad);
+        const sinR = libmSinF(rollRad);
         const normalDAngle =
           (F_PI / 180) * (-curNode.fPitchFromLast * cosR - tempCos * curNode.fYawFromLast * sinR);
         const lateralDAngle =
@@ -447,7 +447,7 @@ export class SecGeometric extends Section {
       }
 
       this.calcDirFromLast(i + 1);
-      const tempCos = Math.cos((Math.abs(curNode.getPitch()) * F_PI) / 180);
+      const tempCos = libmCosF((Math.abs(curNode.getPitch()) * F_PI) / 180);
       const forceAngle = Math.sqrt(
         tempCos * tempCos * curNode.fYawFromLast * curNode.fYawFromLast +
           curNode.fPitchFromLast * curNode.fPitchFromLast,
@@ -469,8 +469,8 @@ export class SecGeometric extends Section {
         fZ = 0;
       } else {
         const rollRad = (curNode.fRoll * F_PI) / 180;
-        const cosR = Math.cos(rollRad);
-        const sinR = Math.sin(rollRad);
+        const cosR = libmCosF(rollRad);
+        const sinR = libmSinF(rollRad);
         const normalDAngle =
           (F_PI / 180) * (-curNode.fPitchFromLast * cosR - tempCos * curNode.fYawFromLast * sinR);
         const lateralDAngle =

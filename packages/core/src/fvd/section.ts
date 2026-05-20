@@ -7,7 +7,7 @@
 
 import { F_PI, FLOAT_EPSILON } from './constants.js';
 import { Func, EFunctype } from './func.js';
-import { type Vec3, vec3 } from './fvec.js';
+import { libmAsinF, libmAtan2F, libmCosF, type Vec3, vec3 } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
 import { type MNode } from './mnode.js';
 import type { Subfunc } from './subfunction.js';
@@ -112,7 +112,7 @@ export abstract class Section {
       cur.fPitchFromLast = cur.getPitch() - prev.getPitch();
       cur.fYawFromLast = cur.getDirection() - prev.getDirection();
       cur.fDirFromLast =
-        (Math.atan2(cur.fYawFromLast, cur.fPitchFromLast) * 180) / F_PI - cur.fRoll;
+        (libmAtan2F(cur.fYawFromLast, cur.fPitchFromLast) * 180) / F_PI - cur.fRoll;
     }
 
     // section.cpp:291–296 — heart-line track angle
@@ -120,12 +120,12 @@ export abstract class Section {
     const prevDirHeart = prev.vDirHeart(this.parent.fHeart, vec3());
     const curYsafe = Math.max(-1, Math.min(1, curDirHeart.y));
     const prevYsafe = Math.max(-1, Math.min(1, prevDirHeart.y));
-    const fTrackPitchFromLast = (180 / F_PI) * (Math.asin(curYsafe) - Math.asin(prevYsafe));
+    const fTrackPitchFromLast = (180 / F_PI) * (libmAsinF(curYsafe) - libmAsinF(prevYsafe));
     const fTrackYawFromLast =
       (180 / F_PI) *
-      (Math.atan2(-curDirHeart.x, -curDirHeart.z) -
-        Math.atan2(-prevDirHeart.x, -prevDirHeart.z));
-    const temp = Math.cos(Math.abs(Math.asin(curYsafe)));
+      (libmAtan2F(-curDirHeart.x, -curDirHeart.z) -
+        libmAtan2F(-prevDirHeart.x, -prevDirHeart.z));
+    const temp = libmCosF(Math.abs(libmAsinF(curYsafe)));
     cur.fTrackAngleFromLast = Math.sqrt(
       temp * temp * fTrackYawFromLast * fTrackYawFromLast +
         fTrackPitchFromLast * fTrackPitchFromLast,
