@@ -69,6 +69,7 @@ export class SecStraight extends Section {
 
       curNode.forceNormal = -curNode.vNorm.y;
       curNode.forceLateral = -curNode.vLat.y;
+      curNode.forceLong = -curNode.vDir.y;
 
       // Float32-rounded heart-line / spine length accumulators — see
       // sec-curved.ts for the rationale (float64 vs float32 aliasing on
@@ -210,6 +211,13 @@ function loadSubfunc(rs: ReadStream, s: SubfuncCls): void {
   const centerArg = rs.readFloat();
   const tensionArg = rs.readFloat();
   const locked = rs.readBool();
+  // 1:1 port of subfunction.cpp::loadSubFunction (line 317+): direct
+  // field assignment, no changeDegree() call. FVD's wire format never
+  // persists pointList, so a loaded Freeform subfunc has degree=Freeform
+  // but an empty valueList. FVD's evaluator does OOB reads on the empty
+  // QList in that state — in QList<float> those return 0, so a loaded
+  // Freeform subfunc effectively evaluates to startValue everywhere. We
+  // mirror this exactly in subfunction.ts::getValue's Freeform branch.
   s.degree = degree;
   s.minArgument = minArg;
   s.maxArgument = maxArg;

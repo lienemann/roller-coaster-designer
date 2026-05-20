@@ -1402,6 +1402,16 @@ Each track contains project settings, anchor, sections list. Each section: type 
 
 `core/track.cpp` `exportNL2Track` (~line 796). Outputs a specific binary format and/or CSV. Check the actual byte output of FVD++ 0.79 against your output on the golden test coasters. NL2 import files in their editor — you must produce byte-identical files, not "equivalent" ones. Also deferred; see §20b for rationale.
 
+**Export-dialog parity.** The NL2 export needs a UI that mirrors FVD++'s `Export Track` dialog one-for-one. Fields:
+  - **Exporter Type** — dropdown (NoLimits2 Exporter is the only one we ship; future: NL1).
+  - **Export Track** — track picker for multi-track projects.
+  - **Export From Section / Export To Section** — independent dropdowns of section names. **FVD's defaults are sticky across exports**, not "first..last" — the dropdowns retain the last-used indices even when you switch to a file with a different section list, so re-exporting without touching the dropdowns can silently produce a partial track. Replicate this behavior, but add a hint when From/To don't cover the full track.
+  - **Threshold for RelRoll (in °)** — numeric input, default 85.
+  - **Segment Length (in m)** — numeric input, default 2.0. Maps to `mPerNode` passed to `fFillPointList`.
+  - **Export without heartlining the Track** — checkbox, default off.
+
+Until this dialog exists, the parity tests pass `mPerNode = 2.0` and full-track (From=first, To=last). Goldens were initially generated with the sticky-default From/To which produced partial exports for some files; corpus goldens may need regeneration alongside the dialog work.
+
 ### 8.5 NL2 CSV import **[deferred — see §20b]**
 
 `core/nolimitsimporter.cpp` + `core/secnlcsv.cpp`. Creates a section populated from a CSV of pre-computed node data. Deferred alongside the NL1/NL2 exporters.
@@ -2037,6 +2047,7 @@ Listed to make the "out of scope" list unambiguous — these _are_ planned:
 
 ## 21. Pitfalls to avoid
 
+- **Don't chase the last cm of FVD++ parity through float emulation alone.** The geometric corpus (`test/golden/data/fvd-corpus/`) confirmed the residual drift on the worst files (`geo-degree-yaw` 68 mm, `geo-warp` 51 mm, `geo-degree-pitch` 23 mm) comes from `Math.sin` / `Math.cos` / `Math.exp` / `Math.pow` in the V8 runtime diverging from C++ libm by 1-2 ULPs per call. The diagnostic file `geo-trig-isolation.fvd` (4 alternating Linear ↔ Sinusoidal/Plateau sections at 2 s each, identical cumulative pitch integral) shows that even pure-Linear sections drift, because the integrator's per-step rotation (`vec3RotateAxisGlm`) calls `Math.sin(half)` and `Math.cos(half)` regardless of the polynomial feeding it. Closing this requires either a libm-faithful sin/cos shim (~80 LoC) or a per-section accumulated-quaternion refactor of the integrator (~200 LoC). Until either lands, accept that the corpus tests gate at ~70 mm on the worst case and ~ULP on the cleanest.
 - **Don't port `qcustomplot`.** It's 25k lines of Qt charting. uPlot covers speed/force graphs; custom SVG covers the timeline. Together, maybe 1200 lines.
 - **Don't port the Qt undo system blindly.** It's entangled with Qt's signal/slot model. The _pattern_ transfers; the code doesn't.
 - **Don't try to make the physics deterministic across float32/float64.** The C++ uses float32 (glm's default). You'll use float64 in JS. Expected ULP-level differences are fine; the test tolerances account for it.

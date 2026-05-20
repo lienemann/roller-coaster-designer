@@ -20,6 +20,7 @@ import {
   vec3Cross,
   vec3Normalize,
   vec3RotateAxis,
+  vec3RotateAxisGlm,
   vec3Set,
   r,
 } from './fvec.js';
@@ -42,11 +43,16 @@ export class MNode {
   fVel = 0;
   fEnergy = 0;
 
-  // Forces (rider-frame g multiples)
+  // Forces (rider-frame g multiples). `forceLong` is an addition beyond
+  // FVD++ — it's the gravity component along vDir (i.e. -vDir.y), useful
+  // for the forces graph to surface downhill acceleration / uphill drag.
+  // Not persisted in the .fvd file; computed per-step.
   forceNormal = 0;
   forceLateral = 0;
+  forceLong = 0;
   smoothNormal = 0;
   smoothLateral = 0;
+  smoothLong = 0;
 
   // Per-step deltas
   fDistFromLast = 0;
@@ -123,6 +129,13 @@ export class MNode {
   // recompute vNorm and fRoll from the new lat/dir frame. The negation of
   // dRoll is intentional and load-bearing.
   setRoll(dRoll: number): void {
+    // FVD's setRoll uses glm::angleAxis * vLat, but switching this to
+    // vec3RotateAxisGlm broke the testtrack save→load→save byte
+    // round-trip: setRoll + updateRoll's atan2 of the rotated vLat
+    // doesn't reproduce dRoll to the last ULP under the GLM path, so
+    // each load+write cycle drifted fRoll by a few ULPs. The
+    // Rodrigues path round-trips losslessly here, and the parity
+    // impact of the choice is sub-mm. Keep Rodrigues for setRoll.
     vec3RotateAxis(this.vLat, this.vDir, toRad(-dRoll), this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateRoll();
@@ -142,6 +155,13 @@ export class MNode {
   // mnode.cpp:98 — changePitch rotates vDir/vLat around the horizontal
   // axis perpendicular to (0, vNorm.y, 0) and vDir. `inverted` flips the
   // axis when the rider is upside-down (vNorm.y > 0).
+  //
+  // C++ uses `glm::angleAxis(angle, axis) * vec` which constructs a
+  // quaternion and rotates via cross-cross composition. Rodrigues is
+  // mathematically identical but the float32 evaluation order diverges
+  // by ~1 ULP per call — over 1000 steps per Geometric section that
+  // accumulates to centimeters of drift. Use vec3RotateAxisGlm here to
+  // match FVD bit-for-bit (modulo the float32 emulation).
   changePitch(dAngle: number, inverted: boolean): void {
     vec3Set(tmpVec, 0, this.vNorm.y, 0);
     vec3Cross(tmpVec, this.vDir, tmpAxis);
@@ -152,9 +172,9 @@ export class MNode {
       tmpAxis.z = -tmpAxis.z;
     }
     const a = toRad(dAngle);
-    vec3RotateAxis(this.vDir, tmpAxis, a, this.vDir);
+    vec3RotateAxisGlm(this.vDir, tmpAxis, a, this.vDir);
     vec3Normalize(this.vDir, this.vDir);
-    vec3RotateAxis(this.vLat, tmpAxis, a, this.vLat);
+    vec3RotateAxisGlm(this.vLat, tmpAxis, a, this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateNorm();
   }
@@ -163,9 +183,9 @@ export class MNode {
   changeYaw(dAngle: number): void {
     vec3Set(tmpAxis, 0, 1, 0);
     const a = toRad(dAngle);
-    vec3RotateAxis(this.vDir, tmpAxis, a, this.vDir);
+    vec3RotateAxisGlm(this.vDir, tmpAxis, a, this.vDir);
     vec3Normalize(this.vDir, this.vDir);
-    vec3RotateAxis(this.vLat, tmpAxis, a, this.vLat);
+    vec3RotateAxisGlm(this.vLat, tmpAxis, a, this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateNorm();
   }
@@ -347,8 +367,10 @@ export class MNode {
     out.fEnergy = this.fEnergy;
     out.forceNormal = this.forceNormal;
     out.forceLateral = this.forceLateral;
+    out.forceLong = this.forceLong;
     out.smoothNormal = this.smoothNormal;
     out.smoothLateral = this.smoothLateral;
+    out.smoothLong = this.smoothLong;
     out.fDistFromLast = this.fDistFromLast;
     out.fHeartDistFromLast = this.fHeartDistFromLast;
     out.fAngleFromLast = this.fAngleFromLast;

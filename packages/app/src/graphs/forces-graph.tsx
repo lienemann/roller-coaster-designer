@@ -100,19 +100,22 @@ export function ForcesGraph({
           if (!sectionStartTimes || sectionStartTimes.length === 0) return;
           const ctx = u.ctx;
           ctx.save();
-          ctx.setLineDash([2, 4]);
+          // Match FVD++ 0.79 graph styling: Qt::DashDotLine — pattern is
+          // long dash, gap, short dot, gap. graphhandler.cpp:422 uses
+          // QPen(QColor(0,0,0,150), 1, Qt::DashDotLine); on our dark
+          // theme we invert to light gray at a comparable contrast.
+          ctx.setLineDash([3, 2, 1, 2]);
           ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(220, 220, 220, 0.55)';
+          ctx.beginPath();
           for (let i = 1; i < sectionStartTimes.length; i += 1) {
             const t = sectionStartTimes[i]!;
             const x = u.valToPos(t, 'x', true);
             if (!Number.isFinite(x)) continue;
-            ctx.strokeStyle = sectionColors?.[i] ?? '#ffffff33';
-            ctx.globalAlpha = 0.22;
-            ctx.beginPath();
             ctx.moveTo(x, u.bbox.top);
             ctx.lineTo(x, u.bbox.top + u.bbox.height);
-            ctx.stroke();
           }
+          ctx.stroke();
           ctx.restore();
         },
       },

@@ -157,39 +157,44 @@ export class Subfunc {
     x = this.applyCenter(x);
     x = this.applyTension(x);
 
+    // Each branch's return is wrapped in r() — FVD's getValue is
+    // declared `float`, so the result is rounded to float32 at the
+    // return-store site. Without this the JS double-precision result
+    // accumulates ULP errors per call; over a 1000-step section that
+    // multiplies into mm-scale position drift.
     switch (this.degree) {
       case EDegree.Linear:
-        return this.symArg * x + this.startValue;
+        return r(this.symArg * x + this.startValue);
       case EDegree.Quadratic:
         if (this.isSymmetric()) {
           const xs = 2 * x - 1;
-          return this.symArg * (1 - xs * xs) + this.startValue;
+          return r(this.symArg * (1 - xs * xs) + this.startValue);
         } else if (this.arg1 < 0) {
-          return this.symArg * (1 - (1 - x) * (1 - x)) + this.startValue;
+          return r(this.symArg * (1 - (1 - x) * (1 - x)) + this.startValue);
         } else {
-          return this.symArg * x * x + this.startValue;
+          return r(this.symArg * x * x + this.startValue);
         }
       case EDegree.Cubic:
-        return this.symArg * x * x * (3 + x * -2) + this.startValue;
+        return r(this.symArg * x * x * (3 + x * -2) + this.startValue);
       case EDegree.Quartic: {
         if (!this.isSymmetric()) {
           const sym = this.symArg;
           const a1 = this.arg1;
           const denom = 1 - 2 * a1;
-          return (
+          return r(
             x *
               x *
               (-(6 * sym * a1) / denom +
                 x * ((sym * (4 * a1 + 4)) / denom + x * (-3 * sym / denom))) +
-            this.startValue
+              this.startValue,
           );
         } else {
-          return this.symArg * x * x * (16 + x * (-32 + x * 16)) + this.startValue;
+          return r(this.symArg * x * x * (16 + x * (-32 + x * 16)) + this.startValue);
         }
       }
       case EDegree.Quintic: {
         if (Math.abs(this.arg1) < 0.005) {
-          return this.symArg * x * x * x * (10 + x * (-15 + x * 6)) + this.startValue;
+          return r(this.symArg * x * x * x * (10 + x * (-15 + x * 6)) + this.startValue);
         } else if (this.arg1 < 0) {
           const a = Math.abs(this.arg1 / 10);
           const root = -Math.sqrt(9 + a * (-16 + 16 * a));
@@ -206,7 +211,10 @@ export class Subfunc {
                       (-0.0704 +
                         0.02048 * root +
                         a * (0.1024 - 0.01024 * root + (this.arg1 / 10) * 0.04096))));
-          return (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x + this.arg1 / 10) + this.startValue;
+          return r(
+            (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x + this.arg1 / 10) +
+              this.startValue,
+          );
         } else {
           const a = this.arg1 / 10;
           const root = Math.sqrt(9 + a * (-16 + 16 * a));
@@ -223,30 +231,36 @@ export class Subfunc {
                       (-0.0704 +
                         0.02048 * root +
                         a * (0.1024 - 0.01024 * root - a * 0.04096))));
-          return (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x - a) + this.startValue;
+          return r(
+            (this.symArg / max) * x * x * (x - 1) * (x - 1) * (x - a) + this.startValue,
+          );
         }
       }
       case EDegree.Sinusoidal:
-        return 0.5 * this.symArg * (1 - Math.cos(F_PI * x)) + this.startValue;
+        return r(0.5 * this.symArg * (1 - Math.cos(F_PI * x)) + this.startValue);
       case EDegree.Plateau: {
-        return (
+        return r(
           this.symArg *
             (1 - Math.exp(-this.arg1 * 15 * Math.pow(1 - Math.abs(2 * x - 1), 3))) +
-          this.startValue
+            this.startValue,
         );
       }
       case EDegree.Freeform: {
+        // FVD's getValue does no bounds check (subfunction.cpp:228). On
+        // a freshly-loaded Freeform subfunc valueList is empty (the
+        // wire format omits pointList) so every read is QList OOB —
+        // QList<float> returns 0 in that case, and the evaluator
+        // effectively returns startValue. Match that behavior here:
+        // missing valueList entries read as 0.
         let root = x * (this.valueList.length - 2);
         const max = Math.floor(root) + 0.01;
         root = root - Math.floor(root);
+        const v0 = this.valueList[max | 0] ?? 0;
         if ((max | 0) === this.valueList.length - 1) {
-          return root * this.symArg * this.valueList[max | 0]! + this.startValue;
+          return r(root * this.symArg * v0 + this.startValue);
         } else {
-          return (
-            (1 - root) * this.symArg * this.valueList[max | 0]! +
-            root * this.symArg * this.valueList[(max | 0) + 1]! +
-            this.startValue
-          );
+          const v1 = this.valueList[(max | 0) + 1] ?? 0;
+          return r((1 - root) * this.symArg * v0 + root * this.symArg * v1 + this.startValue);
         }
       }
       case EDegree.ToZero: {
@@ -284,7 +298,7 @@ export class Subfunc {
         const aPoly = -2.5 * (d + 6 * (e - 2 * a1));
         const bPoly = 6 * d + 32 * e - 60 * a1;
         const cPoly = -d * 4.5 - 18 * e + 30 * a1;
-        return x * (d + x * (cPoly + x * (bPoly + x * aPoly))) + e;
+        return r(x * (d + x * (cPoly + x * (bPoly + x * aPoly))) + e);
       }
       default:
         throw new Error('unknown degree');
@@ -324,26 +338,30 @@ export class Subfunc {
   }
 
   // subfunction.cpp:369
+  // subfunction.cpp:369. C++ stores intermediates as float — wrap with
+  // r() so JS double-precision doesn't carry sub-ULP detail into the
+  // polynomial that follows (especially on the warp-heavy geo-warp
+  // corpus where sinh/asinh/pow nonlinearity amplifies the gap).
   private applyTension(x: number): number {
     if (Math.abs(this.tensionArg) < 0.0005) {
       return x;
     } else if (this.tensionArg > 0) {
-      let v = 2 * this.tensionArg * (x - 0.5);
-      v = Math.sinh(v) / Math.sinh(this.tensionArg);
-      return 0.5 * (v + 1);
+      let v = r(2 * this.tensionArg * (x - 0.5));
+      v = r(r(Math.sinh(v)) / r(Math.sinh(this.tensionArg)));
+      return r(0.5 * (v + 1));
     } else {
-      let v = 2 * Math.sinh(this.tensionArg) * (x - 0.5);
-      v = Math.asinh(v) / this.tensionArg;
-      return 0.5 * (v + 1);
+      let v = r(2 * r(Math.sinh(this.tensionArg)) * (x - 0.5));
+      v = r(r(Math.asinh(v)) / this.tensionArg);
+      return r(0.5 * (v + 1));
     }
   }
 
   // subfunction.cpp:390
   private applyCenter(x: number): number {
     if (this.centerArg > 0) {
-      return Math.pow(x, Math.pow(2, this.centerArg / 2));
+      return r(Math.pow(x, r(Math.pow(2, this.centerArg / 2))));
     } else if (this.centerArg < 0) {
-      return 1 - Math.pow(1 - x, Math.pow(2, -this.centerArg / 2));
+      return r(1 - Math.pow(1 - x, r(Math.pow(2, -this.centerArg / 2))));
     }
     return x;
   }
