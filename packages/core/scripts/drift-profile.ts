@@ -58,7 +58,15 @@ function sectionRanges(fvdBuf: Uint8Array): { name: string; start: number; end: 
   return ranges;
 }
 
-const targets = ['geo-degree-yaw.fvd', 'geo-warp.fvd', 'geo-degree-pitch.fvd', 'geo-trig-isolation.fvd'];
+const targets = [
+  'geo-degree-yaw.fvd',
+  'geo-warp.fvd',
+  'geo-degree-pitch.fvd',
+  'geo-trig-isolation.fvd',
+  'geo-arg1.fvd',
+  'geo-kinematics.fvd',
+  'geo-length-threshold.fvd',
+];
 
 for (const fname of targets) {
   const fvdPath = resolve(corpusDir, fname);
