@@ -145,6 +145,43 @@ export function vec3RotateAxis(v: Vec3, axis: Vec3, angle: Scalar, out: Vec3 = v
   );
 }
 
+// libm-faithful sin / cos for small arguments. The integrator's
+// `vec3RotateAxisGlm` always passes a half-angle that's < ~0.01 rad
+// (per-step rotation of a ~deg/s rate ÷ 1000 Hz ÷ 2), so a 7-term
+// Taylor polynomial truncates well below float32 ULP. Computing the
+// polynomial in float32 throughout (every Math.fround) makes the
+// result identical to what `sinf` / `cosf` would emit on the same
+// float input, eliminating the 1-2 ULP gap between V8's Math.sin /
+// Math.cos and C++ libm that otherwise compounds across 1000-step
+// integration runs into mm-scale position drift.
+//
+// For |x| > π/4 we fall back to Math.sin / Math.cos — those arguments
+// never appear in the integrator hot path, and parity in that regime
+// isn't critical.
+function libmSinSmall(x: number): number {
+  if (Math.abs(x) > Math.PI / 4) return Math.fround(Math.sin(x));
+  // sin(x) = x − x³/6 + x⁵/120 − x⁷/5040 + x⁹/362880
+  // Computed as x · (1 − x²/6 · (1 − x²/20 · (1 − x²/42 · (1 − x²/72))))
+  // with every step float32-rounded so intermediates match C++ float math.
+  const x2 = Math.fround(x * x);
+  const t4 = Math.fround(1 - Math.fround(x2 / 72));
+  const t3 = Math.fround(1 - Math.fround(Math.fround(x2 / 42) * t4));
+  const t2 = Math.fround(1 - Math.fround(Math.fround(x2 / 20) * t3));
+  const t1 = Math.fround(1 - Math.fround(Math.fround(x2 / 6) * t2));
+  return Math.fround(x * t1);
+}
+
+function libmCosSmall(x: number): number {
+  if (Math.abs(x) > Math.PI / 4) return Math.fround(Math.cos(x));
+  // cos(x) = 1 − x²/2 + x⁴/24 − x⁶/720 + x⁸/40320
+  // Computed as 1 − x²/2 · (1 − x²/12 · (1 − x²/30 · (1 − x²/56))).
+  const x2 = Math.fround(x * x);
+  const t4 = Math.fround(1 - Math.fround(x2 / 56));
+  const t3 = Math.fround(1 - Math.fround(Math.fround(x2 / 30) * t4));
+  const t2 = Math.fround(1 - Math.fround(Math.fround(x2 / 12) * t3));
+  return Math.fround(1 - Math.fround(Math.fround(x2 / 2) * t2));
+}
+
 // Mirrors GLM's `glm::angleAxis(angle, k) * v` byte-for-byte (subject to
 // float64 vs float32 — see r() above): build the unit quaternion (cos(θ/2),
 // sin(θ/2)*k), then apply via the cross-cross formulation glm uses in
@@ -163,8 +200,12 @@ export function vec3RotateAxisGlm(
   out: Vec3 = vec3(),
 ): Vec3 {
   const half = r(angle * 0.5);
-  const s = r(Math.sin(half));
-  const c = r(Math.cos(half));
+  // V8's Math.sin / Math.cos diverges from C++ libm by 1-2 ULPs per
+  // call; the libmSinSmall / libmCosSmall shims close that gap for the
+  // small half-angles the integrator passes (see geo-trig-isolation
+  // corpus analysis).
+  const s = libmSinSmall(half);
+  const c = libmCosSmall(half);
   const qx = r(s * axis.x);
   const qy = r(s * axis.y);
   const qz = r(s * axis.z);

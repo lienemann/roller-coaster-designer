@@ -433,7 +433,9 @@ function transcendentalIsolation(t: Track): void {
       bSpeed: false,
       bOrientation: QUATERNION,
       bArgument: TIME,
-      pitch: { degree, start: 0, symArg: 20, arg1 },
+      pitch: arg1 === undefined
+        ? { degree, start: 0, symArg: 20 }
+        : { degree, start: 0, symArg: 20, arg1 },
     });
   }
 }
