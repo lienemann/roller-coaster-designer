@@ -1,14 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# Deploys the React PWA to GitHub Pages with branch-aware base paths:
-#   - main → https://<owner>.github.io/<repo>/                   (stable)
-#   - any other branch → https://<owner>.github.io/<repo>/preview/<branch>/
+# Deploys the React PWA to GitHub Pages with two slots:
+#   - main → https://<owner>.github.io/<repo>/             (stable)
+#   - any other listed branch → https://<owner>.github.io/<repo>/staging/
 #
-# Single deploy branch (gh-pages) holds the merged artifact tree.
-# Concurrent pushes to different branches don't trample each other because
-# every job rsyncs ONLY into its own subdirectory (main: root, others:
-# preview/<branch>/) before pushing. A separate cleanup-preview.yml
-# workflow (on branch delete) removes the matching subdir.
+# A single deploy branch (gh-pages) holds both. Pushes to a non-main branch
+# overwrite only `staging/`, leaving the stable root untouched. Pushes to
+# main overwrite only the root, leaving `staging/` untouched.
 name: Deploy to GitHub Pages
 
 on:
@@ -17,7 +15,6 @@ on:
       - main
       - 'claude/**'
       - 'staging'
-      - 'preview/**'
   workflow_dispatch:
 
 concurrency:
@@ -55,19 +52,15 @@ jobs:
         run: |
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           BRANCH="${GITHUB_REF#refs/heads/}"
-          # Sanitise branch name for URL/path use — slashes stay, other
-          # special chars collapse to '-'.
-          SAFE_BRANCH=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9/_-' '-' | sed 's,//*,/,g; s,^/,,; s,/$,,')
           if [ "$BRANCH" = "main" ]; then
             BASE_PATH="/${REPO_NAME}/"
             TARGET_SUBDIR=""
           else
-            BASE_PATH="/${REPO_NAME}/preview/${SAFE_BRANCH}/"
-            TARGET_SUBDIR="preview/${SAFE_BRANCH}"
+            BASE_PATH="/${REPO_NAME}/staging/"
+            TARGET_SUBDIR="staging"
           fi
           echo "repo_name=$REPO_NAME" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "safe_branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
           echo "base_path=$BASE_PATH" >> "$GITHUB_OUTPUT"
           echo "target_subdir=$TARGET_SUBDIR" >> "$GITHUB_OUTPUT"
           echo "Deploying branch '$BRANCH' with base '$BASE_PATH' to gh-pages:/$TARGET_SUBDIR"
@@ -81,11 +74,10 @@ jobs:
         run: pnpm build:app
 
       - name: Stage gh-pages branch
-        id: stage
         run: |
           # Fetch existing gh-pages so we can merge into it without
-          # blowing away other branches' preview subdirs. If the branch
-          # doesn't exist yet, init it empty.
+          # blowing away the other slot. If the branch doesn't exist yet,
+          # init it empty.
           mkdir -p _deploy
           cd _deploy
           git init -q -b gh-pages
@@ -98,26 +90,20 @@ jobs:
 
       - name: Sync build into deploy tree
         run: |
-          TARGET_DIR="_deploy/${{ steps.paths.outputs.target_subdir }}"
-          if [ "${{ steps.paths.outputs.target_subdir }}" = "" ]; then
-            TARGET_DIR="_deploy"
-          fi
-          mkdir -p "$TARGET_DIR"
-          # For main: replace only the root-level files (top-level
-          # *.html/*.js/*.css + the icons / sw / assets folders), leaving
-          # preview/ alone. For previews: clear the specific preview
-          # subdir, then copy in.
+          TARGET_SUBDIR="${{ steps.paths.outputs.target_subdir }}"
           if [ "${{ steps.paths.outputs.branch }}" = "main" ]; then
-            # Wipe top-level deploy files but preserve preview/ and .git
+            # Wipe top-level deploy files but preserve staging/ and .git
             find _deploy -maxdepth 1 -mindepth 1 \
-              ! -name 'preview' ! -name '.git' -exec rm -rf {} +
+              ! -name 'staging' ! -name '.git' -exec rm -rf {} +
+            TARGET_DIR="_deploy"
           else
+            TARGET_DIR="_deploy/${TARGET_SUBDIR}"
             rm -rf "$TARGET_DIR"
             mkdir -p "$TARGET_DIR"
           fi
-          # Copy Vite build output. Use rsync so .git in _deploy is
-          # preserved.
-          rsync -a --delete --exclude='.git' --exclude='preview' \
+          # Copy Vite build output. Preserve .git in _deploy, and on main
+          # deploys preserve the staging/ sibling.
+          rsync -a --delete --exclude='.git' --exclude='staging' \
             packages/app/dist/ "$TARGET_DIR/"
           # GitHub Pages disables Jekyll if .nojekyll exists at root —
           # essential so underscore-prefixed asset files (e.g.
