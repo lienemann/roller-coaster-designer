@@ -2,6 +2,7 @@
   "format": "webfvd",
   "version": 4,
   "project": {
+    "fvdCompatibilityMode": true,
     "texturePath": "",
     "tracks": [
       {

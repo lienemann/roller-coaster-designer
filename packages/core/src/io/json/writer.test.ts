@@ -26,9 +26,11 @@ describe('stringifyWebFvdJson', () => {
 
   it('sorts nested keys alphabetically', () => {
     const out = stringifyWebFvdJson(createEmptyProject());
-    const parsed = JSON.parse(out) as { project: { texturePath: string; tracks: unknown[] } };
+    const parsed = JSON.parse(out) as {
+      project: { texturePath: string; tracks: unknown[]; fvdCompatibilityMode: boolean };
+    };
     const projectKeys = Object.keys(parsed.project);
-    expect(projectKeys).toEqual(['texturePath', 'tracks']);
+    expect(projectKeys).toEqual(['fvdCompatibilityMode', 'texturePath', 'tracks']);
   });
 
   it('throws on non-finite numbers', () => {

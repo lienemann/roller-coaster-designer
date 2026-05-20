@@ -258,6 +258,9 @@ export const trackSchema = z
 export const projectSchema = z.object({
   texturePath: z.string(),
   tracks: z.array(trackSchema),
+  // Default `true` for older WebFVD files that predate this flag — they
+  // were authored on the FVD-compatible integrator by definition.
+  fvdCompatibilityMode: z.boolean().default(true),
 });
 
 // Outer file wrapper — the first two fields identify the format and version

@@ -17,3 +17,14 @@ export * from './model/index.js';
 export * from './ops/index.js';
 export * from './physics/index.js';
 export * from './smoothing/index.js';
+
+// Integrator precision toggle (spec §5.5). Callers — typically the
+// worker — flip this based on `Project.fvdCompatibilityMode` before
+// running the integrator. `'float32'` (default) emulates FVD++ 0.79
+// bit-for-bit; `'float64'` ("precise") trades that bit parity for
+// closer-to-truth long-range accuracy.
+export {
+  setFloatPrecision,
+  getFloatPrecision,
+  type Precision,
+} from './fvd/fvec.js';

@@ -88,7 +88,11 @@ describe('file-system adapter — FS Access path', () => {
       Promise.resolve(handle),
     );
 
-    const result = await saveProjectAs({ texturePath: '', tracks: [] });
+    const result = await saveProjectAs({
+      texturePath: '',
+      tracks: [],
+      fvdCompatibilityMode: true,
+    });
     expect(result).not.toBeNull();
     expect(result!.handle).toBe(handle);
     expect(writes).toHaveLength(1);

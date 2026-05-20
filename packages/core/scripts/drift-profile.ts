@@ -9,7 +9,8 @@
 // (rotation primitive bias) from "drift jumps in one specific section"
 // (subfunc evaluator divergence for that degree).
 
-import { readFileSync, readdirSync } from 'node:fs';
+/* eslint-disable no-console */
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

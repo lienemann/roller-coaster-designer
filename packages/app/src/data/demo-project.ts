@@ -100,5 +100,5 @@ export function createDemoProject(): Project {
   };
 
   const closed = closeTrack(openTrack);
-  return { texturePath: '', tracks: [closed] };
+  return { texturePath: '', tracks: [closed], fvdCompatibilityMode: true };
 }

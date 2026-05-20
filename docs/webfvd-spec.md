@@ -372,6 +372,32 @@ The alternative (root-find without switching argument type) is supported via a s
 
 Playhead is stored as signed heart-distance (§6.3). Display as time uses the `cumulativeDistance → node → cumulativeTime` lookup chain. This is O(log n) per display update — cached between frames when playhead isn't moving.
 
+### 5.6 Integrator precision mode — FVD-compat vs precise **[T1 / T2]**
+
+A single project-level toggle (`Project.fvdCompatibilityMode: boolean`, default `true`) selects between two integrator modes:
+
+- **FVD-compat (`true`):** the float32-emulated integrator. `r()` wraps every store with `Math.fround`; libm shims keep `Math.sin/cos/asin/atan2` results pinned to float32 ULP after passing through `Math.fround(x)`. NL2 output tracks FVD++ 0.79 byte-for-byte where possible. **Section type picker hides T2+ types** (Closure, switches, launches, magnetic brakes, ReverseSection) — what you author maps cleanly to FVD++ on export. Default until WebFVD is the mature ecosystem.
+- **Precise (`false`):** all float operations run in JS float64; libm shims pass through to native `Math.sin/cos/asin/atan2`. **All section types available.** Trades FVD bit parity for closer-to-truth long-range accuracy.
+
+Empirically (corpus tests, May 2026):
+
+| Worst-case drift class | FVD-compat | Precise |
+|---|---|---|
+| Heavy yaw/pitch sections (real coasters) | 65–75 mm peak | 35–48 mm peak |
+| Heavy warp / kinematics / Quartic-arg1 sweeps (rare in real designs) | <1 mm | up to ~25 mm |
+
+Precise mode is **closer to mathematical truth** but **diverges further from FVD++** on files where FVD++ itself drifts. For most realistic coaster designs (Linear/Cubic/Sinusoidal transitions, modest warp use), precise mode is the better default. For roundtrip workflows with FVD++ users / NL2 export bit-parity, FVD-compat is the correct choice.
+
+#### Wiring
+
+- `setFloatPrecision('float32' | 'float64')` lives in `packages/core/src/fvd/fvec.ts` and is re-exported from the package index.
+- The worker reads `Project.fvdCompatibilityMode` once at recompute start and calls `setFloatPrecision('float32')` for `true`, `'float64'` for `false`.
+- The mode is **not persisted to `.fvd`** (FVD++ doesn't know about it). It IS persisted to `.webfvd.json` so a re-opened project re-applies the same mode.
+
+#### Closure section under FVD-compat
+
+Closure (§6.7) is a T2 extension — FVD++ has no native concept. Under FVD-compat the user can still author and edit Closure sections; on **FVD export** the Closure gets converted to an explicit pair of Curved + Forced sections whose subfuncs are fitted to land at the entry node. The conversion is documented at export time, not silently. Re-importing the resulting `.fvd` produces a track with the explicit pair, not a Closure — the round-trip is one-way for this section type.
+
 ## 6. Rendering
 
 The 3D scene has four layers, built and updated independently:

@@ -158,7 +158,12 @@ export function vec3RotateAxis(v: Vec3, axis: Vec3, angle: Scalar, out: Vec3 = v
 // For |x| > π/4 we fall back to Math.sin / Math.cos — those arguments
 // never appear in the integrator hot path, and parity in that regime
 // isn't critical.
+//
+// In float64 / precise mode the float32 emulation is bypassed: we
+// call V8's Math.sin / Math.cos directly, which gives mathematically
+// truer results at the cost of FVD bit-parity.
 function libmSinSmall(x: number): number {
+  if (currentPrecision === 'float64') return Math.sin(x);
   if (Math.abs(x) > Math.PI / 4) return Math.fround(Math.sin(x));
   // sin(x) = x − x³/6 + x⁵/120 − x⁷/5040 + x⁹/362880
   // Computed as x · (1 − x²/6 · (1 − x²/20 · (1 − x²/42 · (1 − x²/72))))
@@ -172,6 +177,7 @@ function libmSinSmall(x: number): number {
 }
 
 function libmCosSmall(x: number): number {
+  if (currentPrecision === 'float64') return Math.cos(x);
   if (Math.abs(x) > Math.PI / 4) return Math.fround(Math.cos(x));
   // cos(x) = 1 − x²/2 + x⁴/24 − x⁶/720 + x⁸/40320
   // Computed as 1 − x²/2 · (1 − x²/12 · (1 − x²/30 · (1 − x²/56))).
@@ -187,7 +193,7 @@ function libmCosSmall(x: number): number {
 // window (cumulative pitch can pass ±π/4). C++'s `cosf(float)`
 // effectively does Math.fround(Math.cos(Math.fround(x))); these
 // helpers do the same so JS doubles can't carry sub-ULP detail
-// into the next step.
+// into the next step. In float64 mode they pass through unmodified.
 export function libmSinF(x: number): number {
   return libmSinSmall(x);
 }
@@ -195,11 +201,11 @@ export function libmCosF(x: number): number {
   return libmCosSmall(x);
 }
 export function libmAsinF(x: number): number {
-  // asin is monotonic, no range reduction needed. Float-round input
-  // then result to match C++ asinf(float) storage.
+  if (currentPrecision === 'float64') return Math.asin(x);
   return Math.fround(Math.asin(Math.fround(x)));
 }
 export function libmAtan2F(y: number, x: number): number {
+  if (currentPrecision === 'float64') return Math.atan2(y, x);
   return Math.fround(Math.atan2(Math.fround(y), Math.fround(x)));
 }
 
