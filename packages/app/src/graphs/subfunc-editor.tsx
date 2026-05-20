@@ -19,8 +19,6 @@
 // All values are emitted as a single `onChange(GeometricSection)`. The
 // caller wires that to dispatching a section-replacement action.
 
-import { useCallback, useMemo, useRef, useState } from 'react';
-
 import {
   Argument,
   EDegree,
@@ -30,6 +28,7 @@ import {
   type GeometricSection,
   type SubFunc,
 } from '@roller-coaster-designer/core';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 // ----- props ----------------------------------------------------------
 
@@ -516,9 +515,8 @@ export function SubfuncEditor({
                   width={Math.max(2, xToPx(seg.x1) - xToPx(seg.x0))}
                   height={GRAPH_HEIGHT_PER}
                   fill={
-                    selection &&
-                    selection.funcKind === lane.kind &&
-                    selection.subfuncIndex === seg.idx
+                    selection?.funcKind === lane.kind &&
+                    selection?.subfuncIndex === seg.idx
                       ? 'rgba(255,255,255,0.06)'
                       : 'transparent'
                   }
