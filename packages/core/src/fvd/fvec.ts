@@ -231,6 +231,11 @@ export function vec3RotateAxisGlm(
   const qy = r(s * axis.y);
   const qz = r(s * axis.z);
   const qw = c;
+  // Cross products: single round at the end. Intermediate-round
+  // experiments regressed testtrack parity 18x — gcc evidently keeps
+  // the `a*b - c*d` intermediates in extended precision (x87) or
+  // fuses them (FMA), so round-as-you-go diverges from FVD's actual
+  // emitted bits.
   const uvx = r(qy * v.z - qz * v.y);
   const uvy = r(qz * v.x - qx * v.z);
   const uvz = r(qx * v.y - qy * v.x);

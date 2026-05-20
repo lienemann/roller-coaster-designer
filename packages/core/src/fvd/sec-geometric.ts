@@ -146,18 +146,28 @@ export class SecGeometric extends Section {
       const chx = curNode.fPosHeartx(this.parent.fHeart);
       const chy = curNode.fPosHearty(this.parent.fHeart);
       const chz = curNode.fPosHeartz(this.parent.fHeart);
-      curNode.vPos.x +=
-        curNode.vDir.x * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.x * (prevNode.fVel / (2 * F_HZ)) +
-        (phx - chx);
-      curNode.vPos.y +=
-        curNode.vDir.y * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.y * (prevNode.fVel / (2 * F_HZ)) +
-        (phy - chy);
-      curNode.vPos.z +=
-        curNode.vDir.z * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.z * (prevNode.fVel / (2 * F_HZ)) +
-        (phz - chz);
+      // vPos is a glm::vec3 (float32) in FVD; the += rounds to float on
+      // every component. Without r() here, JS keeps float64 detail that
+      // C++ float storage can't carry, and the bias accumulates over
+      // 1000-step sections into mm-scale drift on yaw/pitch-only tracks.
+      curNode.vPos.x = r(
+        curNode.vPos.x +
+          curNode.vDir.x * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.x * (prevNode.fVel / (2 * F_HZ)) +
+          (phx - chx),
+      );
+      curNode.vPos.y = r(
+        curNode.vPos.y +
+          curNode.vDir.y * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.y * (prevNode.fVel / (2 * F_HZ)) +
+          (phy - chy),
+      );
+      curNode.vPos.z = r(
+        curNode.vPos.z +
+          curNode.vDir.z * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.z * (prevNode.fVel / (2 * F_HZ)) +
+          (phz - chz),
+      );
 
       curNode.updateNorm();
 
@@ -383,18 +393,25 @@ export class SecGeometric extends Section {
       const chx = curNode.fPosHeartx(this.parent.fHeart);
       const chy = curNode.fPosHearty(this.parent.fHeart);
       const chz = curNode.fPosHeartz(this.parent.fHeart);
-      curNode.vPos.x +=
-        curNode.vDir.x * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.x * (prevNode.fVel / (2 * F_HZ)) +
-        (phx - chx);
-      curNode.vPos.y +=
-        curNode.vDir.y * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.y * (prevNode.fVel / (2 * F_HZ)) +
-        (phy - chy);
-      curNode.vPos.z +=
-        curNode.vDir.z * (curNode.fVel / (2 * F_HZ)) +
-        prevNode.vDir.z * (prevNode.fVel / (2 * F_HZ)) +
-        (phz - chz);
+      // vPos is float32 in FVD; round per-step (see TIME-mode comment).
+      curNode.vPos.x = r(
+        curNode.vPos.x +
+          curNode.vDir.x * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.x * (prevNode.fVel / (2 * F_HZ)) +
+          (phx - chx),
+      );
+      curNode.vPos.y = r(
+        curNode.vPos.y +
+          curNode.vDir.y * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.y * (prevNode.fVel / (2 * F_HZ)) +
+          (phy - chy),
+      );
+      curNode.vPos.z = r(
+        curNode.vPos.z +
+          curNode.vDir.z * (curNode.fVel / (2 * F_HZ)) +
+          prevNode.vDir.z * (prevNode.fVel / (2 * F_HZ)) +
+          (phz - chz),
+      );
 
       curNode.updateNorm();
       curNode.setRoll(
