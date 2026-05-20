@@ -290,38 +290,73 @@
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.896434e+001</y>
-				<z>-2.209409e+001</z>
+				<y>-2.896436e+001</y>
+				<z>-2.209411e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.916789e+001</y>
-				<z>-2.406485e+001</z>
+				<y>-2.916783e+001</y>
+				<z>-2.406478e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.906135e+001</y>
-				<z>-2.603519e+001</z>
+				<y>-2.906158e+001</y>
+				<z>-2.603547e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.862984e+001</y>
-				<z>-2.794839e+001</z>
+				<y>-2.862896e+001</y>
+				<z>-2.794735e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.786085e+001</y>
-				<z>-2.972941e+001</z>
+				<y>-2.786413e+001</y>
+				<z>-2.973328e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.677720e+001</y>
-				<z>-3.133846e+001</z>
+				<y>-2.676496e+001</y>
+				<z>-3.132402e+001</z>
 			</vertex>
 			<vertex>
 				<x>0.000000e+000</x>
-				<y>-2.534064e+001</y>
-				<z>-3.256003e+001</z>
+				<y>-2.538633e+001</y>
+				<z>-3.261390e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-2.373359e+001</y>
+				<z>-3.358053e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-2.192377e+001</y>
+				<z>-3.412886e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-2.004995e+001</y>
+				<z>-3.421154e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-1.823300e+001</y>
+				<z>-3.380096e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-1.662270e+001</y>
+				<z>-3.290764e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-1.530498e+001</y>
+				<z>-3.159994e+001</z>
+			</vertex>
+			<vertex>
+				<x>0.000000e+000</x>
+				<y>-1.457734e+001</y>
+				<z>-2.994689e+001</z>
 				<strict>true</strict>
 			</vertex>
 			<roll>
@@ -341,7 +376,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.680287e-002</coord>
+				<coord>1.525078e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -351,7 +386,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.335723e-002</coord>
+				<coord>3.027601e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -361,7 +396,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.983608e-002</coord>
+				<coord>4.523269e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -371,7 +406,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.617578e-002</coord>
+				<coord>6.006309e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -381,7 +416,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.244221e-002</coord>
+				<coord>7.482698e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -391,7 +426,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.868249e-002</coord>
+				<coord>8.956713e-002</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -401,7 +436,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.148046e-001</coord>
+				<coord>1.042000e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -411,7 +446,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.310175e-001</coord>
+				<coord>1.189154e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -421,7 +456,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.471204e-001</coord>
+				<coord>1.335308e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -431,7 +466,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.630665e-001</coord>
+				<coord>1.480040e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -441,7 +476,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.788607e-001</coord>
+				<coord>1.623392e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -451,7 +486,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>1.945392e-001</coord>
+				<coord>1.765696e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -461,7 +496,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.101513e-001</coord>
+				<coord>1.907395e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -471,7 +506,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.256314e-001</coord>
+				<coord>2.047897e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -481,7 +516,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.412165e-001</coord>
+				<coord>2.189352e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -491,7 +526,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.567787e-001</coord>
+				<coord>2.330599e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -501,7 +536,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.722744e-001</coord>
+				<coord>2.471243e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -511,7 +546,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>2.876545e-001</coord>
+				<coord>2.610837e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -521,7 +556,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.028827e-001</coord>
+				<coord>2.749052e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -531,7 +566,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.179539e-001</coord>
+				<coord>2.885844e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -541,7 +576,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.328108e-001</coord>
+				<coord>3.020689e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -551,7 +586,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.477491e-001</coord>
+				<coord>3.156273e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -561,7 +596,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.626927e-001</coord>
+				<coord>3.291906e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -571,7 +606,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.776623e-001</coord>
+				<coord>3.427775e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -581,7 +616,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>3.927053e-001</coord>
+				<coord>3.564309e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -591,7 +626,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.078875e-001</coord>
+				<coord>3.702107e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -601,7 +636,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.232624e-001</coord>
+				<coord>3.841654e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -611,7 +646,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.386995e-001</coord>
+				<coord>3.981766e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -621,7 +656,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.542897e-001</coord>
+				<coord>4.123267e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -631,7 +666,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.699093e-001</coord>
+				<coord>4.265035e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -641,7 +676,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>4.856203e-001</coord>
+				<coord>4.407633e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -651,7 +686,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.015313e-001</coord>
+				<coord>4.552045e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -661,7 +696,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.176426e-001</coord>
+				<coord>4.698277e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -671,7 +706,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.338451e-001</coord>
+				<coord>4.845335e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -681,7 +716,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.499628e-001</coord>
+				<coord>4.991624e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -691,7 +726,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.662068e-001</coord>
+				<coord>5.139060e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -701,7 +736,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.825030e-001</coord>
+				<coord>5.286969e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -711,7 +746,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>5.989097e-001</coord>
+				<coord>5.435880e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -721,7 +756,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.154690e-001</coord>
+				<coord>5.586178e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -731,7 +766,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.321810e-001</coord>
+				<coord>5.737861e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -741,7 +776,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.490036e-001</coord>
+				<coord>5.890548e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -751,7 +786,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.657611e-001</coord>
+				<coord>6.042644e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -761,7 +796,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.826272e-001</coord>
+				<coord>6.195725e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -771,7 +806,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>6.994134e-001</coord>
+				<coord>6.348081e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -781,7 +816,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.160899e-001</coord>
+				<coord>6.499442e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -791,7 +826,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.326492e-001</coord>
+				<coord>6.649740e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -801,7 +836,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.490914e-001</coord>
+				<coord>6.798975e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -811,7 +846,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.654246e-001</coord>
+				<coord>6.947219e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -821,7 +856,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.815645e-001</coord>
+				<coord>7.093709e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -831,7 +866,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>7.977659e-001</coord>
+				<coord>7.240758e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -841,7 +876,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.138574e-001</coord>
+				<coord>7.386810e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -851,7 +886,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.298495e-001</coord>
+				<coord>7.531959e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -861,7 +896,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.457607e-001</coord>
+				<coord>7.676373e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -871,7 +906,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.615909e-001</coord>
+				<coord>7.820053e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -881,7 +916,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.773220e-001</coord>
+				<coord>7.962832e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -891,7 +926,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>8.928335e-001</coord>
+				<coord>8.103620e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -901,7 +936,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.084176e-001</coord>
+				<coord>8.245065e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -911,7 +946,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.239694e-001</coord>
+				<coord>8.386219e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -921,7 +956,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.394451e-001</coord>
+				<coord>8.526680e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -931,7 +966,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.548100e-001</coord>
+				<coord>8.666137e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -941,7 +976,7 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.700430e-001</coord>
+				<coord>8.804396e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
@@ -951,13 +986,83 @@
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>
-				<coord>9.851344e-001</coord>
+				<coord>8.941370e-001</coord>
 				<strict>false</strict>
 			</roll>
 			<roll>
 				<ux>0.000000e+000</ux>
 				<uy>5.974868e-001</uy>
 				<uz>8.018788e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.076294e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>4.005582e-001</uy>
+				<uz>9.162713e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.211597e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>1.690431e-001</uy>
+				<uz>9.856087e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.345803e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>-8.864950e-002</uy>
+				<uz>9.960629e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.478723e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>-3.547099e-001</uy>
+				<uz>9.349765e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.610445e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>-6.045758e-001</uy>
+				<uz>7.965477e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.741162e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>-8.103164e-001</uy>
+				<uz>5.859926e-001</uz>
+				<rx>1.000000e+000</rx>
+				<ry>0.000000e+000</ry>
+				<rz>0.000000e+000</rz>
+				<coord>9.871187e-001</coord>
+				<strict>false</strict>
+			</roll>
+			<roll>
+				<ux>0.000000e+000</ux>
+				<uy>-9.463479e-001</uy>
+				<uz>3.231499e-001</uz>
 				<rx>1.000000e+000</rx>
 				<ry>0.000000e+000</ry>
 				<rz>0.000000e+000</rz>

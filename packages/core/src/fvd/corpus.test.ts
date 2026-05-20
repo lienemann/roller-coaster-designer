@@ -97,18 +97,7 @@ describe('geometric corpus', () => {
           // sampling indices than FVD — caller logs and skips the
           // numerical diff. List of files where this is currently
           // expected; populate as the integrators sharpen.
-          const knownLengthMismatch = new Set([
-            // Sampling drift > 1 sample at thresholds — investigated
-            // separately.
-            'geo-arg1.fvd',
-            'geo-warp.fvd',
-            // length-threshold: section.length differs because FVD's
-            // integration appears to respect loaded iTime (1060/1080
-            // for S2/S3) even when getMaxArgument caps to 1.0. Source
-            // code says cap → 1000; gold output contradicts that.
-            // Pending source-vs-behavior reconciliation.
-            'geo-length-threshold.fvd',
-          ]);
+          const knownLengthMismatch = new Set<string>([]);
           if (ourF.length !== goldF.length) {
             if (knownLengthMismatch.has(file)) {
               // eslint-disable-next-line no-console
