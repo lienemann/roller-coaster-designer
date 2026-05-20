@@ -1,0 +1,153 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Deploys the React PWA to GitHub Pages with branch-aware base paths:
+#   - main → https://<owner>.github.io/<repo>/                   (stable)
+#   - any other branch → https://<owner>.github.io/<repo>/preview/<branch>/
+#
+# Single deploy branch (gh-pages) holds the merged artifact tree.
+# Concurrent pushes to different branches don't trample each other because
+# every job rsyncs ONLY into its own subdirectory (main: root, others:
+# preview/<branch>/) before pushing. A separate cleanup-preview.yml
+# workflow (on branch delete) removes the matching subdir.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'staging'
+      - 'preview/**'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # needed to push to the gh-pages branch
+
+jobs:
+  build-and-deploy:
+    name: Build + deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compute deploy paths
+        id: paths
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          # Sanitise branch name for URL/path use — slashes stay, other
+          # special chars collapse to '-'.
+          SAFE_BRANCH=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9/_-' '-' | sed 's,//*,/,g; s,^/,,; s,/$,,')
+          if [ "$BRANCH" = "main" ]; then
+            BASE_PATH="/${REPO_NAME}/"
+            TARGET_SUBDIR=""
+          else
+            BASE_PATH="/${REPO_NAME}/preview/${SAFE_BRANCH}/"
+            TARGET_SUBDIR="preview/${SAFE_BRANCH}"
+          fi
+          echo "repo_name=$REPO_NAME" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "safe_branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "base_path=$BASE_PATH" >> "$GITHUB_OUTPUT"
+          echo "target_subdir=$TARGET_SUBDIR" >> "$GITHUB_OUTPUT"
+          echo "Deploying branch '$BRANCH' with base '$BASE_PATH' to gh-pages:/$TARGET_SUBDIR"
+
+      - name: Build libraries
+        run: pnpm build:libs
+
+      - name: Build app
+        env:
+          VITE_BASE_PATH: ${{ steps.paths.outputs.base_path }}
+        run: pnpm build:app
+
+      - name: Stage gh-pages branch
+        id: stage
+        run: |
+          # Fetch existing gh-pages so we can merge into it without
+          # blowing away other branches' preview subdirs. If the branch
+          # doesn't exist yet, init it empty.
+          mkdir -p _deploy
+          cd _deploy
+          git init -q -b gh-pages
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch -q --depth=1 origin gh-pages
+            git reset -q --hard origin/gh-pages
+          fi
+          cd ..
+
+      - name: Sync build into deploy tree
+        run: |
+          TARGET_DIR="_deploy/${{ steps.paths.outputs.target_subdir }}"
+          if [ "${{ steps.paths.outputs.target_subdir }}" = "" ]; then
+            TARGET_DIR="_deploy"
+          fi
+          mkdir -p "$TARGET_DIR"
+          # For main: replace only the root-level files (top-level
+          # *.html/*.js/*.css + the icons / sw / assets folders), leaving
+          # preview/ alone. For previews: clear the specific preview
+          # subdir, then copy in.
+          if [ "${{ steps.paths.outputs.branch }}" = "main" ]; then
+            # Wipe top-level deploy files but preserve preview/ and .git
+            find _deploy -maxdepth 1 -mindepth 1 \
+              ! -name 'preview' ! -name '.git' -exec rm -rf {} +
+          else
+            rm -rf "$TARGET_DIR"
+            mkdir -p "$TARGET_DIR"
+          fi
+          # Copy Vite build output. Use rsync so .git in _deploy is
+          # preserved.
+          rsync -a --delete --exclude='.git' --exclude='preview' \
+            packages/app/dist/ "$TARGET_DIR/"
+          # GitHub Pages disables Jekyll if .nojekyll exists at root —
+          # essential so underscore-prefixed asset files (e.g.
+          # _app/immutable/) get served.
+          touch _deploy/.nojekyll
+
+      - name: Commit + push gh-pages
+        env:
+          BRANCH: ${{ steps.paths.outputs.branch }}
+        run: |
+          cd _deploy
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed; skipping commit."
+            exit 0
+          fi
+          git commit -q -m "deploy: ${BRANCH} (${GITHUB_SHA::7})"
+          git push -q origin gh-pages
+
+      - name: Summary
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO="${{ steps.paths.outputs.repo_name }}"
+          PATH_OUT="${{ steps.paths.outputs.target_subdir }}"
+          if [ -z "$PATH_OUT" ]; then
+            URL="https://${OWNER}.github.io/${REPO}/"
+          else
+            URL="https://${OWNER}.github.io/${REPO}/${PATH_OUT}/"
+          fi
+          echo "Deployed: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Deployed::$URL"

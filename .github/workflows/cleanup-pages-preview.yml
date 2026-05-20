@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Removes a branch's preview subdirectory from the gh-pages branch when
+# the source branch is deleted. Paired with deploy-pages.yml.
+name: Cleanup Pages preview
+
+on:
+  delete:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: Remove preview subdir
+    if: github.event.ref_type == 'branch' && github.event.ref != 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compute preview path
+        id: paths
+        run: |
+          BRANCH="${{ github.event.ref }}"
+          SAFE_BRANCH=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9/_-' '-' | sed 's,//*,/,g; s,^/,,; s,/$,,')
+          echo "safe_branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout gh-pages
+        run: |
+          mkdir -p _deploy
+          cd _deploy
+          git init -q -b gh-pages
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "No gh-pages branch yet; nothing to clean."
+            exit 0
+          fi
+          git fetch -q --depth=1 origin gh-pages
+          git reset -q --hard origin/gh-pages
+
+      - name: Remove preview directory
+        env:
+          SAFE_BRANCH: ${{ steps.paths.outputs.safe_branch }}
+        run: |
+          TARGET="_deploy/preview/${SAFE_BRANCH}"
+          if [ -d "$TARGET" ]; then
+            rm -rf "$TARGET"
+            # Also clean up empty parent directories left behind (e.g.
+            # preview/claude/ when claude/foo was the only entry).
+            find _deploy/preview -mindepth 1 -type d -empty -delete 2>/dev/null || true
+          else
+            echo "No preview at $TARGET; nothing to clean."
+            exit 0
+          fi
+
+      - name: Commit + push
+        env:
+          SAFE_BRANCH: ${{ steps.paths.outputs.safe_branch }}
+        run: |
+          cd _deploy
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed; skipping commit."
+            exit 0
+          fi
+          git commit -q -m "deploy: cleanup preview/${SAFE_BRANCH}"
+          git push -q origin gh-pages
