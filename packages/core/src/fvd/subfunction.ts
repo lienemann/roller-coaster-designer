@@ -338,26 +338,30 @@ export class Subfunc {
   }
 
   // subfunction.cpp:369
+  // subfunction.cpp:369. C++ stores intermediates as float — wrap with
+  // r() so JS double-precision doesn't carry sub-ULP detail into the
+  // polynomial that follows (especially on the warp-heavy geo-warp
+  // corpus where sinh/asinh/pow nonlinearity amplifies the gap).
   private applyTension(x: number): number {
     if (Math.abs(this.tensionArg) < 0.0005) {
       return x;
     } else if (this.tensionArg > 0) {
-      let v = 2 * this.tensionArg * (x - 0.5);
-      v = Math.sinh(v) / Math.sinh(this.tensionArg);
-      return 0.5 * (v + 1);
+      let v = r(2 * this.tensionArg * (x - 0.5));
+      v = r(r(Math.sinh(v)) / r(Math.sinh(this.tensionArg)));
+      return r(0.5 * (v + 1));
     } else {
-      let v = 2 * Math.sinh(this.tensionArg) * (x - 0.5);
-      v = Math.asinh(v) / this.tensionArg;
-      return 0.5 * (v + 1);
+      let v = r(2 * r(Math.sinh(this.tensionArg)) * (x - 0.5));
+      v = r(r(Math.asinh(v)) / this.tensionArg);
+      return r(0.5 * (v + 1));
     }
   }
 
   // subfunction.cpp:390
   private applyCenter(x: number): number {
     if (this.centerArg > 0) {
-      return Math.pow(x, Math.pow(2, this.centerArg / 2));
+      return r(Math.pow(x, r(Math.pow(2, this.centerArg / 2))));
     } else if (this.centerArg < 0) {
-      return 1 - Math.pow(1 - x, Math.pow(2, -this.centerArg / 2));
+      return r(1 - Math.pow(1 - x, r(Math.pow(2, -this.centerArg / 2))));
     }
     return x;
   }

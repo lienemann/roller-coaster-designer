@@ -405,6 +405,39 @@ function lengthThreshold(t: Track): void {
   }
 }
 
+// Scenario 9c: transcendental-isolation. Eight Geometric sections of
+// 2 seconds each (= 2000 integration steps), no warp, no roll/yaw,
+// pitch-only. Pairs are (Linear, Sinusoidal) and (Linear, Plateau)
+// repeating. The Linear sections share the same start/symArg as
+// their neighbors so they should produce IDENTICAL total pitch
+// integral. Any per-section drift difference between Linear and
+// Sinusoidal / Plateau directly exposes Math.cos / Math.exp /
+// Math.pow ULP divergence from C++ libm, accumulated over 2000
+// steps × N sections.
+function transcendentalIsolation(t: Track): void {
+  const seq: { tag: string; degree: EDegree; arg1?: number }[] = [
+    { tag: 'lin-1', degree: EDegree.Linear },
+    { tag: 'sin-1', degree: EDegree.Sinusoidal },
+    { tag: 'lin-2', degree: EDegree.Linear },
+    { tag: 'sin-2', degree: EDegree.Sinusoidal },
+    { tag: 'lin-3', degree: EDegree.Linear },
+    { tag: 'plat-1', degree: EDegree.Plateau, arg1: 1 },
+    { tag: 'lin-4', degree: EDegree.Linear },
+    { tag: 'plat-2', degree: EDegree.Plateau, arg1: 1 },
+  ];
+  for (const { tag, degree, arg1 } of seq) {
+    addGeo(t, {
+      name: tag,
+      timeSec: 2,
+      fVel: 15,
+      bSpeed: false,
+      bOrientation: QUATERNION,
+      bArgument: TIME,
+      pitch: { degree, start: 0, symArg: 20, arg1 },
+    });
+  }
+}
+
 // ----- run -----
 
 function buildOne(name: string, populate: (t: Track) => void): void {
@@ -425,5 +458,6 @@ buildOne('geo-multisub', multiSubfunc);
 buildOne('geo-kinematics', kinematicsSweep);
 buildOne('geo-freeform-only', freeformOnly);
 buildOne('geo-length-threshold', lengthThreshold);
+buildOne('geo-trig-isolation', transcendentalIsolation);
 // eslint-disable-next-line no-console
 console.log('done.');
