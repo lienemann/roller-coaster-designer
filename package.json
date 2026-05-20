@@ -16,7 +16,7 @@
     "build:app": "pnpm --filter @roller-coaster-designer/app build",
     "build": "pnpm build:libs && pnpm build:app",
     "clean": "pnpm -r clean && rm -rf **/*.tsbuildinfo",
-    "test": "pnpm -r test",
+    "test": "pnpm build:libs && pnpm -r test",
     "test:watch": "pnpm -r --parallel test:watch",
     "lint": "pnpm build:libs && pnpm -r lint",
     "lint:fix": "pnpm build:libs && pnpm -r lint:fix",
