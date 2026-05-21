@@ -394,6 +394,17 @@ Precise mode is **closer to mathematical truth** but **diverges further from FVD
 - The worker reads `Project.fvdCompatibilityMode` once at recompute start and calls `setFloatPrecision('float32')` for `true`, `'float64'` for `false`.
 - The mode is **not persisted to `.fvd`** (FVD++ doesn't know about it). It IS persisted to `.webfvd.json` so a re-opened project re-applies the same mode.
 
+#### Open: connect the toggle to the live integrator
+
+Today the live worker recompute path is `physics/integrate.ts` (a separate float64 code path written before the 1:1 FVD port landed). It doesn't pipe through `r()`, so `setFloatPrecision` has **no observable effect on live recompute yet**. The worker still makes the call so the hookup is correct the moment we migrate.
+
+Two paths to actually wiring the toggle:
+
+1. **Migrate live recompute onto the FVD-port stack** (preferred). The FVD port (`fvd/Track.updateTrack`) already produces per-section `MNode` arrays; we'd wrap it with a `Project → fvd.Track` converter and an `fvd.Track → MNodeArrays` flattener. This single integrator then honours the toggle naturally and removes the divergence between live-display physics and FVD-export physics.
+2. **Sprinkle `r()` through `physics/integrate.ts`** (lighter change). Faster to do, but bakes in the second integrator architecture permanently and means we maintain two code paths in lockstep. Not recommended.
+
+Until either lands, the toggle UI should display the mode but mark "Precise mode active" diagnostically — explaining the user just toggled a flag that takes effect on FVD export round-trips and the corpus tests, not on the live forces graph.
+
 #### Closure section under FVD-compat
 
 Closure (§6.7) is a T2 extension — FVD++ has no native concept. Under FVD-compat the user can still author and edit Closure sections; on **FVD export** the Closure gets converted to an explicit pair of Curved + Forced sections whose subfuncs are fitted to land at the entry node. The conversion is documented at export time, not silently. Re-importing the resulting `.fvd` produces a track with the explicit pair, not a Closure — the round-trip is one-way for this section type.

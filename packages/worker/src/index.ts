@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { F_HZ, integrateProject, type Project } from '@roller-coaster-designer/core';
+import {
+  F_HZ,
+  integrateProject,
+  setFloatPrecision,
+  type Project,
+} from '@roller-coaster-designer/core';
 import { expose, transfer } from 'comlink';
 
 import { type PhysicsWorkerApi, type RecomputeResult, type TrackStream } from './api.types.js';
@@ -11,6 +16,14 @@ const api: PhysicsWorkerApi = {
   ping: (value) => Promise.resolve(value),
 
   recompute: (project: Project): Promise<RecomputeResult> => {
+    // Honour the project's integrator-mode flag (spec §5.6). The toggle
+    // controls `r()` inside the FVD-port code (packages/core/src/fvd/);
+    // the *live* integrator (`physics/integrate.ts`, called below) is
+    // a separate float64 code path that doesn't pipe through `r()`, so
+    // this call has NO functional effect today. It IS the correct
+    // place for the hookup once the live integrator is migrated onto
+    // the FVD-port stack (`fvd/Track.updateTrack` → `MNodeArrays`).
+    setFloatPrecision(project.fvdCompatibilityMode ? 'float32' : 'float64');
     const integrations = integrateProject(project.tracks);
 
     const tracks: TrackStream[] = integrations.map(({ arrays, sectionStartNodes }) => {
