@@ -2,9 +2,18 @@
 //
 // 1:1 port of reference/openfvd/core/track.h and the integrator-/IO-relevant
 // portions of track.cpp. Skipped: GUI hooks (treeInit, qDebug, mMesh, etc.),
-// smoothing (smoothHandler, smoothList, applyRollSmooth), NoLimits CSV
-// import — all out of scope for the file→integrate→NL2 path that
-// testtrack.fvd exercises.
+// NoLimits CSV import — out of scope for the file→integrate→NL2 path that
+// testtrack.fvd exercises. The roll smoother lives next door in
+// `fvd/smooth.ts` (port of `ui/smoothui.cpp::applyRollSmoothFilter`).
+
+export interface SmoothHandler {
+  name: string;
+  from: number;
+  to: number;
+  length: number;
+  iterations: number;
+  active: boolean;
+}
 
 import { F_G } from './constants.js';
 import { type Vec3, vec3 } from './fvec.js';
@@ -16,6 +25,7 @@ import { SecForced } from './sec-forced.js';
 import { SecGeometric } from './sec-geometric.js';
 import { SecStraight } from './sec-straight.js';
 import { type Section, SecType } from './section.js';
+import { applyRollSmooth } from './smooth.js';
 
 export class Track {
   anchorNode: MNode;
@@ -86,7 +96,9 @@ export class Track {
 
   // track.cpp:196 — only the path that matters for a freshly loaded file:
   // run updateSection across the whole chain, stitching each section's
-  // first node from the previous section's last node.
+  // first node from the previous section's last node. After integration,
+  // if any `smoothHandler` is active, `applyRollSmooth` re-runs the
+  // roll-speed smoother across the affected node range.
   updateTrack(fromIndex = 0, iNode = 0): void {
     if (fromIndex < 0) fromIndex = 0;
     if (this.lSections.length <= fromIndex) return;
@@ -96,6 +108,9 @@ export class Track {
       const prevLast = prevSection.lNodes[prevSection.lNodes.length - 1]!;
       this.lSections[i]!.lNodes.unshift(prevLast.clone());
       this.lSections[i]!.updateSection(0);
+    }
+    if (this.smoothHandlers.some((h) => h.active)) {
+      applyRollSmooth(this, 0);
     }
   }
 
@@ -233,15 +248,14 @@ export class Track {
   // smoothhandler.cpp:178 — simple flat record:
   //   int nameLen, string name, int from, int to, int length,
   //   int iterations, bool active.
-  // We preserve the bytes opaquely so a round-trip is byte-identical.
-  private smoothHandlers: {
-    name: string;
-    from: number;
-    to: number;
-    length: number;
-    iterations: number;
-    active: boolean;
-  }[] = [];
+  // Public so the roll smoother (fvd/smooth.ts) can iterate active
+  // handlers; mutated by the future smoother-editor UI.
+  smoothHandlers: SmoothHandler[] = [];
+
+  // track.cpp:62 — tracks where the smoothing pass currently extends
+  // through. `removeSmooth` and `applySmooth` use it to bail out when
+  // the state is already where they want it.
+  smoothedUntil = 0;
 
   private readSmoothHandler(rs: ReadStream): void {
     const nlen = rs.readInt();
