@@ -9,12 +9,17 @@ import {
   firstCubicOf,
   replaceFirstCubic,
   type Func,
+  type GeometricSection,
   type Section,
   type SubFunc,
 } from '@roller-coaster-designer/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import {
+  SubfuncEditor,
+  type SubfuncEditorLabels,
+} from '../graphs/subfunc-editor.js';
 import { useAppStore } from '../state/store.js';
 
 /**
@@ -327,6 +332,7 @@ function GeometricFields({
   patch: Patcher;
   t: Translate;
 }): JSX.Element {
+  const [editorOpen, setEditorOpen] = useState(false);
   return (
     <>
       <Field
@@ -338,7 +344,91 @@ function GeometricFields({
         step={0.1}
       />
       <HeldVelocityFields section={section} patch={patch} t={t} />
+      <button
+        type="button"
+        onClick={() => setEditorOpen(true)}
+        title={t('properties.editSubfuncsHint')}
+        className="self-start rounded bg-surface-2 px-3 py-1.5 text-xs font-medium text-neutral-100 ring-1 ring-white/10 hover:bg-white/10"
+      >
+        {t('properties.editSubfuncs')}
+      </button>
+      {editorOpen && (
+        <SubfuncEditorDialog
+          section={section}
+          patch={patch}
+          t={t}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+function SubfuncEditorDialog({
+  section,
+  patch,
+  t,
+  onClose,
+}: {
+  section: GeometricSection;
+  patch: Patcher;
+  t: Translate;
+  onClose: () => void;
+}): JSX.Element {
+  const labels: SubfuncEditorLabels = {
+    rollFunc: t('subfunc.rollFunc'),
+    pitchFunc: t('subfunc.pitchFunc'),
+    yawFunc: t('subfunc.yawFunc'),
+    orientationEuler: t('subfunc.orientationEuler'),
+    orientationQuaternion: t('subfunc.orientationQuaternion'),
+    argumentTime: t('subfunc.argumentTime'),
+    argumentDistance: t('subfunc.argumentDistance'),
+    speedFixed: t('subfunc.speedFixed'),
+    speedEnergy: t('subfunc.speedEnergy'),
+    degree: t('subfunc.degree'),
+    arg1: t('subfunc.arg1'),
+    centerArg: t('subfunc.centerArg'),
+    tensionArg: t('subfunc.tensionArg'),
+    locked: t('subfunc.locked'),
+    unitSeconds: t('subfunc.unitSeconds'),
+    unitMeters: t('subfunc.unitMeters'),
+    unitRad: t('subfunc.unitRad'),
+    unitRadPerSec: t('subfunc.unitRadPerSec'),
+    clickToAdd: t('subfunc.clickToAdd'),
+    dragBoundary: t('subfunc.dragBoundary'),
+  };
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('subfunc.title')}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="flex w-[min(96vw,960px)] max-h-[92vh] flex-col gap-3 rounded-lg bg-surface-1 p-4 text-sm text-neutral-100 shadow-xl ring-1 ring-white/10"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t('subfunc.title')}</h2>
+          <button
+            type="button"
+            aria-label={t('subfunc.close')}
+            onClick={onClose}
+            className="rounded p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+          >
+            ×
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <SubfuncEditor
+            section={section}
+            onChange={(next) => patch(next)}
+            label={labels}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
