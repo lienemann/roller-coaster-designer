@@ -396,14 +396,34 @@ Precise mode is **closer to mathematical truth** but **diverges further from FVD
 
 #### Open: connect the toggle to the live integrator
 
-Today the live worker recompute path is `physics/integrate.ts` (a separate float64 code path written before the 1:1 FVD port landed). It doesn't pipe through `r()`, so `setFloatPrecision` has **no observable effect on live recompute yet**. The worker still makes the call so the hookup is correct the moment we migrate.
+Today the live worker recompute path is `physics/integrate.ts` (a separate float64 code path written before the 1:1 FVD port landed). It doesn't pipe through `r()`, so `setFloatPrecision` has **no observable effect on live recompute yet**. The worker still makes the call so the hookup is correct the moment we migrate. The Preferences dialog calls this out in its inline note.
 
 Two paths to actually wiring the toggle:
 
-1. **Migrate live recompute onto the FVD-port stack** (preferred). The FVD port (`fvd/Track.updateTrack`) already produces per-section `MNode` arrays; we'd wrap it with a `Project → fvd.Track` converter and an `fvd.Track → MNodeArrays` flattener. This single integrator then honours the toggle naturally and removes the divergence between live-display physics and FVD-export physics.
+1. **Migrate live recompute onto the FVD-port stack** (preferred). The FVD port (`fvd/Track.updateTrack`) already produces per-section `MNode` arrays; we wrap it with a `Project → fvd.Track` converter and an `fvd.Track → MNodeArrays` flattener. This single integrator then honours the toggle naturally and removes the divergence between live-display physics and FVD-export physics.
 2. **Sprinkle `r()` through `physics/integrate.ts`** (lighter change). Faster to do, but bakes in the second integrator architecture permanently and means we maintain two code paths in lockstep. Not recommended.
 
-Until either lands, the toggle UI should display the mode but mark "Precise mode active" diagnostically — explaining the user just toggled a flag that takes effect on FVD export round-trips and the corpus tests, not on the live forces graph.
+##### Migration plan (Path 1) — concrete steps
+
+1. **Converter: `model.Project → fvd.Track`** (`packages/core/src/fvd/from-model.ts`).
+   - `Anchor`: write `position` + derived `vDir` (from `pitch`/`yaw`) + `roll`/`speed` into the `fvd.Track.anchorNode`. The anchor is NOT a section in the FVD model.
+   - `Straight`: `new SecStraight(track, prev.lNodes.last(), section.length)`; convert `section.rollFunc` (a `model.Func`) into the `fvd.Func` already attached to the section.
+   - `Curved`: `new SecCurved(track, prev, section.fAngle, ...)`; carry `orientation`, lead-in/out, roll func.
+   - `Forced`, `Geometric`: same shape — extent + the three `rollFunc / normalFunc / lateralFunc` (or `roll / pitch / yaw`) funcs.
+   - `Bezier`, `Closure`: emit `SecBezier` with `bezList` derived from `segments` (Closure uses the same path as the FVD writer's `materialiseClosureAsBezier`).
+   - `Func / SubFunc`: walk `model.Func.subfuncs`, set `minArgument`/`maxArgument` from `length` accumulators, `symArg = endValue - startValue`, carry `arg1 / centerArg / tensionArg / locked / degree`. `Freeform` carries `pointList`.
+
+2. **Flattener: `fvd.Track → MNodeArrays`** (`packages/core/src/fvd/to-arrays.ts`). After `track.updateTrack()`, walk `lSections.lNodes` in order, writing each MNode's 30 fields into the matching Float32Array columns. `MNODE_FIELDS` already names every column we need.
+
+3. **Worker branch.** `packages/worker/src/index.ts:recompute` reads `project.fvdCompatibilityMode`. If `true`, use the converter + flattener pair; if `false`, keep the existing `integrateProject` path (or also convert through the FVD port — TBD when measuring drift parity).
+
+4. **Tests.**
+   - Snapshot per-section output (vPos, vDir, vLat, vNorm, fVel) for a hand-rolled "all-types" project under both paths. Initial gate: peak distance from old-path < 5 cm. Tighten as confidence grows.
+   - The corpus tests (`fvd/corpus.test.ts`) already cover the FVD-port integrator. The converter is the new code under test.
+
+Estimated size: ~600 LoC of converter + ~150 LoC of flattener + tests. **Risk:** no end-to-end parity test between `physics/integrate.ts` and the converter+FVD-port pair exists today — they'll diverge by similar magnitudes as `setFloatPrecision('float64')` vs `('float32')` shows on the corpus. Plan for a one-time "switch baseline" PR that updates per-section continuity tests to the new path.
+
+Until either path lands, the toggle UI states inline that it's diagnostic (`prefs.integratorModeNote`).
 
 #### Closure section under FVD-compat
 
