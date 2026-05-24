@@ -5,6 +5,7 @@ export { writeFvd } from './writer.js';
 export { FvdCursor } from './cursor.js';
 export { FvdBuilder } from './builder.js';
 export {
+  isSectionTypeAuthorable,
   lintFvdCompatibility,
   sectionHasFvdCompatIssue,
   type FvdCompatCode,

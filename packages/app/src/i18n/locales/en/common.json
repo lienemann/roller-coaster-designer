@@ -34,6 +34,15 @@
     "scene": "Scene…",
     "more": "More…"
   },
+  "prefs": {
+    "title": "Preferences",
+    "close": "Close",
+    "integratorMode": "Integrator mode",
+    "fvdCompatibility": "FVD++ compatibility mode",
+    "fvdCompatibilityHint": "Match FVD++ 0.79 byte-for-byte on export. Disable for higher long-range precision.",
+    "integratorModeNote": "Today this toggle controls FVD export bit-parity only. The live forces graph will honour it once the integrator merge lands (spec §5.6).",
+    "morePrefs": "More preferences (units, theme, graph colours, mesh quality, playback defaults) arrive in M8."
+  },
   "scene": {
     "title": "Scene",
     "sky": "Sky / background",

@@ -56,6 +56,25 @@ export function lintFvdCompatibility(project: Project): FvdCompatNote[] {
   return notes;
 }
 
+/** True iff a given section *type* is authorable under the given
+ *  compatibility mode. The UI calls this to decide whether to surface
+ *  an "Add X" button or hide it. The intent of the gate is to keep
+ *  FVD-compat projects free of WebFVD-only constructs that have no
+ *  clean conversion path on FVD export.
+ *
+ *  Today the gate permits every type — the current Section enum has
+ *  no T2+ extension that lacks an export path (Closure exports as a
+ *  Bezier; per-section colour is a non-structural metadata loss). Add
+ *  future T2+ types like switch tracks, launch sections, magnetic
+ *  brakes, ReverseSection here when they land. See spec §5.6.
+ */
+export function isSectionTypeAuthorable(
+  _type: SecType,
+  _fvdCompatibilityMode: boolean,
+): boolean {
+  return true;
+}
+
 /** True iff a given section has any FVD-compatibility notes attached.
  *  Used for the in-list marker dot. */
 export function sectionHasFvdCompatIssue(

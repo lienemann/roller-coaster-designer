@@ -34,6 +34,15 @@
     "scene": "Szene…",
     "more": "Mehr…"
   },
+  "prefs": {
+    "title": "Einstellungen",
+    "close": "Schließen",
+    "integratorMode": "Integrator-Modus",
+    "fvdCompatibility": "FVD++-Kompatibilitätsmodus",
+    "fvdCompatibilityHint": "Beim Export Byte-für-Byte mit FVD++ 0.79 abgleichen. Deaktivieren für höhere Genauigkeit über lange Strecken.",
+    "integratorModeNote": "Aktuell wirkt diese Einstellung nur auf die FVD-Export-Treue. Der Kräftegraph berücksichtigt sie erst, sobald der Integrator-Merge erfolgt ist (Spezifikation §5.6).",
+    "morePrefs": "Weitere Einstellungen (Einheiten, Thema, Graph-Farben, Detailtiefe, Wiedergabe-Standards) erscheinen in M8."
+  },
   "scene": {
     "title": "Szene",
     "sky": "Himmel / Hintergrund",

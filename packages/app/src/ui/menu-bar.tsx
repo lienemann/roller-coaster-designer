@@ -30,7 +30,9 @@ export function MenuBar(): JSX.Element {
   const setFloorColor = useAppStore((s) => s.setFloorColor);
   const setFloorVisible = useAppStore((s) => s.setFloorVisible);
   const setFloorTileMeters = useAppStore((s) => s.setFloorTileMeters);
+  const setFvdCompatibilityMode = useAppStore((s) => s.setFvdCompatibilityMode);
   const [sceneOpen, setSceneOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
 
   const handleNew = useCallback(() => {
     newProject();
@@ -151,7 +153,7 @@ export function MenuBar(): JSX.Element {
         </MenuButton>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
         <MenuButton onClick={() => setSceneOpen(true)}>{t('common:menu.scene')}</MenuButton>
-        <MenuButton onClick={() => alert(t('common:menu.prefsStub'))}>
+        <MenuButton onClick={() => setPrefsOpen(true)}>
           {t('common:menu.preferences')}
         </MenuButton>
       </span>
@@ -182,7 +184,7 @@ export function MenuBar(): JSX.Element {
           { label: t('common:menu.scene'), onClick: () => setSceneOpen(true) },
           {
             label: t('common:menu.preferences'),
-            onClick: () => alert(t('common:menu.prefsStub')),
+            onClick: () => setPrefsOpen(true),
           },
         ]}
       />
@@ -199,6 +201,15 @@ export function MenuBar(): JSX.Element {
           onSetFloorVisible={setFloorVisible}
           onSetFloorTileMeters={setFloorTileMeters}
           onClose={() => setSceneOpen(false)}
+          t={t}
+        />
+      )}
+      {prefsOpen && (
+        <PrefsDialog
+          fvdCompatibilityMode={project?.fvdCompatibilityMode ?? true}
+          projectLoaded={project !== null}
+          onSetFvdCompatibilityMode={setFvdCompatibilityMode}
+          onClose={() => setPrefsOpen(false)}
           t={t}
         />
       )}
@@ -528,6 +539,88 @@ function FloorTileMetersRow({
 
 function formatFloorTile(m: number): string {
   return m >= 10 ? m.toFixed(1) : m.toFixed(2);
+}
+
+interface PrefsDialogProps {
+  fvdCompatibilityMode: boolean;
+  projectLoaded: boolean;
+  onSetFvdCompatibilityMode: (compat: boolean) => void;
+  onClose: () => void;
+  t: TFunction<['common', 'errors']>;
+}
+
+// Preferences. M3 ships only the project-level integrator-mode toggle
+// (spec §5.6). Future settings (units, theme, graph colours, mesh
+// quality, playback defaults) land here too. The tooltip strings start
+// as one-liners; the design intent is to grow them into multi-paragraph
+// explanations of *why* you'd pick each setting — but that's a separate
+// content pass.
+function PrefsDialog({
+  fvdCompatibilityMode,
+  projectLoaded,
+  onSetFvdCompatibilityMode,
+  onClose,
+  t,
+}: PrefsDialogProps): JSX.Element {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('common:prefs.title')}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="flex w-[min(92vw,520px)] flex-col gap-3 rounded-lg bg-surface-1 p-4 text-sm text-neutral-100 shadow-xl ring-1 ring-white/10"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t('common:prefs.title')}</h2>
+          <button
+            type="button"
+            aria-label={t('common:prefs.close')}
+            onClick={onClose}
+            className="rounded p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+          >
+            ×
+          </button>
+        </div>
+
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-neutral-400">
+            {t('common:prefs.integratorMode')}
+          </h3>
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded bg-surface-2 p-2 ${
+              !projectLoaded ? 'opacity-50' : ''
+            }`}
+            title={t('common:prefs.fvdCompatibilityHint')}
+          >
+            <input
+              type="checkbox"
+              checked={fvdCompatibilityMode}
+              disabled={!projectLoaded}
+              onChange={(ev) => onSetFvdCompatibilityMode(ev.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-sky-400"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">{t('common:prefs.fvdCompatibility')}</span>
+              <span className="text-[11px] text-neutral-400">
+                {t('common:prefs.fvdCompatibilityHint')}
+              </span>
+            </div>
+          </label>
+          <p className="text-[11px] text-neutral-500">
+            {t('common:prefs.integratorModeNote')}
+          </p>
+        </section>
+
+        <p className="border-t border-white/10 pt-3 text-[11px] text-neutral-500">
+          {t('common:prefs.morePrefs')}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function translateError(err: unknown, t: TFunction<['common', 'errors']>): string {

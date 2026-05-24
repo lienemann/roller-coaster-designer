@@ -3,6 +3,7 @@
 import {
   SEC_TYPE_NAMES,
   SecType,
+  isSectionTypeAuthorable,
   lintFvdCompatibility,
   sectionHasFvdCompatIssue,
   type FvdCompatNote,
@@ -36,6 +37,15 @@ export function SectionsPanel(): JSX.Element {
   const sections = project?.tracks[0]?.sections ?? [];
   const hasClosure = sections.some((s) => s.type === SecType.Closure);
   const canAdd = project !== null && sections.length > 0;
+  // Future-proof gate: filter "Add X" buttons by the project's
+  // FVD-compat mode. Today every section type is authorable in both
+  // modes (closure converts on FVD export). When T2+ types land
+  // (switches, launches, magnetic brakes, ReverseSection) they'll
+  // light up only in non-compat mode through this helper.
+  const fvdCompat = project?.fvdCompatibilityMode ?? true;
+  const canAuthorStraight = canAdd && isSectionTypeAuthorable(SecType.Straight, fvdCompat);
+  const canAuthorCurved = canAdd && isSectionTypeAuthorable(SecType.Curved, fvdCompat);
+  const canAuthorBezier = canAdd && isSectionTypeAuthorable(SecType.Bezier, fvdCompat);
   // Per-section FVD compatibility audit. Memoised so the marker stays
   // stable while the user clicks around without editing the project.
   const compatNotes: FvdCompatNote[] = useMemo(
@@ -140,12 +150,24 @@ export function SectionsPanel(): JSX.Element {
         </label>
         <AddButton
           onClick={addStraight}
-          disabled={!canAdd}
+          disabled={!canAuthorStraight}
           label={t('common:sections.addStraight')}
         />
-        <AddButton onClick={addCurved} disabled={!canAdd} label={t('common:sections.addCurved')} />
-        <AddButton onClick={addLoop} disabled={!canAdd} label={t('common:sections.addLoop')} />
-        <AddButton onClick={addBezier} disabled={!canAdd} label={t('common:sections.addBezier')} />
+        <AddButton
+          onClick={addCurved}
+          disabled={!canAuthorCurved}
+          label={t('common:sections.addCurved')}
+        />
+        <AddButton
+          onClick={addLoop}
+          disabled={!canAuthorCurved}
+          label={t('common:sections.addLoop')}
+        />
+        <AddButton
+          onClick={addBezier}
+          disabled={!canAuthorBezier}
+          label={t('common:sections.addBezier')}
+        />
         {/* Close Track lives with the add buttons: it appends a closure
             Bezier back to the anchor. Same button row, different glyph. */}
         <button

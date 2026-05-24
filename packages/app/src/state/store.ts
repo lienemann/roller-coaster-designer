@@ -91,6 +91,9 @@ export interface AppState {
   /** Shallow merge patch onto the selected section. */
   readonly patchSelectedSection: (patch: Partial<Section>) => void;
 
+  /** Toggle the project's FVD-compat / precise integrator mode (spec §5.6). */
+  readonly setFvdCompatibilityMode: (compat: boolean) => void;
+
   /** Optional scene environment — user-uploaded sky / floor textures and
    *  a fallback floor colour. Data URIs so reload-clear is intentional
    *  (matches the "no persistence until preferences land" policy). */
@@ -283,6 +286,16 @@ export const useAppStore = create<AppState>((set) => ({
           ...state.project,
           tracks: [rebuilt, ...state.project.tracks.slice(1)],
         },
+        isDirty: true,
+      };
+    }),
+
+  setFvdCompatibilityMode: (compat) =>
+    set((state) => {
+      if (!state.project) return state;
+      if (state.project.fvdCompatibilityMode === compat) return state;
+      return {
+        project: { ...state.project, fvdCompatibilityMode: compat },
         isDirty: true,
       };
     }),
