@@ -8,6 +8,11 @@ force-vector designer that pioneered this style of editing — with UI ideas
 borrowed from [KexEdit](https://github.com/IndividualKex/KexEdit).
 Runs entirely in the browser.
 
+**▶ Try it now: <https://lienemann.github.io/roller-coaster-designer/>**
+(stable build, deployed from `main`). The latest feature-branch build
+lives at
+[`/staging/`](https://lienemann.github.io/roller-coaster-designer/staging/).
+
 Status: pre-release. The full specification and milestone plan are in
 [`docs/webfvd-spec.md`](docs/webfvd-spec.md); start there if you're
 reading the code.
