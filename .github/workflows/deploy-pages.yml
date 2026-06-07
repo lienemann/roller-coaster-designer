@@ -74,14 +74,19 @@ jobs:
         run: pnpm build:app
 
       - name: Stage gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Fetch existing gh-pages so we can merge into it without
           # blowing away the other slot. If the branch doesn't exist yet,
-          # init it empty.
+          # init it empty. The token is baked into the remote URL so
+          # the later `push` step can authenticate — `git init` in a
+          # fresh dir doesn't inherit credentials from actions/checkout.
           mkdir -p _deploy
           cd _deploy
           git init -q -b gh-pages
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git remote add origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
             git fetch -q --depth=1 origin gh-pages
             git reset -q --hard origin/gh-pages
