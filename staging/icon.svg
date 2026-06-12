@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#0b0b0b"/>
+  <!-- Outer rail of a curving hill — sky blue, matches the normal-force series in the forces graph -->
+  <path d="M 70 380 C 70 110, 442 110, 442 380"
+        stroke="#5cc8ff" stroke-width="40" stroke-linecap="round"/>
+  <!-- Inner heart-line glow at half opacity to suggest the rider's path -->
+  <path d="M 116 380 C 116 168, 396 168, 396 380"
+        stroke="#5cc8ff" stroke-width="14" stroke-linecap="round" opacity="0.4"/>
+  <!-- Train marker (green dot) at the bottom of the drop, matching the velocity series -->
+  <circle cx="70" cy="380" r="26" fill="#9ef1b9"/>
+</svg>
