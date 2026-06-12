@@ -54,7 +54,17 @@ asm: | build
 	$(CXX) $(CXXFLAGS) -S -o build/seccurved.s $(REF)/core/seccurved.cpp
 	$(CXX) $(CXXFLAGS) -S -o build/subfunction.s $(REF)/core/subfunction.cpp
 
-clean:
-	rm -rf build fvd-oracle
+# Windows libm probe: fully static .exe to run once on the Windows
+# machine that exported the NL2 golds (no setup needed there):
+#   msvcrt-probe.exe > msvcrt-probe.txt
+# The native build of the same source emits the glibc baseline.
+probe: msvcrt-probe.exe probe-native
+msvcrt-probe.exe: msvcrt-probe.c
+	x86_64-w64-mingw32-gcc -O2 -static -o $@ $<
+probe-native: msvcrt-probe.c
+	$(CC) -O2 -o $@ $< -lm
 
-.PHONY: clean asm
+clean:
+	rm -rf build fvd-oracle msvcrt-probe.exe probe-native
+
+.PHONY: clean asm probe

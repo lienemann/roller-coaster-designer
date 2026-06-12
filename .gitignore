@@ -43,3 +43,4 @@ yarn-error.log*
 # fvd-oracle build artifacts (tools/fvd-oracle)
 tools/fvd-oracle/build/
 tools/fvd-oracle/fvd-oracle
+tools/fvd-oracle/probe-native
