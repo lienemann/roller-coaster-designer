@@ -39,3 +39,7 @@ yarn-error.log*
 .env.*
 !.env.example
 *.local
+
+# fvd-oracle build artifacts (tools/fvd-oracle)
+tools/fvd-oracle/build/
+tools/fvd-oracle/fvd-oracle

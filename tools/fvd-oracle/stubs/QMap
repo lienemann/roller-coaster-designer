@@ -1,0 +1,2 @@
+#include "qt-minimal.h"
+template<typename K, typename V> class QMap { public: std::vector<std::pair<K,V> > d; V& operator[](const K& k){ for(size_t i=0;i<d.size();++i) if(d[i].first==k) return d[i].second; d.push_back(std::make_pair(k,V())); return d.back().second; } int size() const { return (int)d.size(); } };

@@ -133,6 +133,49 @@ error → tens of mm at the end of the track. Consequences:
   `Subfunc.getValue` is wrong; `vec3RotateAxisGlm` internals validated
   by oracle; `setRoll` stays on Rodrigues (byte-oracle decided).
 
+## THE PARITY ORACLE (tools/fvd-oracle) — read before anything else
+
+The campaign now has a native ground-truth generator: the REAL
+reference C++ compiled with the shipped binary's FP model, plus
+`packages/core/scripts/node-diff.ts` to bit-diff our chain against its
+per-node dump. Key facts it established (all measured):
+
+1. **The x87 premise was wrong.** `bin/win64/FVD.exe` (which produced
+   every gold) is x86-64 / SSE2 / FLT_EVAL_METHOD==0: float ops round
+   to float32 PER OPERATION, doubles to float64, no 80-bit anything.
+   The earlier "double-inner / round-at-return matches x87" results
+   were fitting accidents. Long-term, the TS port's rounding model
+   should be re-derived as per-op SSE2, function by function, validated
+   with node-diff against oracle dumps.
+2. On SSE2 the arithmetic is source-determined: gcc 6↔13, -O1/-O2,
+   SRA flags, x87 control word — all produce identical exports.
+   The ONLY free variables are glm version and libm.
+3. **glm is ≈0.9.8.0** (Qt 5.6.2 / late-2016 era): with it the oracle
+   certifies geo-degree-roll, geo-length-threshold, geo-freeform-only
+   BIT-EXACTLY against the golds; trig-isolation 0.04 mm, arg1 0.11,
+   multisub 0.30, kinematics 0.47. glm 0.9.5.1 (the version fvd.pro
+   "tested with") exports measurably differently — the binary did NOT
+   use it.
+4. The remaining oracle residual (yaw 26.6 / warp 26.8 / pitch 22.7 /
+   options 22.1 mm — one cluster) is libm: mingw-w64's libmingwex
+   float routines (x87 asm even on x64 for several functions) and the
+   closed-source x64 msvcrt doubles, both ~1 ulp from glibc, amplified
+   by the section-anchor quantization. Next: vendor 2016-era mingw-w64
+   math sources for the float variants; for msvcrt doubles, capture a
+   probe table on a real Windows machine (ask the user — tiny exe that
+   prints sin/cos/atan2/asin/exp/pow/sinh bit patterns).
+5. `track::loadTrack` applies `trackWidget::updateAnchorGeometrics`,
+   which MUTATES anchorNode.fPitchFromLast/fYawFromLast (zero for
+   default anchors, so corpus-invisible — but our TS port lacks it
+   entirely; port it when anchors with non-default forces matter).
+6. The oracle's section node counts differ from ours by one at section
+   boundaries (oracle s0 has 1156 nodes where we keep 1155 on
+   testtrack) — investigate with node-diff; may be a port sequencing
+   difference in updateTrack/disjoint handling.
+7. geo-options crashes a DEBUG oracle build via a glm `sqrt(x<0)`
+   assert — the release binary (NDEBUG) lets it produce NaN; the
+   integrator path relies on that. Keep -DNDEBUG.
+
 ## Method notes for the next push
 
 - The greedy toggle-search harness was `scripts/flag-search.sh`
@@ -157,9 +200,10 @@ error → tens of mm at the end of the track. Consequences:
 - ONE model: `packages/core/src/fvd/` (1:1 C++ port) + `fvd/doc.ts`.
 - Both integrator modes run the same chain; toggle =
   `setFloatPrecision` driven by `ProjectDoc.fvdCompatibilityMode`.
-- Reference plumbing: FVD++ 0.79 ≈ MinGW i686, x87,
-  FLT_EVAL_METHOD==2, gcc -O2, glm 0.9.5.1 (fvd.pro:26),
-  GLM_FORCE_RADIANS defined (lenassert.h:37).
+- Reference plumbing — CORRECTED (supersedes every earlier x87 note):
+  the shipped binary `reference/openfvd/bin/win64/FVD.exe` is x86-64,
+  MSYS2 MinGW-w64 GCC 6.2.0, Qt 5.6.2 static, glm ≈ 0.9.8.0 —
+  SSE2 math, FLT_EVAL_METHOD == 0. See tools/fvd-oracle/README.md.
 
 ## Other open items (not this campaign)
 
