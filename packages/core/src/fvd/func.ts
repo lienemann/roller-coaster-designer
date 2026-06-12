@@ -7,6 +7,7 @@
 // changeLength) and propagate downstream — translate every subsequent piece
 // so its startValue matches the previous piece's endValue.
 
+import { r } from './fvec.js';
 import type { Section } from './section.js';
 import { Subfunc, EFunctype } from './subfunction.js';
 
@@ -27,8 +28,13 @@ export class Func {
     this.funcList.push(new Subfunc(min, max, start, end - start, this));
   }
 
-  // function.cpp:39
+  // function.cpp:39 — `float func::getValue(float x)` lives in its own
+  // translation unit, so the caller's extended-precision argument rounds
+  // to float32 when it's passed on the i686 stack. The `maxArgument >= x`
+  // comparison below is a knife-edge that decides which subfunc evaluates
+  // near piece boundaries.
   getValue(x: number): number {
+    x = r(x);
     let cur: Subfunc | null = null;
     for (const s of this.funcList) {
       cur = s;
@@ -134,8 +140,9 @@ export class Func {
     return i;
   }
 
-  // function.cpp:247
+  // function.cpp:247 — same float-parameter call boundary as getValue.
   getSubfunc(x: number): Subfunc {
+    x = r(x);
     let cur: Subfunc | null = null;
     for (const s of this.funcList) {
       cur = s;

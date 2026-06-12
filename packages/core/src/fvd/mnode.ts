@@ -137,6 +137,9 @@ export class MNode {
   // emulation diverges by 1 ULP and never reaches a save→load fixed
   // point (bytes oscillate every cycle). Keep Rodrigues.
   setRoll(dRoll: number): void {
+    // `void mnode::setRoll(float dRoll)` — cross-TU float parameter,
+    // rounds when the caller pushes it on the i686 stack.
+    dRoll = r(dRoll);
     vec3RotateAxis(this.vLat, this.vDir, toRad(-dRoll), this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateRoll();
@@ -164,6 +167,7 @@ export class MNode {
   // accumulates to centimeters of drift. Use vec3RotateAxisGlm here to
   // match FVD bit-for-bit (modulo the float32 emulation).
   changePitch(dAngle: number, inverted: boolean): void {
+    dAngle = r(dAngle); // float parameter rounds at the call boundary
     vec3Set(tmpVec, 0, this.vNorm.y, 0);
     vec3Cross(tmpVec, this.vDir, tmpAxis);
     vec3Normalize(tmpAxis, tmpAxis);
@@ -182,6 +186,7 @@ export class MNode {
 
   // mnode.cpp:111 — yaw rotates vDir/vLat around world +Y.
   changeYaw(dAngle: number): void {
+    dAngle = r(dAngle); // float parameter rounds at the call boundary
     vec3Set(tmpAxis, 0, 1, 0);
     const a = toRad(dAngle);
     vec3RotateAxisGlm(this.vDir, tmpAxis, a, this.vDir);
@@ -290,6 +295,20 @@ export class MNode {
       this.vPos.y - y * this.vNorm.y + x * lat.y + z * dir.y,
       this.vPos.z - y * this.vNorm.z + x * lat.z + z * dir.z,
     );
+  }
+
+  // mnode.h:69-70 evaluated with x87 inline semantics: getPitch is a
+  // header inline, so the `atan2f(...)*180/F_PI` product stays in the
+  // 80-bit register (double proxy) — only the atan2f / sqrtf CALLS
+  // round to float32 (mingw implements both as `(float)` casts of the
+  // double libm result). The caller rounds at its own member store.
+  getPitchExt(): number {
+    const h = r(Math.sqrt(this.vDir.x * this.vDir.x + this.vDir.z * this.vDir.z));
+    return (r(Math.atan2(this.vDir.y, h)) * 180) / F_PI;
+  }
+
+  getDirectionExt(): number {
+    return (r(Math.atan2(-this.vDir.x, -this.vDir.z)) * 180) / F_PI;
   }
 
   // mnode.h:69

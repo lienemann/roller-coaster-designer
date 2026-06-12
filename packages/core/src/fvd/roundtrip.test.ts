@@ -53,11 +53,13 @@ describe('FVD file round-trip', () => {
     // bytes are an ORACLE for the full load→integrate→save chain: any
     // field FVD++ derives at save time (e.g. subfunc startValues
     // stitched to the integrator's node-0 roll speed) must come out of
-    // our chain with the same bits. Current state: 5 bytes differ, each
-    // the low mantissa byte of a float32, ≤4 ULPs — the documented
-    // residual integrator drift. Anything beyond that is a regression
-    // (the glm::angleAxis setRoll experiment produced 8 diffs including
-    // the anchor fRoll — that's how it was caught).
+    // our chain with the same bits. Current state: 2 bytes differ, both
+    // the low mantissa byte of the SAME quantity — the forceLateral
+    // anchor of the two forced sections, i.e. the curved boundary
+    // node's vLat.y, ≈25 ULP after 2413 curved roll steps (see
+    // docs/parity-campaign.md, "remaining oracle residual"). The
+    // forceNormal anchors are bit-exact since F_G became float32.
+    // Anything beyond 2 diffs / 25 ULP is a regression.
     const original = new Uint8Array(readFileSync(resolve(goldenDir, 'testtrack.fvd')));
     const pass1 = writeFvd(readFvd(original));
     expect(pass1.length).toBe(original.length);
@@ -65,15 +67,14 @@ describe('FVD file round-trip', () => {
     for (let i = 0; i < original.length; i++) {
       if (original[i] !== pass1[i]) diffs.push(i);
     }
-    expect(diffs.length).toBeLessThanOrEqual(5);
+    expect(diffs.length).toBeLessThanOrEqual(2);
     for (const i of diffs) {
       // Low mantissa byte only: the three preceding bytes (BE float32
       // sign/exponent/high mantissa) must agree.
       expect(original[i - 1]).toBe(pass1[i - 1]);
       expect(original[i - 2]).toBe(pass1[i - 2]);
       expect(original[i - 3]).toBe(pass1[i - 3]);
-      // And the byte itself within 4 ULPs.
-      expect(Math.abs(original[i]! - pass1[i]!)).toBeLessThanOrEqual(20);
+      expect(Math.abs(original[i]! - pass1[i]!)).toBeLessThanOrEqual(25);
     }
   });
 

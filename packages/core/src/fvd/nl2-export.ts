@@ -12,7 +12,7 @@
 //     false case emits no strict tag (vertex) or "<strict>false</strict>"
 //     (roll).
 
-import { type Vec3, vec3 } from './fvec.js';
+import { r, type Vec3, vec3 } from './fvec.js';
 import type { MNode } from './mnode.js';
 import { type Section, SecType } from './section.js';
 import type { Track } from './track.js';
@@ -116,36 +116,37 @@ export function exportNL2(
   for (let i = 0; i < size; i++) {
     const point = exportPoints[i]!;
     const curNode = track.getPoint(point < 0 ? -point : point);
-    d[i]!.x = curNode.vPos.x - anchor.vPos.x;
-    d[i]!.y = curNode.vPos.y - anchor.vPos.y;
-    d[i]!.z = curNode.vPos.z - anchor.vPos.z;
+    d[i]!.x = r(curNode.vPos.x - anchor.vPos.x);
+    d[i]!.y = r(curNode.vPos.y - anchor.vPos.y);
+    d[i]!.z = r(curNode.vPos.z - anchor.vPos.z);
     if (i === 0 || i === size - 1 || point < 0) {
       a[i] = 0;
       b[i] = 1;
       c[i] = 0;
     } else {
-      a[i] = 1 / 6;
-      b[i] = 4 / 6;
-      c[i] = 1 / 6;
+      a[i] = r(1 / 6);
+      b[i] = r(4 / 6);
+      c[i] = r(1 / 6);
     }
   }
 
-  // Thomas algorithm
-  c[0] = c[0]! / b[0]!;
-  d[0]!.x /= b[0]!;
-  d[0]!.y /= b[0]!;
-  d[0]!.z /= b[0]!;
+  // Thomas algorithm. `m` is a float local (stays extended on x87);
+  // c[] / d[] writes are QVector<float> / glm::vec3 stores → float32.
+  c[0] = r(c[0]! / b[0]!);
+  d[0]!.x = r(d[0]!.x / b[0]!);
+  d[0]!.y = r(d[0]!.y / b[0]!);
+  d[0]!.z = r(d[0]!.z / b[0]!);
   for (let i = 1; i < size; i++) {
     const m = 1 / (b[i]! - a[i]! * c[i - 1]!);
-    c[i] = c[i]! * m;
-    d[i]!.x = m * (d[i]!.x - a[i]! * d[i - 1]!.x);
-    d[i]!.y = m * (d[i]!.y - a[i]! * d[i - 1]!.y);
-    d[i]!.z = m * (d[i]!.z - a[i]! * d[i - 1]!.z);
+    c[i] = r(c[i]! * m);
+    d[i]!.x = r(m * (d[i]!.x - a[i]! * d[i - 1]!.x));
+    d[i]!.y = r(m * (d[i]!.y - a[i]! * d[i - 1]!.y));
+    d[i]!.z = r(m * (d[i]!.z - a[i]! * d[i - 1]!.z));
   }
   for (let i = size - 1; i-- > 0; ) {
-    d[i]!.x = d[i]!.x - c[i]! * d[i + 1]!.x;
-    d[i]!.y = d[i]!.y - c[i]! * d[i + 1]!.y;
-    d[i]!.z = d[i]!.z - c[i]! * d[i + 1]!.z;
+    d[i]!.x = r(d[i]!.x - c[i]! * d[i + 1]!.x);
+    d[i]!.y = r(d[i]!.y - c[i]! * d[i + 1]!.y);
+    d[i]!.z = r(d[i]!.z - c[i]! * d[i + 1]!.z);
   }
 
   // Resolve strictness — track.cpp:849–921.

@@ -11,8 +11,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readFvd } from '../dist/fvd/fvd-file.js';
-import { exportNL2 } from '../dist/fvd/nl2-export.js';
+import { readFvd } from '../src/fvd/fvd-file.js';
+import { exportNL2 } from '../src/fvd/nl2-export.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const corpusDir = resolve(here, '../test/golden/data/fvd-corpus');

@@ -2,9 +2,9 @@
 //
 // 1:1 port of reference/openfvd/core/secgeometric.cpp (TIME mode).
 
-import { F_G, F_HZ, F_PI, FLOAT_EPSILON } from './constants.js';
+import { F_G, F_HZ, F_PI, FLOAT_EPSILON, G_ENERGY } from './constants.js';
 import { Func, EFunctype } from './func.js';
-import { libmCosF, libmSinF, r, vec3Distance } from './fvec.js';
+import { r, vec3Distance } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
 import { type MNode } from './mnode.js';
 import { loadFunc, writeFunc } from './sec-straight.js';
@@ -196,30 +196,38 @@ export class SecGeometric extends Section {
       curNode.fRollSpeed = this.rollFunc.getValue((i + 1) / F_HZ);
 
       if (this.bOrientation === EULER || subDeg === EDegree.ToZero) {
-        curNode.fRollSpeed += pureRollChange;
+        // float member += rounds at the store
+        curNode.fRollSpeed = r(curNode.fRollSpeed + pureRollChange);
       }
 
       if (this.bSpeed) {
-        curNode.fEnergy -=
+        // fEnergy / fVel are float members in C++ — every store rounds.
+        const e =
+          curNode.fEnergy -
           (curNode.fVel * curNode.fVel * curNode.fVel) / F_HZ * this.parent.fResistance;
-        curNode.fVel = Math.sqrt(
+        curNode.fEnergy = r(e);
+        const v = Math.sqrt(
           2 *
             (curNode.fEnergy -
-              F_G *
+              G_ENERGY *
                 (curNode.vPosHeart(this.parent.fHeart * 0.9).y +
                   curNode.fTotalLength * this.parent.fFriction)),
         );
+        curNode.fVel = r(v);
       } else {
         curNode.fVel = this.fVel;
-        curNode.fEnergy =
+        const e =
           0.5 * this.fVel * this.fVel +
           F_G *
             (curNode.vPosHeart(this.parent.fHeart * 0.9).y +
               curNode.fTotalLength * this.parent.fFriction);
+        curNode.fEnergy = r(e);
       }
 
       this.calcDirFromLast(i + 1);
-      const tempCos = libmCosF((Math.abs(curNode.getPitch()) * F_PI) / 180);
+      // secgeometric.cpp:191 — bare DOUBLE cos; the float local stays in
+      // the x87 register, so no float32 rounding anywhere here.
+      const tempCos = Math.cos((Math.abs(curNode.getPitch()) * F_PI) / 180);
       const forceAngle = Math.sqrt(
         tempCos * tempCos * curNode.fYawFromLast * curNode.fYawFromLast +
           curNode.fPitchFromLast * curNode.fPitchFromLast,
@@ -235,8 +243,8 @@ export class SecGeometric extends Section {
         fZ = 0;
       } else {
         const rollRad = (curNode.fRoll * F_PI) / 180;
-        const cosR = libmCosF(rollRad);
-        const sinR = libmSinF(rollRad);
+        const cosR = Math.cos(rollRad); // bare double cos/sin in C++
+        const sinR = Math.sin(rollRad);
         const normalDAngle =
           (F_PI / 180) * (-curNode.fPitchFromLast * cosR - tempCos * curNode.fYawFromLast * sinR);
         const lateralDAngle =
@@ -441,30 +449,37 @@ export class SecGeometric extends Section {
         this.rollFunc.getValue(this.length + curNode.fVel / F_HZ) * curNode.fVel;
 
       if (this.bOrientation === true) {
-        curNode.fRollSpeed += pureRollChange;
+        // float member += rounds at the store
+        curNode.fRollSpeed = r(curNode.fRollSpeed + pureRollChange);
       }
 
       if (this.bSpeed) {
-        curNode.fEnergy -=
+        const e =
+          curNode.fEnergy -
           (curNode.fVel * curNode.fVel * curNode.fVel) / F_HZ * this.parent.fResistance;
-        curNode.fVel = Math.sqrt(
+        curNode.fEnergy = r(e);
+        const v = Math.sqrt(
           2 *
             (curNode.fEnergy -
-              F_G *
+              G_ENERGY *
                 (curNode.vPosHeart(this.parent.fHeart * 0.9).y +
                   curNode.fTotalLength * this.parent.fFriction)),
         );
+        curNode.fVel = r(v);
       } else {
         curNode.fVel = this.fVel;
-        curNode.fEnergy =
+        const e =
           0.5 * this.fVel * this.fVel +
           F_G *
             (curNode.vPosHeart(this.parent.fHeart * 0.9).y +
               curNode.fTotalLength * this.parent.fFriction);
+        curNode.fEnergy = r(e);
       }
 
       this.calcDirFromLast(i + 1);
-      const tempCos = libmCosF((Math.abs(curNode.getPitch()) * F_PI) / 180);
+      // secgeometric.cpp:191 — bare DOUBLE cos; the float local stays in
+      // the x87 register, so no float32 rounding anywhere here.
+      const tempCos = Math.cos((Math.abs(curNode.getPitch()) * F_PI) / 180);
       const forceAngle = Math.sqrt(
         tempCos * tempCos * curNode.fYawFromLast * curNode.fYawFromLast +
           curNode.fPitchFromLast * curNode.fPitchFromLast,
@@ -486,8 +501,8 @@ export class SecGeometric extends Section {
         fZ = 0;
       } else {
         const rollRad = (curNode.fRoll * F_PI) / 180;
-        const cosR = libmCosF(rollRad);
-        const sinR = libmSinF(rollRad);
+        const cosR = Math.cos(rollRad); // bare double cos/sin in C++
+        const sinR = Math.sin(rollRad);
         const normalDAngle =
           (F_PI / 180) * (-curNode.fPitchFromLast * cosR - tempCos * curNode.fYawFromLast * sinR);
         const lateralDAngle =

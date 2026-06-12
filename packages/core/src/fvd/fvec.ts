@@ -102,6 +102,10 @@ export function vec3Distance(a: Vec3, b: Vec3): Scalar {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   const dz = a.z - b.z;
+  // NOTE: unlike vec3Normalize, the dot here is NOT rounded to float32
+  // before the sqrt — rounding it was corpus-measured as neutral, so we
+  // keep the simpler committed form (glm::distance shares normalize's
+  // sqrtf structure on paper; the measurement disagrees on this site).
   return r(Math.sqrt(dx * dx + dy * dy + dz * dz));
 }
 
@@ -113,12 +117,15 @@ export function vec3Cross(a: Vec3, b: Vec3, out: Vec3 = vec3()): Vec3 {
   return vec3Set(out, x, y, z);
 }
 
+// glm 0.9.5.1 normalize = x * inversesqrt(dot(x, x)); inversesqrt is
+// 1/sqrt with FLOAT sqrt. On i686 mingw, sqrtf is a real call: the
+// extended-precision dot product rounds to float32 at the parameter
+// push and the sqrt result rounds at the return cast. Both roundings
+// are corpus-measured (part of the winning float-emulation set).
 export function vec3Normalize(a: Vec3, out: Vec3 = vec3()): Vec3 {
-  const len = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-  if (len === 0) {
-    return vec3Set(out, 0, 0, 0);
-  }
-  const inv = 1 / len;
+  const d = r(a.x * a.x + a.y * a.y + a.z * a.z);
+  if (d === 0) return vec3Set(out, 0, 0, 0);
+  const inv = 1 / r(Math.sqrt(d));
   return vec3Set(out, a.x * inv, a.y * inv, a.z * inv);
 }
 
@@ -230,7 +237,10 @@ export function vec3RotateAxisGlm(
   // V8's Math.sin / Math.cos diverges from C++ libm by 1-2 ULPs per
   // call; the libmSinSmall / libmCosSmall shims close that gap for the
   // small half-angles the integrator passes (see geo-trig-isolation
-  // corpus analysis).
+  // corpus analysis). The direct mingw model `fround(Math.sin(half))`
+  // was corpus-measured WORSE than the float32 Taylor (sum 71.2 vs
+  // 62.3 mm) — mingw's i686 sinf/cosf evidently track x87 fsin/fcos,
+  // not V8's correctly-rounded double sin.
   const s = libmSinSmall(half);
   const c = libmCosSmall(half);
   const qx = r(s * axis.x);
@@ -248,6 +258,11 @@ export function vec3RotateAxisGlm(
   const uuvx = r(qy * uvz - qz * uvy);
   const uuvy = r(qz * uvx - qx * uvz);
   const uuvz = r(qx * uvy - qy * uvx);
+  // glm 0.9.5.1's source form is `uv *= (2*q.w); uuv *= 2; v + uv + uuv`
+  // (rounding uv at its store). That literal structure was corpus-measured
+  // WORSE than the committed grouping below — gcc's scalar replacement
+  // evidently keeps the uv/uuv temporaries in registers, so the only real
+  // stores are the ones modeled here.
   return vec3Set(
     out,
     v.x + r(r(uvx * qw + uuvx) * 2),

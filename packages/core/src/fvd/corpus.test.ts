@@ -126,11 +126,12 @@ describe('geometric corpus', () => {
           console.log(
             `${file}: maxAbs=${maxAbs.toFixed(5)} @${maxIdx} gold=${goldF[maxIdx]} ours=${ourF[maxIdx]}`,
           );
-          // 1.2 m budget while parity tightens — multisub passes at
-          // <5 mm, kinematics at 3 cm; pitch/yaw drift a little under
-          // 1 m by the end of a 135-m track. Tighten as float32
-          // emulation extends across the Geometric integrator.
-          expect(maxAbs).toBeLessThan(1.2);
+          // 40 mm budget (ratcheted from 1.2 m): worst file is
+          // geo-degree-yaw at 28.8 mm after the section-anchor /
+          // inline-extended-getPitch campaign. Tighten further as the
+          // per-step frame propagation reaches bit-exactness (see
+          // docs/parity-campaign.md).
+          expect(maxAbs).toBeLessThan(0.04);
         });
       }
     });
