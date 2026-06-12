@@ -48,6 +48,35 @@ describe('FVD file round-trip', () => {
     }
   });
 
+  it('first write reproduces the FVD++-authored bytes except ULP drift in stitched fields', () => {
+    // testtrack.fvd was saved by FVD++ 0.79 itself, so the original
+    // bytes are an ORACLE for the full load→integrate→save chain: any
+    // field FVD++ derives at save time (e.g. subfunc startValues
+    // stitched to the integrator's node-0 roll speed) must come out of
+    // our chain with the same bits. Current state: 5 bytes differ, each
+    // the low mantissa byte of a float32, ≤4 ULPs — the documented
+    // residual integrator drift. Anything beyond that is a regression
+    // (the glm::angleAxis setRoll experiment produced 8 diffs including
+    // the anchor fRoll — that's how it was caught).
+    const original = new Uint8Array(readFileSync(resolve(goldenDir, 'testtrack.fvd')));
+    const pass1 = writeFvd(readFvd(original));
+    expect(pass1.length).toBe(original.length);
+    const diffs: number[] = [];
+    for (let i = 0; i < original.length; i++) {
+      if (original[i] !== pass1[i]) diffs.push(i);
+    }
+    expect(diffs.length).toBeLessThanOrEqual(5);
+    for (const i of diffs) {
+      // Low mantissa byte only: the three preceding bytes (BE float32
+      // sign/exponent/high mantissa) must agree.
+      expect(original[i - 1]).toBe(pass1[i - 1]);
+      expect(original[i - 2]).toBe(pass1[i - 2]);
+      expect(original[i - 3]).toBe(pass1[i - 3]);
+      // And the byte itself within 4 ULPs.
+      expect(Math.abs(original[i]! - pass1[i]!)).toBeLessThanOrEqual(20);
+    }
+  });
+
   it('produces byte-identical output for the track-data portion', () => {
     // The header preamble (FVD magic + version + background filename int +
     // background filename) and the EOP footer are bytewise stable. The

@@ -126,16 +126,17 @@ export class MNode {
   }
 
   // mnode.cpp:68 — rotate vLat by −dRoll (degrees) around vDir, then
-  // recompute vNorm and fRoll from the new lat/dir frame. The negation of
-  // dRoll is intentional and load-bearing.
+  // recompute vNorm and fRoll from the new lat/dir frame. The negation
+  // of dRoll is intentional and load-bearing.
+  //
+  // C++ uses glm::angleAxis here, but the float-emulation choice is
+  // decided by an ORACLE, not the AST: testtrack.fvd was authored by
+  // FVD++ itself, so its on-disk anchor-fRoll bytes are FVD's exact
+  // setRoll→updateRoll(atan2) output. Our load→save reproduces those
+  // bytes bit-for-bit with the Rodrigues path; the vec3RotateAxisGlm
+  // emulation diverges by 1 ULP and never reaches a save→load fixed
+  // point (bytes oscillate every cycle). Keep Rodrigues.
   setRoll(dRoll: number): void {
-    // FVD's setRoll uses glm::angleAxis * vLat, but switching this to
-    // vec3RotateAxisGlm broke the testtrack save→load→save byte
-    // round-trip: setRoll + updateRoll's atan2 of the rotated vLat
-    // doesn't reproduce dRoll to the last ULP under the GLM path, so
-    // each load+write cycle drifted fRoll by a few ULPs. The
-    // Rodrigues path round-trips losslessly here, and the parity
-    // impact of the choice is sub-mm. Keep Rodrigues for setRoll.
     vec3RotateAxis(this.vLat, this.vDir, toRad(-dRoll), this.vLat);
     vec3Normalize(this.vLat, this.vLat);
     this.updateRoll();
