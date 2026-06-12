@@ -2,7 +2,7 @@
 
 A new browser-based force-vector roller-coaster design tool, drawing on two reference implementations: **FVD++** (altlenny/openFVD, C++/Qt, GPL-3.0) for physics and file format, and **KexEdit** (IndividualKex/KexEdit, Unity/C#, MIT) for UI and advanced features. We ship AGPL-3.0 — compatible with FVD++ under GPL-3.0 and adds the AGPL §13 network-use source-disclosure clause.
 
-**Before doing anything: read `docs/webfvd-spec.md` once.** It's the source of truth. When this file conflicts with the spec, the spec wins. When both are silent, ask.
+**Before doing anything: read `docs/webfvd-spec.md` once.** It's the source of truth. When working on integrator math or FVD++ parity, also read `docs/parity-campaign.md` — it records the measured float-emulation findings and the campaign method; re-deriving them wastes a session. When this file conflicts with the spec, the spec wins. When both are silent, ask.
 
 ## The tier system — read this first
 
