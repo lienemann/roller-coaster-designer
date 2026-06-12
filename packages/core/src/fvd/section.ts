@@ -5,7 +5,7 @@
 // (which references `parent.fHeart`). Concrete section types (Straight,
 // Curved, Forced, Geometric, Bezier) extend it.
 
-import { F_PI, FLOAT_EPSILON } from './constants.js';
+import { F_PI } from './constants.js';
 import { Func, EFunctype } from './func.js';
 import { libmAsinF, libmAtan2F, libmCosF, type Vec3, vec3 } from './fvec.js';
 import type { ReadStream, WriteStream } from './io-stream.js';
@@ -99,21 +99,16 @@ export abstract class Section {
     if (i <= 0 || i >= this.lNodes.length) return;
     const cur = this.lNodes[i]!;
     const prev = this.lNodes[i - 1]!;
-    const dx = cur.vDir.x - prev.vDir.x;
-    const dy = cur.vDir.y - prev.vDir.y;
-    const dz = cur.vDir.z - prev.vDir.z;
-    const diffLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (diffLen <= FLOAT_EPSILON) {
-      cur.fDirFromLast = 0;
-      cur.fPitchFromLast = 0;
-      cur.fYawFromLast = 0;
-    } else {
-      // section.cpp:282–289
-      cur.fPitchFromLast = cur.getPitch() - prev.getPitch();
-      cur.fYawFromLast = cur.getDirection() - prev.getDirection();
-      cur.fDirFromLast =
-        (libmAtan2F(cur.fYawFromLast, cur.fPitchFromLast) * 180) / F_PI - cur.fRoll;
-    }
+    // section.cpp:277 checks `diff.length() <= epsilon`, but
+    // glm::vec3::length() is the COMPONENT COUNT (3), not the magnitude
+    // (that would be glm::length(diff)). `3 <= epsilon` is always false,
+    // so the zero-diff branch is dead code in FVD and the else branch
+    // always runs. NOTE: matches FVD++ 0.79 behavior.
+    // section.cpp:282–289
+    cur.fPitchFromLast = cur.getPitch() - prev.getPitch();
+    cur.fYawFromLast = cur.getDirection() - prev.getDirection();
+    cur.fDirFromLast =
+      (libmAtan2F(cur.fYawFromLast, cur.fPitchFromLast) * 180) / F_PI - cur.fRoll;
 
     // section.cpp:291–296 — heart-line track angle
     const curDirHeart = cur.vDirHeart(this.parent.fHeart, vec3());
