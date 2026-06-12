@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
-  integrateProject,
-  parseFvd,
+  buildTrack,
   parseWebFvdJson,
+  readFvd,
   stringifyWebFvdJson,
+  trackToDoc,
   WebFvdError,
   writeFvd,
   writeNl2Csv,
-  type Project,
+  type ProjectDoc,
 } from '@roller-coaster-designer/core';
 
 // Browser compatibility strategy per spec §8.5 and §16: prefer the File System
@@ -62,7 +63,7 @@ const FVD_PICKER_TYPES = [
 ] satisfies NonNullable<SaveFilePickerOptions['types']>;
 
 export interface OpenResult {
-  readonly project: Project;
+  readonly project: ProjectDoc;
   readonly handle: OpaqueFileHandle | null;
   readonly name: string;
 }
@@ -82,14 +83,14 @@ export async function openProject(): Promise<OpenResult | null> {
     }
     const file = await handle.getFile();
     const text = await file.text();
-    const { project } = parseWebFvdJson(text);
+    const project = parseWebFvdJson(text);
     return { project, handle, name: file.name };
   }
 
   const file = await openViaInput('.webfvd.json,application/json');
   if (!file) return null;
   const text = await file.text();
-  const { project } = parseWebFvdJson(text);
+  const project = parseWebFvdJson(text);
   return { project, handle: null, name: file.name };
 }
 
@@ -99,7 +100,7 @@ export interface SaveResult {
 }
 
 export interface FvdImportResult {
-  readonly project: Project;
+  readonly project: ProjectDoc;
   readonly name: string;
   readonly version: 'v0.77' | 'v0.30';
   readonly warnings: readonly string[];
@@ -137,16 +138,16 @@ export async function importFvd(): Promise<FvdImportResult | null> {
     bytes = await file.arrayBuffer();
     name = file.name;
   }
-  const result = parseFvd(new Uint8Array(bytes));
+  const file = readFvd(new Uint8Array(bytes));
   return {
-    project: result.project,
+    project: { fvdCompatibilityMode: true, tracks: file.tracks.map(trackToDoc) },
     name,
-    version: result.version,
-    warnings: result.warnings,
+    version: file.version === 'v0.30' ? 'v0.30' : 'v0.77',
+    warnings: [],
   };
 }
 
-export async function saveProjectAs(project: Project): Promise<SaveResult | null> {
+export async function saveProjectAs(project: ProjectDoc): Promise<SaveResult | null> {
   const text = stringifyWebFvdJson(project);
   const w = globalThis as unknown as FsaWindow;
 
@@ -173,7 +174,7 @@ export async function saveProjectAs(project: Project): Promise<SaveResult | null
 }
 
 export async function saveProject(
-  project: Project,
+  project: ProjectDoc,
   handle: OpaqueFileHandle | null,
 ): Promise<SaveResult | null> {
   // No in-place save without a handle — fall back to Save As.
@@ -241,10 +242,14 @@ function downloadBlob(
  * to a download blob.
  */
 export async function exportFvd(
-  project: Project,
+  project: ProjectDoc,
   suggestedName = 'project.fvd',
 ): Promise<SaveResult | null> {
-  const bytes = writeFvd(project);
+  const bytes = writeFvd({
+    version: 'v0.77',
+    backgroundImage: '',
+    tracks: project.tracks.map(buildTrack),
+  });
   const w = globalThis as unknown as FsaWindow;
   if (hasFileSystemAccess()) {
     let handle: FileSystemFileHandle;
@@ -276,13 +281,12 @@ export async function exportFvd(
  * `stride` defaults to 100 (~100 ms apart at 1 kHz integration).
  */
 export async function exportNl2Csv(
-  project: Project,
+  project: ProjectDoc,
   options: { stride?: number; suggestedName?: string } = {},
 ): Promise<SaveResult | null> {
   if (project.tracks.length === 0) return null;
-  const integrations = integrateProject([project.tracks[0]!]);
-  const arrays = integrations[0]!.arrays;
-  const csv = writeNl2Csv(arrays, options.stride !== undefined ? { stride: options.stride } : {});
+  const track = buildTrack(project.tracks[0]!);
+  const csv = writeNl2Csv(track, options.stride !== undefined ? { stride: options.stride } : {});
   const name = options.suggestedName ?? 'track.csv';
   const w = globalThis as unknown as FsaWindow;
   if (hasFileSystemAccess()) {

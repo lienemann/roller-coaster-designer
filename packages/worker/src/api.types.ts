@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Project } from '@roller-coaster-designer/core';
+import { type ProjectDoc } from '@roller-coaster-designer/core';
 
 /**
  * Per-track result of a recompute. Every Float32Array is `nodeCount` long
@@ -38,5 +38,5 @@ export interface PhysicsWorkerApi {
   ping(value: number): Promise<number>;
 
   /** Runs the integrator on every track in the project. */
-  recompute(project: Project): Promise<RecomputeResult>;
+  recompute(project: ProjectDoc): Promise<RecomputeResult>;
 }

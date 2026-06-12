@@ -51,8 +51,8 @@ describe('App shell', () => {
     });
     render(<App />);
     const track = useAppStore.getState().project!.tracks[0]!;
-    expect(track.sections).toHaveLength(2);
-    expect(track.sections[1]!.type).toBe(1); // SecType.Straight
-    expect(useAppStore.getState().selectedSectionIndex).toBe(1);
+    expect(track.sections).toHaveLength(1);
+    expect(track.sections[0]!.kind).toBe('straight');
+    expect(useAppStore.getState().selectedSection).toBe(0);
   });
 });

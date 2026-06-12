@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { SecType, firstCubicOf, replaceFirstCubic } from '@roller-coaster-designer/core';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -33,7 +33,7 @@ export function App(): JSX.Element {
   const projectName = useAppStore((s) => s.projectName);
   const isDirty = useAppStore((s) => s.isDirty);
   const tracks = useAppStore((s) => s.tracks);
-  const selectedSectionIndex = useAppStore((s) => s.selectedSectionIndex);
+  const selectedSection = useAppStore((s) => s.selectedSection);
   const selectSection = useAppStore((s) => s.selectSection);
   const patchSelectedSection = useAppStore((s) => s.patchSelectedSection);
   const environment = useAppStore((s) => s.environment);
@@ -72,10 +72,10 @@ export function App(): JSX.Element {
   // When the user picks a section on narrow layouts, flip to the Properties
   // tab so they see the edit fields immediately. Desktop shows both at once.
   useEffect(() => {
-    if (!isDesktop && selectedSectionIndex !== null) {
+    if (!isDesktop && selectedSection !== null) {
       setMobileTab('properties');
     }
-  }, [isDesktop, selectedSectionIndex]);
+  }, [isDesktop, selectedSection]);
 
   const documentLabel =
     project === null
@@ -103,11 +103,19 @@ export function App(): JSX.Element {
       ]
     | null
   >(() => {
-    if (selectedSectionIndex === null) return null;
-    const sec = project?.tracks[0]?.sections[selectedSectionIndex];
-    if (sec?.type !== SecType.Bezier) return null;
-    return firstCubicOf(sec);
-  }, [project, selectedSectionIndex]);
+    if (typeof selectedSection !== 'number') return null;
+    const sec = project?.tracks[0]?.sections[selectedSection];
+    if (sec?.kind !== 'bezier' || sec.knots.length < 2) return null;
+    // First cubic of the chain: (P1[0], Kp2[0], Kp1[1], P1[1]), shifted
+    // into world space (stream positions include startPos).
+    const sp = project?.tracks[0]?.startPos ?? [0, 0, 0];
+    const w = (p: readonly [number, number, number]): [number, number, number] => [
+      p[0] + sp[0],
+      p[1] + sp[1],
+      p[2] + sp[2],
+    ];
+    return [w(sec.knots[0]!.P1), w(sec.knots[0]!.Kp2), w(sec.knots[1]!.Kp1), w(sec.knots[1]!.P1)];
+  }, [project, selectedSection]);
 
   const sectionStartTimes = useMemo<number[]>(() => {
     const starts = firstTrack?.sectionStartNodes ?? [];
@@ -153,7 +161,7 @@ export function App(): JSX.Element {
         <Viewport
           tracks={tracks}
           sectionColors={sectionColors}
-          selectedSectionIndex={selectedSectionIndex}
+          selectedSectionIndex={typeof selectedSection === 'number' ? selectedSection : null}
           cameraMode={cameraMode}
           fitEpoch={fitViewEpoch}
           resetEpoch={resetViewEpoch}
@@ -186,24 +194,21 @@ export function App(): JSX.Element {
           bezierHandles={bezierHandles}
           onBezierHandleChange={(index, pos) => {
             if (!bezierHandles) return;
-            if (selectedSectionIndex === null) return;
-            const sec = project?.tracks[0]?.sections[selectedSectionIndex];
-            if (sec?.type !== SecType.Bezier) return;
-            const cps: [
-              [number, number, number],
-              [number, number, number],
-              [number, number, number],
-              [number, number, number],
-            ] = [
-              [...bezierHandles[0]],
-              [...bezierHandles[1]],
-              [...bezierHandles[2]],
-              [...bezierHandles[3]],
+            if (typeof selectedSection !== 'number') return;
+            const sec = project?.tracks[0]?.sections[selectedSection];
+            if (sec?.kind !== 'bezier' || sec.knots.length < 2) return;
+            const sp = project?.tracks[0]?.startPos ?? [0, 0, 0];
+            const local: [number, number, number] = [
+              pos[0] - sp[0],
+              pos[1] - sp[1],
+              pos[2] - sp[2],
             ];
-            cps[index] = pos;
-            patchSelectedSection({
-              segments: replaceFirstCubic(sec.segments, cps[0], cps[1], cps[2], cps[3]),
-            });
+            const knots = sec.knots.map((k) => ({ ...k }));
+            if (index === 0) knots[0]!.P1 = local;
+            else if (index === 1) knots[0]!.Kp2 = local;
+            else if (index === 2) knots[1]!.Kp1 = local;
+            else knots[1]!.P1 = local;
+            patchSelectedSection({ knots });
           }}
         />
         {/* Compact viewport toolbar. Stacks vertically on narrow widths

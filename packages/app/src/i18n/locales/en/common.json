@@ -80,7 +80,10 @@
     "addBezier": "Bezier",
     "remove": "Remove section",
     "insertAfterSelection": "Insert after selected",
-    "fvdIncompatible": "Will be transformed or dropped on FVD export"
+    "fvdIncompatible": "Will be transformed or dropped on FVD export",
+    "anchor": "Anchor",
+    "addGeometric": "Geometric",
+    "addForced": "Forced"
   },
   "properties": {
     "empty": "Select a section to edit its parameters.",
@@ -115,7 +118,17 @@
     "bankingSyncHint": "Copies the previous section's end banking into this section's start so the roll is continuous.",
     "bankingShortcutNote": "Single Cubic transition from start to end. The full timeline editor (later) lets you stack multiple transitions.",
     "editSubfuncs": "Edit subfuncs…",
-    "editSubfuncsHint": "Open the full curve editor for roll / pitch / yaw rates."
+    "editSubfuncsHint": "Open the full curve editor for roll / pitch / yaw rates.",
+    "heart": "Heartline",
+    "friction": "Friction",
+    "resistance": "Air resistance",
+    "duration": "Duration",
+    "bOrientation": "Orientation",
+    "bSpeed": "Speed mode",
+    "speedEnergy": "Energy",
+    "speedHeld": "Held",
+    "closureNote": "Closure auto-derives its curve from the track end back to the anchor on every recompute. Exports to .fvd as a plain Bezier.",
+    "knot": "Knot {{index}}"
   },
   "subfunc": {
     "title": "Subfunc editor",

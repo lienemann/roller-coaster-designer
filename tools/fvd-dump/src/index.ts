@@ -22,9 +22,9 @@ import { readFileSync } from 'node:fs';
 import {
   CORE_VERSION,
   F_HZ,
-  WebFvdError,
-  integrateProject,
-  parseFvd,
+  readFvd,
+  trackToDoc,
+  type Track,
 } from '@roller-coaster-designer/core';
 
 interface CliOptions {
@@ -118,31 +118,24 @@ function main(argv: readonly string[]): number {
     return 1;
   }
 
-  let result;
+  let file;
   try {
-    result = parseFvd(bytes);
+    file = readFvd(bytes);
   } catch (err) {
-    if (err instanceof WebFvdError) {
-      process.stderr.write(
-        `fvd-dump: malformed .fvd (${err.code}): ${JSON.stringify(err.context)}\n`,
-      );
-    } else {
-      process.stderr.write(`fvd-dump: ${(err as Error).message}\n`);
-    }
+    process.stderr.write(`fvd-dump: ${(err as Error).message}\n`);
     return 2;
   }
 
-  for (const w of result.warnings) {
-    process.stderr.write(`fvd-dump: warning: ${w}\n`);
-  }
-
   if (opts.mode === 'json') {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    const docs = file.tracks.map(trackToDoc);
+    process.stdout.write(
+      `${JSON.stringify({ version: file.version, tracks: docs }, null, 2)}\n`,
+    );
     return 0;
   }
 
-  // CSV: integrate the requested track and stream nodes.
-  const tracks = result.project.tracks;
+  // CSV: stream the integrated nodes (readFvd already ran updateTrack).
+  const tracks = file.tracks;
   if (tracks.length === 0) {
     process.stderr.write('fvd-dump: file contains no tracks\n');
     return 2;
@@ -153,38 +146,41 @@ function main(argv: readonly string[]): number {
     );
     return 1;
   }
-  const integration = integrateProject([tracks[opts.trackIndex]!])[0]!;
-  emitCsv(integration);
+  emitCsv(tracks[opts.trackIndex]!);
   return 0;
 }
 
-function emitCsv(integration: ReturnType<typeof integrateProject>[number]): void {
-  const { arrays } = integration;
+function emitCsv(track: Track): void {
   const rows: string[] = [
-    'node,t_s,posX,posY,posZ,dirX,dirY,dirZ,latX,latY,latZ,vel_mps,forceN_g,forceL_g,forceLong_g,roll_rad,rollSpeed_radps',
+    'node,t_s,posX,posY,posZ,dirX,dirY,dirZ,latX,latY,latZ,vel_mps,forceN_g,forceL_g,forceLong_g,roll_deg,rollSpeed_degps',
   ];
-  for (let i = 0; i < arrays.length; i += 1) {
-    rows.push(
-      [
-        i,
-        i / F_HZ,
-        arrays.posX[i],
-        arrays.posY[i],
-        arrays.posZ[i],
-        arrays.dirX[i],
-        arrays.dirY[i],
-        arrays.dirZ[i],
-        arrays.latX[i],
-        arrays.latY[i],
-        arrays.latZ[i],
-        arrays.vel[i],
-        arrays.forceNormal[i],
-        arrays.forceLateral[i],
-        arrays.forceLong[i],
-        arrays.roll[i],
-        arrays.rollSpeed[i],
-      ].join(','),
-    );
+  let i = 0;
+  for (let si = 0; si < track.lSections.length; si += 1) {
+    const sec = track.lSections[si]!;
+    for (let j = si === 0 ? 0 : 1; j < sec.lNodes.length; j += 1, i += 1) {
+      const n = sec.lNodes[j]!;
+      rows.push(
+        [
+          i,
+          i / F_HZ,
+          n.vPos.x,
+          n.vPos.y,
+          n.vPos.z,
+          n.vDir.x,
+          n.vDir.y,
+          n.vDir.z,
+          n.vLat.x,
+          n.vLat.y,
+          n.vLat.z,
+          n.fVel,
+          n.forceNormal,
+          n.forceLateral,
+          n.forceLong,
+          n.fRoll,
+          n.fRollSpeed + n.fSmoothSpeed,
+        ].join(','),
+      );
+    }
   }
   process.stdout.write(`${rows.join('\n')}\n`);
 }

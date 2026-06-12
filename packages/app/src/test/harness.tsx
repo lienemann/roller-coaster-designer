@@ -31,7 +31,7 @@ export function setupAppSuite(): void {
         projectHandle: null,
         isDirty: false,
         tracks: [],
-        selectedSectionIndex: null,
+        selectedSection: null,
       });
     });
   });

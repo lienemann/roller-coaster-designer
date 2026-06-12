@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
-  SEC_TYPE_NAMES,
-  SecType,
-  isSectionTypeAuthorable,
+  isSectionKindAuthorable,
   lintFvdCompatibility,
   sectionHasFvdCompatIssue,
   type FvdCompatNote,
-  type Section,
+  type SectionDoc,
 } from '@roller-coaster-designer/core';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,19 +13,20 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../state/store.js';
 
 /**
- * Left-rail panel listing the sections of the first track. Clicking a row
- * selects it, which drives the Properties panel on the right rail. Add
- * buttons append a section with sensible defaults; the properties panel is
- * where users tune them.
+ * Left-rail panel: the anchor (track-level pose) as a pinned first row,
+ * then the sections of the first track. Clicking selects; the Properties
+ * panel edits. Add buttons append docs with sensible defaults.
  */
 export function SectionsPanel(): JSX.Element {
   const { t } = useTranslation(['common', 'sections']);
   const project = useAppStore((s) => s.project);
-  const selectedIndex = useAppStore((s) => s.selectedSectionIndex);
+  const selected = useAppStore((s) => s.selectedSection);
   const selectSection = useAppStore((s) => s.selectSection);
   const addStraight = useAppStore((s) => s.addStraightSection);
   const addCurved = useAppStore((s) => s.addCurvedSection);
   const addLoop = useAppStore((s) => s.addLoopSection);
+  const addGeometric = useAppStore((s) => s.addGeometricSection);
+  const addForced = useAppStore((s) => s.addForcedSection);
   const addBezier = useAppStore((s) => s.addBezierSection);
   const removeSection = useAppStore((s) => s.removeSection);
   const closeCurrentTrack = useAppStore((s) => s.closeCurrentTrack);
@@ -35,41 +34,22 @@ export function SectionsPanel(): JSX.Element {
   const setInsertAfterSelection = useAppStore((s) => s.setInsertAfterSelection);
 
   const sections = project?.tracks[0]?.sections ?? [];
-  const hasClosure = sections.some((s) => s.type === SecType.Closure);
-  const canAdd = project !== null && sections.length > 0;
-  // Future-proof gate: filter "Add X" buttons by the project's
-  // FVD-compat mode. Today every section type is authorable in both
-  // modes (closure converts on FVD export). When T2+ types land
-  // (switches, launches, magnetic brakes, ReverseSection) they'll
-  // light up only in non-compat mode through this helper.
-  const fvdCompat = project?.fvdCompatibilityMode ?? true;
-  const canAuthorStraight = canAdd && isSectionTypeAuthorable(SecType.Straight, fvdCompat);
-  const canAuthorCurved = canAdd && isSectionTypeAuthorable(SecType.Curved, fvdCompat);
-  const canAuthorBezier = canAdd && isSectionTypeAuthorable(SecType.Bezier, fvdCompat);
-  // Per-section FVD compatibility audit. Memoised so the marker stays
-  // stable while the user clicks around without editing the project.
+  const hasClosure = sections.some((s) => s.kind === 'closure');
+  const canAdd = project !== null;
   const compatNotes: FvdCompatNote[] = useMemo(
     () => (project ? lintFvdCompatibility(project) : []),
     [project],
   );
-  // Closure needs at least the anchor + one non-anchor section before it
-  // can re-enter the anchor tangentially.
-  const canClose = project !== null && sections.length >= 2 && !hasClosure;
+  const canClose = project !== null && sections.length >= 1 && !hasClosure;
+  const fvdCompat = project?.fvdCompatibilityMode ?? true;
 
   const onCloseTrack = useCallback(() => {
-    try {
-      closeCurrentTrack();
-    } catch (err) {
-      // closeTrack throws WebFvdError codes; surface to the user without
-      // pulling in the full translator dependency here.
-      alert(err instanceof Error ? err.message : 'Close failed');
-    }
+    closeCurrentTrack();
   }, [closeCurrentTrack]);
 
   const onRemove = useCallback(
     (event: React.MouseEvent, idx: number) => {
       event.stopPropagation();
-      if (idx === 0) return;
       removeSection(idx);
     },
     [removeSection],
@@ -82,11 +62,34 @@ export function SectionsPanel(): JSX.Element {
       </header>
 
       <ol className="flex flex-col gap-1 text-xs">
-        {sections.length === 0 && (
+        {project !== null && (
+          <li
+            onClick={() => selectSection('anchor')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                selectSection('anchor');
+              }
+            }}
+            className={`flex cursor-pointer items-center justify-between rounded px-2 py-1 ring-1 ${
+              selected === 'anchor'
+                ? 'bg-white/10 text-neutral-100 ring-white/40'
+                : 'bg-surface-2 text-neutral-300 ring-white/10 hover:bg-white/5'
+            }`}
+          >
+            <span className="truncate">
+              <span className="mr-2 text-neutral-500">⚓</span>
+              <span>{t('common:sections.anchor')}</span>
+            </span>
+          </li>
+        )}
+        {project !== null && sections.length === 0 && (
           <li className="text-neutral-500">{t('common:sections.empty')}</li>
         )}
         {sections.map((section, i) => {
-          const isSelected = i === selectedIndex;
+          const isSelected = i === selected;
           const incompatible = sectionHasFvdCompatIssue(compatNotes, 0, i);
           const issueTitle = compatNotes
             .filter((n) => n.sectionIndex === i)
@@ -112,8 +115,8 @@ export function SectionsPanel(): JSX.Element {
             >
               <span className="truncate">
                 <span className="mr-2 text-neutral-500">{i + 1}.</span>
-                <span>{section.name || sectionTypeName(section)}</span>
-                <span className="ml-2 text-neutral-500">{sectionTypeName(section)}</span>
+                <span>{section.name || kindName(section, t)}</span>
+                <span className="ml-2 text-neutral-500">{kindName(section, t)}</span>
                 {incompatible && (
                   <span
                     className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle"
@@ -122,17 +125,15 @@ export function SectionsPanel(): JSX.Element {
                   />
                 )}
               </span>
-              {i > 0 && (
-                <button
-                  type="button"
-                  className="ml-2 rounded px-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200"
-                  onClick={(e) => onRemove(e, i)}
-                  aria-label={t('common:sections.remove')}
-                  title={t('common:sections.remove')}
-                >
-                  ×
-                </button>
-              )}
+              <button
+                type="button"
+                className="ml-2 rounded px-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200"
+                onClick={(e) => onRemove(e, i)}
+                aria-label={t('common:sections.remove')}
+                title={t('common:sections.remove')}
+              >
+                ×
+              </button>
             </li>
           );
         })}
@@ -150,26 +151,34 @@ export function SectionsPanel(): JSX.Element {
         </label>
         <AddButton
           onClick={addStraight}
-          disabled={!canAuthorStraight}
+          disabled={!canAdd || !isSectionKindAuthorable('straight', fvdCompat)}
           label={t('common:sections.addStraight')}
         />
         <AddButton
           onClick={addCurved}
-          disabled={!canAuthorCurved}
+          disabled={!canAdd || !isSectionKindAuthorable('curved', fvdCompat)}
           label={t('common:sections.addCurved')}
         />
         <AddButton
           onClick={addLoop}
-          disabled={!canAuthorCurved}
+          disabled={!canAdd || !isSectionKindAuthorable('curved', fvdCompat)}
           label={t('common:sections.addLoop')}
         />
         <AddButton
+          onClick={addGeometric}
+          disabled={!canAdd || !isSectionKindAuthorable('geometric', fvdCompat)}
+          label={t('common:sections.addGeometric')}
+        />
+        <AddButton
+          onClick={addForced}
+          disabled={!canAdd || !isSectionKindAuthorable('forced', fvdCompat)}
+          label={t('common:sections.addForced')}
+        />
+        <AddButton
           onClick={addBezier}
-          disabled={!canAuthorBezier}
+          disabled={!canAdd || !isSectionKindAuthorable('bezier', fvdCompat)}
           label={t('common:sections.addBezier')}
         />
-        {/* Close Track lives with the add buttons: it appends a closure
-            Bezier back to the anchor. Same button row, different glyph. */}
         <button
           type="button"
           onClick={onCloseTrack}
@@ -196,6 +205,6 @@ function AddButton(props: { onClick: () => void; disabled: boolean; label: strin
   );
 }
 
-function sectionTypeName(section: Section): string {
-  return SEC_TYPE_NAMES[section.type];
+function kindName(section: SectionDoc, t: (key: string) => string): string {
+  return t(`sections:kind.${section.kind}`);
 }

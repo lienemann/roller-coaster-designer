@@ -1,45 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Smoke test for the handcrafted demo project. The demo carries a 360°
-// loop with `fDirection = 12` so the inversion path doesn't fold onto
-// the entry. The integrator must run it without producing NaN positions
-// (a common failure mode for ill-tuned banking or loop geometry).
+// Demo-project smoke: the doc builds through the REAL integrator chain
+// (buildProject -> fvd.Track.updateTrack) without NaNs, carries the
+// headline sections, and the loop keeps its non-zero fDirection so the
+// inversion's exit clears its entry.
 
-import { SecType, integrateProject } from '@roller-coaster-designer/core';
+import { buildProject } from '@roller-coaster-designer/core';
 import { describe, expect, it } from 'vitest';
 
 import { createDemoProject } from './demo-project.ts';
 
 describe('demo project', () => {
-  it('has all the headline section types we want to show off', () => {
+  it('has the headline sections and ends with a closure', () => {
     const project = createDemoProject();
     const sections = project.tracks[0]!.sections;
-    const names = sections.map((s) => s.name);
-    expect(names).toContain('Drop');
-    expect(names).toContain('Banked turn');
-    expect(names).toContain('Loop');
-    // closeTrack appended a Closure as the final section.
-    expect(sections[sections.length - 1]!.type).toBe(SecType.Closure);
+    expect(sections.map((s) => s.name)).toContain('Banked turn');
+    expect(sections.map((s) => s.name)).toContain('Loop');
+    expect(sections[sections.length - 1]!.kind).toBe('closure');
   });
 
-  it('integrates without producing NaN positions', () => {
-    const project = createDemoProject();
-    const [first] = integrateProject(project.tracks);
-    expect(first).toBeDefined();
-    const { arrays } = first!;
-    for (let i = 0; i < arrays.length; i++) {
-      expect(Number.isFinite(arrays.posX[i]!)).toBe(true);
-      expect(Number.isFinite(arrays.posY[i]!)).toBe(true);
-      expect(Number.isFinite(arrays.posZ[i]!)).toBe(true);
+  it('integrates through the fvd chain without NaN positions', () => {
+    const [track] = buildProject(createDemoProject());
+    expect(track).toBeDefined();
+    let nodes = 0;
+    for (const sec of track!.lSections) {
+      for (const n of sec.lNodes) {
+        expect(Number.isFinite(n.vPos.x)).toBe(true);
+        expect(Number.isFinite(n.vPos.y)).toBe(true);
+        expect(Number.isFinite(n.vPos.z)).toBe(true);
+        nodes++;
+      }
     }
+    expect(nodes).toBeGreaterThan(1000);
   });
 
-  it('loop section has a non-zero fDirection so entry / exit do not overlap', () => {
-    const project = createDemoProject();
-    const loop = project.tracks[0]!.sections.find((s) => s.name === 'Loop');
-    expect(loop).toBeDefined();
-    if (loop?.type === SecType.Curved) {
-      expect(loop.fDirection).not.toBe(0);
+  it('loop fDirection is non-zero so entry/exit do not overlap', () => {
+    const loop = createDemoProject().tracks[0]!.sections.find((s) => s.name === 'Loop');
+    expect(loop?.kind).toBe('curved');
+    if (loop?.kind === 'curved') {
       expect(Math.abs(loop.fDirection)).toBeGreaterThan(5);
     }
   });

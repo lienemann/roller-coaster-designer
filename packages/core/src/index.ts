@@ -12,19 +12,71 @@ export const PACKAGE_BOUNDARY = Object.freeze({
 });
 
 export * from './errors.js';
-export * from './io/index.js';
-export * from './model/index.js';
-export * from './ops/index.js';
-export * from './physics/index.js';
-export * from './smoothing/index.js';
 
-// Integrator precision toggle (spec §5.5). Callers — typically the
-// worker — flip this based on `Project.fvdCompatibilityMode` before
-// running the integrator. `'float32'` (default) emulates FVD++ 0.79
-// bit-for-bit; `'float64'` ("precise") trades that bit parity for
-// closer-to-truth long-range accuracy.
+// ----- the one model: 1:1 FVD++ port + WebFVD document layer -----------
+export { F_G, F_HZ, F_PI } from './fvd/constants.js';
 export {
   setFloatPrecision,
   getFloatPrecision,
   type Precision,
+  type Vec3,
 } from './fvd/fvec.js';
+export { EDegree, EFunctype, Subfunc } from './fvd/subfunction.js';
+export { Func } from './fvd/func.js';
+export { MNode } from './fvd/mnode.js';
+export {
+  Section,
+  SecType,
+  EULER,
+  QUATERNION,
+  TIME,
+  DISTANCE,
+  type BezierT,
+} from './fvd/section.js';
+export { SecStraight } from './fvd/sec-straight.js';
+export { SecCurved } from './fvd/sec-curved.js';
+export { SecForced } from './fvd/sec-forced.js';
+export { SecGeometric } from './fvd/sec-geometric.js';
+export { SecBezier } from './fvd/sec-bezier.js';
+export { Track, type SmoothHandler } from './fvd/track.js';
+export { applyRollSmooth, applySmooth, removeSmooth } from './fvd/smooth.js';
+
+// ----- document layer (plain-JSON model the app/worker exchange) -------
+export {
+  buildProject,
+  buildTrack,
+  trackToDoc,
+  sectionToDoc,
+  isClosureSection,
+  deriveClosureKnots,
+  createEmptyProject,
+  type ProjectDoc,
+  type TrackDoc,
+  type SectionDoc,
+  type StraightSectionDoc,
+  type CurvedSectionDoc,
+  type ForcedSectionDoc,
+  type GeometricSectionDoc,
+  type BezierSectionDoc,
+  type ClosureSectionDoc,
+  type FuncDoc,
+  type SubfuncDoc,
+  type BezierKnotDoc,
+  type SmootherDoc,
+  type Vec3Doc,
+} from './fvd/doc.js';
+
+// ----- file I/O ----------------------------------------------------------
+export { readFvd, writeFvd, type FvdFile } from './fvd/fvd-file.js';
+export { parseWebFvdJson, stringifyWebFvdJson } from './fvd/json-io.js';
+export { exportNL2, formatE } from './fvd/nl2-export.js';
+export { writeNl2Csv, type Nl2CsvOptions } from './fvd/nl2-csv.js';
+
+// ----- FVD++ compatibility audit ----------------------------------------
+export {
+  lintFvdCompatibility,
+  sectionHasFvdCompatIssue,
+  isSectionKindAuthorable,
+  type FvdCompatCode,
+  type FvdCompatNote,
+} from './fvd/compat-doc.js';

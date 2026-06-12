@@ -17,8 +17,8 @@ function restorePickers(): void {
 
 const VALID_PROJECT_JSON = JSON.stringify({
   format: 'webfvd',
-  version: 3,
-  project: { texturePath: '', tracks: [] },
+  version: 1,
+  project: { fvdCompatibilityMode: true, tracks: [] },
 });
 
 describe('file-system adapter — feature detection', () => {
@@ -88,15 +88,11 @@ describe('file-system adapter — FS Access path', () => {
       Promise.resolve(handle),
     );
 
-    const result = await saveProjectAs({
-      texturePath: '',
-      tracks: [],
-      fvdCompatibilityMode: true,
-    });
+    const result = await saveProjectAs({ fvdCompatibilityMode: true, tracks: [] });
     expect(result).not.toBeNull();
     expect(result!.handle).toBe(handle);
     expect(writes).toHaveLength(1);
-    expect(JSON.parse(writes[0]!)).toMatchObject({ format: 'webfvd', version: 4 });
+    expect(JSON.parse(writes[0]!)).toMatchObject({ format: 'webfvd', version: 1 });
   });
 
   it('returns null when the user cancels the open dialog', async () => {

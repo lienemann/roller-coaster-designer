@@ -80,7 +80,10 @@
     "addBezier": "Bezier",
     "remove": "Abschnitt entfernen",
     "insertAfterSelection": "Nach Auswahl einfügen",
-    "fvdIncompatible": "Wird beim FVD-Export verändert oder entfernt"
+    "fvdIncompatible": "Wird beim FVD-Export verändert oder entfernt",
+    "anchor": "Anker",
+    "addGeometric": "Geometrisch",
+    "addForced": "Kraftgesteuert"
   },
   "properties": {
     "empty": "Wähle einen Abschnitt aus, um seine Parameter zu bearbeiten.",
@@ -115,7 +118,17 @@
     "bankingSyncHint": "Kopiert die End-Neigung des vorherigen Abschnitts an den Start dieses Abschnitts, damit der Übergang stetig ist.",
     "bankingShortcutNote": "Einzelner kubischer Übergang von Start zu Ende. Der vollständige Timeline-Editor (später) erlaubt mehrere Übergänge.",
     "editSubfuncs": "Subfunktionen bearbeiten…",
-    "editSubfuncsHint": "Öffnet den Kurveneditor für Roll- / Nick- / Gierraten."
+    "editSubfuncsHint": "Öffnet den Kurveneditor für Roll- / Nick- / Gierraten.",
+    "heart": "Herzlinie",
+    "friction": "Reibung",
+    "resistance": "Luftwiderstand",
+    "duration": "Dauer",
+    "bOrientation": "Orientierung",
+    "bSpeed": "Geschwindigkeitsmodus",
+    "speedEnergy": "Energie",
+    "speedHeld": "Konstant",
+    "closureNote": "Die Schließung leitet ihre Kurve bei jeder Neuberechnung vom Streckenende zurück zum Anker ab. Export in .fvd als gewöhnliches Bezier.",
+    "knot": "Knoten {{index}}"
   },
   "subfunc": {
     "title": "Subfunktions-Editor",
