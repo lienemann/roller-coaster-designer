@@ -18,7 +18,7 @@ import { applyRollSmooth, applySmooth, removeSmooth } from './smooth.js';
 import { Track } from './track.js';
 
 function emptyTrack(): Track {
-  const t = new Track('t', 1.1, 0, 0);
+  const t = new Track(vec3(0, 0, 0), 0, 0);
   t.anchorNode = new MNode(vec3(0, 0, 0), vec3(0, 0, -1), 0, 12, 1, 0);
   // One short Straight section so getPoint() has somewhere to land.
   t.appendSection(SecType.Straight);
