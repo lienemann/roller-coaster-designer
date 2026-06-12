@@ -84,10 +84,12 @@ describe('roll smoother (filter shape)', () => {
     }
   });
 
-  it('blurs a step in fRollSpeed across the kernel window', () => {
+  it('blurs a step in fRollSpeed across the kernel window (custom-region binding)', () => {
     // Synthetic track of 200 nodes: half at fRollSpeed=0, half at 10.
     // A box filter of length 20 should produce an O(length)-wide ramp
-    // in fSmoothSpeed centred on the discontinuity.
+    // in fSmoothSpeed centred on the discontinuity. The active handler
+    // sits at index 2 (> numSections), making it a CUSTOM region per
+    // smoothhandler.cpp binding rules — its stored from/to apply as-is.
     const t = emptyTrack();
     const section = t.lSections[0]!;
     // Stretch lNodes to 200 entries.
@@ -98,6 +100,9 @@ describe('roll smoother (filter shape)', () => {
       section.lNodes[i]!.fRollSpeed = i >= 100 ? 10 : 0;
       section.lNodes[i]!.fSmoothSpeed = 0;
     }
+    // Index 0 = whole-track handler, index 1 = section 0 — both inactive.
+    t.smoothHandlers.push({ name: 't', from: 0, to: 0, length: 400, iterations: 1, active: false });
+    t.smoothHandlers.push({ name: 's', from: 0, to: 0, length: 400, iterations: 1, active: false });
     t.smoothHandlers.push({
       name: 'step',
       from: 50,
@@ -116,5 +121,37 @@ describe('roll smoother (filter shape)', () => {
     // expect a clear non-zero adjustment.
     const midDelta = Math.abs(section.lNodes[100]!.fSmoothSpeed);
     expect(midDelta).toBeGreaterThan(0.5);
+    // Outside the custom region: untouched.
+    expect(section.lNodes[20]!.fSmoothSpeed).toBe(0);
+    expect(section.lNodes[180]!.fSmoothSpeed).toBe(0);
+  });
+
+  it('section-bound handler derives its range from the section, not the file', () => {
+    const t = emptyTrack();
+    const section = t.lSections[0]!;
+    while (section.lNodes.length < 100) {
+      section.lNodes.push(section.lNodes[0]!.clone());
+    }
+    for (let i = 0; i < 100; i++) {
+      section.lNodes[i]!.fRollSpeed = i >= 50 ? 5 : 0;
+      section.lNodes[i]!.fSmoothSpeed = 0;
+    }
+    t.smoothHandlers.push({ name: 't', from: 0, to: 0, length: 400, iterations: 1, active: false });
+    // Section-bound (index 1): stored from/to are garbage on purpose —
+    // the effective range must come from the section bounds.
+    t.smoothHandlers.push({
+      name: 'sec0',
+      from: 9999,
+      to: 99999,
+      length: 10,
+      iterations: 1,
+      active: true,
+    });
+    applyRollSmooth(t, 0);
+    let touched = 0;
+    for (const node of section.lNodes) {
+      if (node.fSmoothSpeed !== 0) touched++;
+    }
+    expect(touched).toBeGreaterThan(0);
   });
 });

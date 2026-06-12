@@ -27,8 +27,12 @@ import { fileURLToPath } from 'node:url';
 
 import { writeFvd } from '../src/fvd/fvd-file.js';
 import { vec3 } from '../src/fvd/fvec.js';
+import { type SecBezier } from '../src/fvd/sec-bezier.js';
+import { type SecCurved } from '../src/fvd/sec-curved.js';
+import { type SecForced } from '../src/fvd/sec-forced.js';
 import { type SecGeometric } from '../src/fvd/sec-geometric.js';
-import { SecType, EULER, QUATERNION, TIME, DISTANCE } from '../src/fvd/section.js';
+import { type SecStraight } from '../src/fvd/sec-straight.js';
+import { SecType, EULER, QUATERNION, TIME, DISTANCE, type BezierT } from '../src/fvd/section.js';
 import type { Subfunc } from '../src/fvd/subfunction.js';
 import { EDegree } from '../src/fvd/subfunction.js';
 import { Track } from '../src/fvd/track.js';
@@ -440,6 +444,191 @@ function transcendentalIsolation(t: Track): void {
   }
 }
 
+// ----- Bezier / smoother / mixed scenarios ------------------------------
+
+function bezKnot(
+  p1: [number, number, number],
+  kp1: [number, number, number],
+  kp2: [number, number, number],
+  opts: Partial<Pick<BezierT, 'roll' | 'contRoll' | 'relRoll'>> = {},
+): BezierT {
+  return {
+    P1: vec3(...p1),
+    Kp1: vec3(...kp1),
+    Kp2: vec3(...kp2),
+    roll: opts.roll ?? 0,
+    contRoll: opts.contRoll ?? false,
+    equalDist: false,
+    relRoll: opts.relRoll ?? false,
+    ptf: 0,
+    fvdRoll: 0,
+    length: 0,
+    numNodes: 0,
+    fVel: 0,
+  };
+}
+
+// FVD++ keeps one smoothHandler per section plus a whole-track handler
+// at index 0 (track.cpp:335, smoothhandler.cpp:36). Binding is
+// positional, so the corpus writer must emit exactly 1 + numSections
+// records for FVD++ to apply them onto its auto-created list.
+// `sectionIndex: -1` activates the whole-track handler at index 0 — the
+// one that actually smooths across section boundaries. A handler bound
+// to a single constant-roll-rate section is a no-op (the filter anchors
+// to endpoint averages inside its own window).
+function pushSmoothHandlers(
+  t: Track,
+  active: { sectionIndex: number; length: number; iterations: number }[] = [],
+): void {
+  const trackAct = active.find((a) => a.sectionIndex === -1);
+  t.smoothHandlers.push({
+    name: t.name,
+    from: 0,
+    to: 0,
+    length: trackAct?.length ?? 400,
+    iterations: trackAct?.iterations ?? 1,
+    active: trackAct !== undefined,
+  });
+  for (let i = 0; i < t.lSections.length; i++) {
+    const act = active.find((a) => a.sectionIndex === i);
+    t.smoothHandlers.push({
+      name: t.lSections[i]!.sName,
+      from: 0,
+      to: 0,
+      length: act?.length ?? 400,
+      iterations: act?.iterations ?? 1,
+      active: act !== undefined,
+    });
+  }
+}
+
+// Scenario 10: plain Bezier chain — 4 knots, mild 3D 'S', zero roll.
+// Heights stay ≤ 3 m so the energy-driven velocity keeps real headroom
+// above the anchor's 10 m/s energy budget.
+function bezBasic(t: Track): void {
+  const s = t.appendSection(SecType.Bezier) as SecBezier;
+  s.sName = 'bez-basic';
+  s.bezList = [
+    bezKnot([0, 0, 0], [0, 0, 3], [0, 0, -6]),
+    bezKnot([5, 2, -18], [4, 2, -12], [6, 2, -24]),
+    bezKnot([-2, 1, -36], [0, 1.5, -30], [-4, 0.5, -42]),
+    bezKnot([0, 0, -55], [-1, 0, -49], [1, 0, -61]),
+  ];
+}
+
+// Scenario 11: Bezier roll matrix — absolute roll, relRoll chaining, and
+// contRoll transitions, across 5 knots.
+function bezRoll(t: Track): void {
+  const s = t.appendSection(SecType.Bezier) as SecBezier;
+  s.sName = 'bez-roll';
+  s.bezList = [
+    bezKnot([0, 0, 0], [0, 0, 3], [0, 0, -6]),
+    bezKnot([6, 1, -16], [5, 1, -10], [7, 1, -22], { roll: 0.5 }),
+    bezKnot([0, 2, -32], [2, 2, -26], [-2, 2, -38], { roll: 0.4, relRoll: true }),
+    bezKnot([-6, 1, -48], [-5, 1, -42], [-7, 1, -54], { roll: -0.6, contRoll: true }),
+    bezKnot([0, 0, -64], [-2, 0, -58], [2, 0, -70], { roll: 0, contRoll: true }),
+  ];
+}
+
+// Scenario 12: every section type in one track — STR, CUR, FRC, GEO, BEZ.
+// Small (5 sections) so FVD++ stays stable. The BEZ picks up wherever
+// the GEO ends; FVD++ doesn't enforce continuity into a BEZ, and the
+// parity diff doesn't care.
+function mixedAll(t: Track): void {
+  const str = t.appendSection(SecType.Straight) as SecStraight;
+  str.sName = 'straight';
+  configSubfunc(str.rollFunc.funcList[0]!, { min: 0, max: 10, degree: EDegree.Cubic, start: 0, symArg: 30 });
+
+  const cur = t.appendSection(SecType.Curved) as SecCurved;
+  cur.sName = 'curved';
+  cur.fAngle = 90;
+  cur.fRadius = 12;
+  cur.fDirection = 90;
+  cur.fLeadIn = 10;
+  cur.fLeadOut = 10;
+  cur.rollFunc.setMaxArgument(90);
+
+  const frc = t.appendSection(SecType.Forced) as SecForced;
+  frc.sName = 'forced';
+  frc.iTime = 1500;
+  frc.bSpeed = false;
+  frc.fVel = 12;
+  configSubfunc(frc.normForce!.funcList[0]!, { min: 0, max: 1.5, degree: EDegree.Cubic, start: 1, symArg: 1.5 });
+
+  addGeo(t, {
+    name: 'geometric',
+    timeSec: 1.5,
+    fVel: 12,
+    bSpeed: false,
+    bOrientation: QUATERNION,
+    bArgument: TIME,
+    pitch: { degree: EDegree.Cubic, start: 0, symArg: 20 },
+  });
+
+  const bez = t.appendSection(SecType.Bezier) as SecBezier;
+  bez.sName = 'bezier';
+  bez.bezList = [
+    bezKnot([0, 0, 0], [0, 0, 3], [0, 0, -6]),
+    bezKnot([4, 1, -15], [3, 1, -9], [5, 1, -21]),
+    bezKnot([0, 0, -30], [2, 0.5, -24], [-2, 0, -36]),
+  ];
+}
+
+// Scenario 13: roll smoother. A triangle roll-rate spike (0→80→0 °/s
+// over 0.6 s) inside a 2 s Geometric section, flat neighbours, and the
+// WHOLE-TRACK smoothHandler active (length=400 ticks, 1 iteration).
+// Every section type stitches its roll-rate start to the previous
+// section's end (translateValues at node 0), so a startValue step can't
+// exist — only a sharp in-profile feature can. The box filter rounds
+// the triangle's peak, depositing non-zero fSmoothSpeed.
+function smoothRoll(t: Track): void {
+  addGeo(t, {
+    name: 'pre',
+    timeSec: 1,
+    fVel: 12,
+    bSpeed: false,
+    bOrientation: QUATERNION,
+    bArgument: TIME,
+    roll: { degree: EDegree.Linear, start: 0, symArg: 0 },
+  });
+  const spike = addGeo(t, {
+    name: 'spike',
+    timeSec: 2,
+    fVel: 12,
+    bSpeed: false,
+    bOrientation: QUATERNION,
+    bArgument: TIME,
+    roll: { degree: EDegree.Linear, min: 0, max: 0.7, start: 0, symArg: 80 },
+  });
+  // Triangle: up over [0, 0.7], down over [0.7, 1.3], flat to 2.0 s.
+  spike.rollFunc.appendSubFunction(0.6, 0);
+  configSubfunc(spike.rollFunc.funcList[1]!, { degree: EDegree.Linear, symArg: -80 });
+  spike.rollFunc.appendSubFunction(0.7, 1);
+  configSubfunc(spike.rollFunc.funcList[2]!, { degree: EDegree.Linear, symArg: 0 });
+  addGeo(t, {
+    name: 'post',
+    timeSec: 1,
+    fVel: 12,
+    bSpeed: false,
+    bOrientation: QUATERNION,
+    bArgument: TIME,
+    roll: { degree: EDegree.Linear, start: 0, symArg: 0 },
+  });
+  pushSmoothHandlers(t, [{ sectionIndex: -1, length: 400, iterations: 1 }]);
+}
+
+// Scenario 14: same track, heavier smoothing — whole-track handler with
+// 3 iterations × 600 ticks, PLUS the middle section's own handler, so
+// overlapping handlers accumulate (smoothui.cpp:231 `+=`).
+function smoothIter(t: Track): void {
+  smoothRoll(t);
+  t.smoothHandlers.length = 0;
+  pushSmoothHandlers(t, [
+    { sectionIndex: -1, length: 600, iterations: 3 },
+    { sectionIndex: 1, length: 400, iterations: 1 },
+  ]);
+}
+
 // ----- run -----
 
 function buildOne(name: string, populate: (t: Track) => void): void {
@@ -461,5 +650,10 @@ buildOne('geo-kinematics', kinematicsSweep);
 buildOne('geo-freeform-only', freeformOnly);
 buildOne('geo-length-threshold', lengthThreshold);
 buildOne('geo-trig-isolation', transcendentalIsolation);
+buildOne('bez-basic', bezBasic);
+buildOne('bez-roll', bezRoll);
+buildOne('mixed-all', mixedAll);
+buildOne('smooth-roll', smoothRoll);
+buildOne('smooth-iter', smoothIter);
 // eslint-disable-next-line no-console
 console.log('done.');

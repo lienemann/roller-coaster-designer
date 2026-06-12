@@ -233,6 +233,31 @@ export function applySmooth(track: Track, fromNode: number): void {
   }
 }
 
+// smoothhandler.cpp:74 — FVD's smoothHandler binding is POSITIONAL and
+// from/to are recomputed from the binding every time:
+//   smoothList[0]            → the whole track   (sec == -1)
+//   smoothList[1..N]         → lSections[i-1]    (sec bound)
+//   smoothList[N+1..]        → custom regions    (sec == NULL; from/to
+//                              as stored in the file)
+// The from/to ints in the .fvd are stale UI text for bound handlers and
+// authoritative only for custom ones. Returns the effective node range.
+export function effectiveRange(
+  track: Track,
+  handlerIndex: number,
+  stored: { from: number; to: number },
+): { from: number; to: number } {
+  if (handlerIndex === 0) {
+    return { from: 0, to: track.getNumPoints() };
+  }
+  const secIndex = handlerIndex - 1;
+  if (secIndex < track.lSections.length) {
+    const sec = track.lSections[secIndex]!;
+    const from = track.getNumPoints(sec);
+    return { from, to: from + sec.lNodes.length - 2 };
+  }
+  return { from: stored.from, to: stored.to };
+}
+
 // smoothui.cpp:82 — the public entry point. Clears all `fSmoothSpeed`
 // from `fromNode` onward, runs each active handler's filter, then
 // re-applies via `applySmooth`. Safe to call whether or not smoothers
@@ -259,13 +284,21 @@ export function applyRollSmooth(track: Track, fromNode = 0): void {
   }
 
   // smoothui.cpp:104-111 — run each active handler whose window
-  // reaches past `fromNode`.
+  // reaches past `fromNode`. from/to are derived from the handler's
+  // positional binding (track.cpp:222 calls cur->update() first).
   let anyActive = false;
-  for (const h of track.smoothHandlers) {
-    if (!h.active) continue;
-    if (h.to > fromNode) {
+  for (let h = 0; h < track.smoothHandlers.length; h++) {
+    const handler = track.smoothHandlers[h]!;
+    if (!handler.active) continue;
+    const range = effectiveRange(track, h, handler);
+    if (range.to > fromNode) {
       anyActive = true;
-      applyRollSmoothFilter(track, h);
+      applyRollSmoothFilter(track, {
+        from: range.from,
+        to: range.to,
+        length: handler.length,
+        iterations: handler.iterations,
+      });
     }
   }
 

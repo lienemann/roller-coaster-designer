@@ -54,13 +54,15 @@ describe('geometric corpus', () => {
         }
       });
 
-      it('contains only Geometric sections', () => {
-        const t = readFvd(buf).tracks[0]!;
-        expect(t.lSections.length).toBeGreaterThan(0);
-        for (const s of t.lSections) {
-          expect(s.type).toBe(SecType.Geometric);
-        }
-      });
+      if (file.startsWith('geo-')) {
+        it('contains only Geometric sections', () => {
+          const t = readFvd(buf).tracks[0]!;
+          expect(t.lSections.length).toBeGreaterThan(0);
+          for (const s of t.lSections) {
+            expect(s.type).toBe(SecType.Geometric);
+          }
+        });
+      }
 
       it('integrates every TIME-mode section without throwing', () => {
         const t = readFvd(buf).tracks[0]!;
